@@ -1,0 +1,29 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager / CocoaPods
+.build/
+.swiftpm/
+Pods/
+
+# Shared framework built from the Companion repo (Kotlin Multiplatform)
+Frameworks/*.xcframework
+
+# Secrets (never commit)
+*.xcconfig.local
+Secrets.xcconfig
+GoogleService-Info.plist
+*.p12
+*.mobileprovision
+.env
+
+# OS
+.DS_Store
+Thumbs.db
