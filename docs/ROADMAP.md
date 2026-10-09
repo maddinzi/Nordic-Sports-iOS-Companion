@@ -44,7 +44,11 @@ native. Either way the screens stay thin over the shared view models.
 ### Step 0: Prerequisites and decisions
 - Mac access: **no local Mac**, so everything Apple-side runs remotely (see "Remote Mac
   setup" below). Windows builds and tests the shared JVM side.
-- Apple Developer Program account. Bundle id: reuse `me.maddin.nordicsports.companion`.
+- Apple Developer Program account: **done** (2026-10-09), Team ID `6H79YB6QQS`. Bundle id:
+  reuse `me.maddin.nordicsports.companion` (one explicit App ID with Associated Domains for
+  the Strava Universal Link; no separate Preview id, TestFlight replaces it). App Store
+  Connect API key as GitHub secrets `ASC_ISSUER_ID`, `ASC_KEY_ID`, `ASC_KEY_P8` (Admin role,
+  so CI can create certificates and profiles without a Mac).
 - Confirm option B, the repo layout and the minimum iOS version (proposal: iOS 17).
 - Agree on feature scope for the first iOS release (see step 5).
 
