@@ -120,7 +120,13 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
    Decided: `StravaLinkResolver` stays per platform - it is flow control (tokens, progress
    log texts, the Room transaction) around the already shared `StravaActivityMatcher`.
    `StrengthDescription` too (locale formatting, Android texts).
-   Next: `DiaryBackportMatcher` (needs a DAO-free core), Strava title rules, then step 3.
+   *Ninth slice:* `DiaryBackportMatcher` and the Strava title/sport type rules
+   (`StravaPresetRules`; Android supplies the wording). Merged 2026-10-09.
+   Not in use: the diary backport has had no UI entry point since 0.9.80 (dormant code,
+   earlier `diary_backport` rows are still shown); it is out of the iOS scope, iOS only
+   needs to display such rows. The Trainingsplan feature is switched off as well.
+   Open in step 2: 2.4 (HTTP clients on Ktor, token storage behind an interface) and
+   2.6 (platform interfaces in `shared`).
    Findings:
    - Most remaining logic takes `ActivityEventEntity` (Room) as input, so the Room
      entities have to move (step 5) before TTB/HR-zone/matching logic can follow, or that
@@ -166,7 +172,8 @@ link/create and title rewrite. Ship to internal TestFlight. Then take the UI dec
 2. Strava full sync, backfill, conflict / self-echo handling
 3. Watch settings, interval plans, strength routines
 4. Add activity by hand, delete with tombstone
-5. Trainingsplan, place names, Recording Boost export, data export / deletion
+5. Place names, Recording Boost export, data export / deletion (Trainingsplan only if
+   switched back on on Android; the diary backport is not ported, see step 2)
 6. Worklog transparency log, JSON export, app log, feedback / crash reports
 7. Localization: en, de, fr, it, rm, gsw from one shared source (generate iOS
    `.xcstrings` from the Android strings, or move both to shared resources)
