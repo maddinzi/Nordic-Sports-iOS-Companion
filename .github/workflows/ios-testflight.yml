@@ -14,10 +14,15 @@ jobs:
     env:
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-      KEY_PATH: ${{ runner.temp }}/asc/AuthKey.p8
-      ARCHIVE_PATH: ${{ runner.temp }}/NordicSportsCompanion.xcarchive
     steps:
       - uses: actions/checkout@v7
+
+      # The runner context isn't available in the job's env block, so paths are set here.
+      - name: Paths
+        run: |
+          echo "KEY_PATH=$RUNNER_TEMP/asc/AuthKey.p8" >> "$GITHUB_ENV"
+          echo "ARCHIVE_PATH=$RUNNER_TEMP/NordicSportsCompanion.xcarchive" >> "$GITHUB_ENV"
+          echo "EXPORT_PATH=$RUNNER_TEMP/export" >> "$GITHUB_ENV"
 
       - name: Xcode version
         run: xcodebuild -version
@@ -54,7 +59,7 @@ jobs:
           xcodebuild -exportArchive \
             -archivePath "$ARCHIVE_PATH" \
             -exportOptionsPlist ExportOptions.plist \
-            -exportPath "${{ runner.temp }}/export" \
+            -exportPath "$EXPORT_PATH" \
             -allowProvisioningUpdates \
             -authenticationKeyPath "$KEY_PATH" \
             -authenticationKeyID "$ASC_KEY_ID" \
