@@ -86,6 +86,14 @@ jobs:
           KEYCHAIN_PASSWORD="$(uuidgen)"
           echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
           printf '%s' "$DIST_CERT_P12" | base64 --decode > "$RUNNER_TEMP/dist.p12"
+          # Fingerprints only, to compare with the files the secrets came from - never the values.
+          echo "password length: ${#DIST_CERT_PASSWORD}, sha256 prefix: $(printf '%s' "$DIST_CERT_PASSWORD" | shasum -a 256 | cut -c1-8)"
+          echo "p12 base64 length: ${#DIST_CERT_P12}, decoded p12 sha256 prefix: $(shasum -a 256 "$RUNNER_TEMP/dist.p12" | cut -c1-16)"
+          if openssl pkcs12 -in "$RUNNER_TEMP/dist.p12" -passin env:DIST_CERT_PASSWORD -noout > /dev/null 2>&1; then
+            echo "openssl: the password opens the p12"
+          else
+            echo "openssl: the password does NOT open the p12 (or the p12 is damaged)"
+          fi
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
