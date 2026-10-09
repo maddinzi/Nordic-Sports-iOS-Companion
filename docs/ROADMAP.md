@@ -113,7 +113,14 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
    Merged 2026-10-09 after CI only: the training plan feature is switched off
    (`TrainingsplanFeature.ENABLED = false`, no trace in the UI), so it was not device-tested.
    Test it on a device before switching it back on, and leave it out of the iOS MVP.
-   Next: `StravaLinkResolver` (rule vs. Room/UI split), Strava title rules.
+   *Eighth slice:* `ActivityMatching` (watch/Strava arrival rules) and the diary entry rules,
+   extracted from `TtbForwarder` into `DiaryEntryBuilder` (precedence: athlete overrides,
+   HR zones, watch preset/training type, Strava guess; race rule; notes; rounding), with
+   tests for every branch. Shared tests: 121.
+   Decided: `StravaLinkResolver` stays per platform - it is flow control (tokens, progress
+   log texts, the Room transaction) around the already shared `StravaActivityMatcher`.
+   `StrengthDescription` too (locale formatting, Android texts).
+   Next: `DiaryBackportMatcher` (needs a DAO-free core), Strava title rules, then step 3.
    Findings:
    - Most remaining logic takes `ActivityEventEntity` (Room) as input, so the Room
      entities have to move (step 5) before TTB/HR-zone/matching logic can follow, or that
