@@ -85,9 +85,12 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
    *Second slice done:* `DiaryFields` (fingerprint parity-tested against the old
    implementation), the TTB model and `TtbMapping` (`TtbModel.kt`), `HrZoneIntensityMapping`
    with its tests, `JsonNumbers` (org.json replacement for number columns, writes
-   Android's exact format). Shared tests: 38. Next candidates: `DiaryEntryRecord`,
-   `EntityMapping`, `WatchSettings` (org.json objects), `StravaActivityMatcher`
-   (needs its `Context` dependency split off), `StravaTtbMapping`.
+   Android's exact format). *Third slice done:* `EntityMapping` (Room rows <-> domain)
+   and `DiaryEntryRecord` on kotlinx JSON via `JsonCompat` (Android org.json reading rules),
+   parity-tested against the real org.json in both directions. Shared tests: 42; CI green
+   on macOS (iOS simulator). Next candidates: `WatchSettings` (watch settings protocol,
+   org.json objects), `StravaActivityMatcher` (needs its `Context` dependency split off),
+   `StravaTtbMapping`.
    Findings:
    - Most remaining logic takes `ActivityEventEntity` (Room) as input, so the Room
      entities have to move (step 5) before TTB/HR-zone/matching logic can follow, or that
