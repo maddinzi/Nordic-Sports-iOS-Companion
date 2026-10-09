@@ -91,9 +91,13 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
    on macOS (iOS simulator); merged into `main` 2026-10-09 after a device test.
    *Fourth slice done:* the watch settings protocol (`WatchSettings`, reconciler, stored
    JSON), `WatchStrengthRoutine`, plus shared tables `WatchLanguage` and `StrengthCatalog`;
-   Android labels stay in `:app` (`WatchSettingLabels.kt`, label keys). Shared tests: 59.
-   Next candidates: `StravaActivityMatcher` (needs its `Context` dependency split off),
-   `StravaTtbMapping`, then the TTB workbook editor (XML library decision).
+   Android labels stay in `:app` (`WatchSettingLabels.kt`, label keys). Shared tests: 59;
+   merged into `main` 2026-10-09 after CI and a device test.
+   *Fifth slice done:* `StravaActivitySummary`, `StravaActivityMatcher` (pure `match`; the
+   Strava listing call stays per platform, Android `StravaActivityLookup.kt`) and
+   `StravaTtbMapping`, both newly covered by shared tests. Shared tests: 74.
+   Next: the TTB workbook editor (XML and zip library decision), `StravaLinkResolver`
+   (rule vs. Room/UI split), Strava title rules.
    Findings:
    - Most remaining logic takes `ActivityEventEntity` (Room) as input, so the Room
      entities have to move (step 5) before TTB/HR-zone/matching logic can follow, or that
