@@ -116,7 +116,7 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
    *Eighth slice:* `ActivityMatching` (watch/Strava arrival rules) and the diary entry rules,
    extracted from `TtbForwarder` into `DiaryEntryBuilder` (precedence: athlete overrides,
    HR zones, watch preset/training type, Strava guess; race rule; notes; rounding), with
-   tests for every branch. Shared tests: 121.
+   tests for every branch. Shared tests: 108.
    Decided: `StravaLinkResolver` stays per platform - it is flow control (tokens, progress
    log texts, the Room transaction) around the already shared `StravaActivityMatcher`.
    `StrengthDescription` too (locale formatting, Android texts).
