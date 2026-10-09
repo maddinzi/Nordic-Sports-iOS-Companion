@@ -74,9 +74,25 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
    KSP 2.3.12, Room 2.8.4); 201 unit tests green, both flavors build; device test pending.
 2. Create an empty `shared` module (targets: android, iosArm64, iosSimulatorArm64) and
    wire it into the app.
+   *Done* on branch `kmp-shared-module` (`com.android.kotlin.multiplatform.library`,
+   framework `NordicSportsShared`, tests: `gradlew.bat :shared:testAndroidHostTest`).
 3. Move pure logic first, with its unit tests: TTB layout/mapping, HR-zone intensity,
    Strava matcher/title rules, watch payload model, activity-type and label tables, diary
    backport matcher.
+   *First slice done:* watch payload model (`WatchActivityEvent`, `WatchBuildInfo`,
+   `WatchIntervalPlan`, `WatchRecordingBoostBurst`, `WatchAppIds`), `ReviewState`,
+   `RollerskiTechniqueInference`, `StravaSyncPolicy`, with 23 tests in `commonTest`.
+   Findings:
+   - Most remaining logic takes `ActivityEventEntity` (Room) as input, so the Room
+     entities have to move (step 5) before TTB/HR-zone/matching logic can follow, or that
+     logic is changed to take `WatchActivityEvent` / small input types instead.
+   - `TtbWorkbookEditor` (~1,400 lines) is built on `javax.xml` DOM (`org.w3c.dom`). iOS
+     has no DOM parser either, so it needs a pure-Kotlin XML library (candidate:
+     `io.github.pdvrieze.xmlutil`), and `XlsxZip` needs a multiplatform zip
+     (expect/actual or a library). This is the largest single porting item.
+   - `org.json` (Android-only) is used for persistence/JSON; move to kotlinx.serialization.
+   - Cross-module rule: smart casts on properties of shared classes no longer work in
+     `:app` (use `?.let`).
 4. Replace JVM-only APIs in moved code: `java.time` with kotlinx-datetime,
    `HttpURLConnection` with Ktor (keep `applyDefaultTimeouts` semantics), `java.util.zip`
    behind expect/actual for `XlsxZip`, `EncryptedPrefs` behind an interface
