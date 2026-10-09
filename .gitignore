@@ -1,4 +1,6 @@
-# Xcode
+# Xcode (the project and Info.plist are generated from project.yml by XcodeGen)
+*.xcodeproj/
+App/Info.plist
 build/
 DerivedData/
 *.xcuserstate

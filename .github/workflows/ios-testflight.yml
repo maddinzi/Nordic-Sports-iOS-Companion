@@ -1,0 +1,65 @@
+name: iOS TestFlight
+
+# Builds the app on a cloud Mac and uploads it to TestFlight. Started by hand
+# (Actions > iOS TestFlight > Run workflow) - macOS minutes are expensive.
+# Signing: automatic, with the App Store Connect API key in the secrets
+# ASC_ISSUER_ID, ASC_KEY_ID and ASC_KEY_P8 (never printed, deleted after the run).
+on:
+  workflow_dispatch:
+
+jobs:
+  testflight:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      KEY_PATH: ${{ runner.temp }}/asc/AuthKey.p8
+      ARCHIVE_PATH: ${{ runner.temp }}/NordicSportsCompanion.xcarchive
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: App Store Connect API key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          mkdir -p "$(dirname "$KEY_PATH")"
+          printf '%s\n' "$ASC_KEY_P8" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+
+      - name: Archive
+        run: |
+          xcodebuild archive \
+            -project NordicSportsCompanion.xcodeproj \
+            -scheme NordicSportsCompanion \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }}
+
+      - name: Upload to TestFlight
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath "${{ runner.temp }}/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Remove the API key
+        if: always()
+        run: rm -rf "$(dirname "$KEY_PATH")"
