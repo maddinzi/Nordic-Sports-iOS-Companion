@@ -99,6 +99,14 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
    (Android: security-crypto, iOS: Keychain).
 5. Move the Room entities, DAOs and migrations into `shared` (schema JSON stays committed;
    same migrations for both platforms).
+   *Done* (branch `kmp-shared-module`): schema, 12 entities, 10 DAOs in `shared`,
+   schemas in `shared/schemas`, identity hash unchanged (v29). The migrations 12..29 stay
+   Android-only in `:app` (`AppDatabaseFactory.kt`, SupportSQLite, 22->23 runs
+   `StravaDuplicateMerger`); iOS starts at v29. **Rule from now on:** every new schema
+   bump gets a `SQLiteConnection`-based Migration in `shared`, registered on both
+   platforms. Still in `:app`: `EntityMapping` (needs `org.json`), `StravaDuplicateMerger`
+   and `StravaLinking` (SupportSQLite / `openHelper`).
+   Not yet verified: Room KSP for the iOS targets (runs on macOS only; first CI run).
 6. Define platform interfaces for everything that stays native: `WatchEventSource`,
    `DiaryProvider`, `TrainingsplanProvider`, token stores, schedulers, notifications,
    location.
