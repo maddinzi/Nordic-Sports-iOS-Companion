@@ -96,8 +96,18 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
    *Fifth slice done:* `StravaActivitySummary`, `StravaActivityMatcher` (pure `match`; the
    Strava listing call stays per platform, Android `StravaActivityLookup.kt`) and
    `StravaTtbMapping`, both newly covered by shared tests. Shared tests: 74.
-   Next: the TTB workbook editor (XML and zip library decision), `StravaLinkResolver`
-   (rule vs. Room/UI split), Strava title rules.
+   Merged into `main` 2026-10-09.
+   *Sixth slice:* the TTB workbook editor. `XlsxZip` is shared Kotlin (zip container and
+   CRC-32; raw DEFLATE per platform: Android java.util.zip, iOS the system zlib via
+   `platform.zlib`; `platform.compression` is not available in Kotlin/Native); merged.
+   A small shared XML model (`dom/`: `Dom.kt`, `XmlParser`, `XmlWriter`) replaces
+   org.w3c.dom, written in-house instead of xmlutil because the editor reads XML without
+   namespaces; parity-tested on all 593 parts of four real workbooks. `TtbWorkbookEditor`
+   and `TtbLayout` moved onto it, with kotlinx-datetime 0.8.0; a one-off scenario on the
+   real workbooks gave the same results and trees as the old editor. Diary distances now
+   always use a decimal point, as the Activity Tool writes them. Shared tests: 93.
+   Next: the training plan reader (still org.w3c.dom, its API uses java.time.LocalDate),
+   `StravaLinkResolver` (rule vs. Room/UI split), Strava title rules.
    Findings:
    - Most remaining logic takes `ActivityEventEntity` (Room) as input, so the Room
      entities have to move (step 5) before TTB/HR-zone/matching logic can follow, or that
