@@ -106,8 +106,11 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
    and `TtbLayout` moved onto it, with kotlinx-datetime 0.8.0; a one-off scenario on the
    real workbooks gave the same results and trees as the old editor. Diary distances now
    always use a decimal point, as the Activity Tool writes them. Shared tests: 93.
-   Next: the training plan reader (still org.w3c.dom, its API uses java.time.LocalDate),
-   `StravaLinkResolver` (rule vs. Room/UI split), Strava title rules.
+   Merged into `main` 2026-10-09.
+   *Seventh slice:* `TrainingsplanWorkbookReader` on the shared XML model and
+   `kotlinx.datetime.LocalDate` (the app's matcher converts at its boundary); identical
+   output on the real plan workbook. No org.w3c.dom or javax.xml left in the workbook code.
+   Next: `StravaLinkResolver` (rule vs. Room/UI split), Strava title rules.
    Findings:
    - Most remaining logic takes `ActivityEventEntity` (Room) as input, so the Room
      entities have to move (step 5) before TTB/HR-zone/matching logic can follow, or that
