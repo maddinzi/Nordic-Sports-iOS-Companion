@@ -14,6 +14,8 @@ jobs:
     env:
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      # Must match provisioningProfiles in ExportOptions.plist.
+      PROFILE_NAME: Nordic Sports Companion App Store CI
     steps:
       - uses: actions/checkout@v7
 
@@ -98,10 +100,80 @@ jobs:
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security import "$RUNNER_TEMP/dist.p12" -P "$DIST_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          # The certificate's serial number finds it in App Store Connect for the profile.
+          CERT_SERIAL="$(openssl pkcs12 -in "$RUNNER_TEMP/dist.p12" -passin env:DIST_CERT_PASSWORD -nokeys | openssl x509 -noout -serial | cut -d= -f2)"
+          echo "CERT_SERIAL=$CERT_SERIAL" >> "$GITHUB_ENV"
+          echo "certificate serial: $CERT_SERIAL"
           rm -f "$RUNNER_TEMP/dist.p12"
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
           security find-identity -v -p codesigning "$KEYCHAIN"
+
+      # An App Store provisioning profile for our bundle id and certificate, created via
+      # the API (replacing the one from the previous run) and installed for Xcode.
+      - name: Provisioning profile
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, pathlib, time, urllib.error, urllib.parse, urllib.request
+          import jwt
+
+          API = "https://api.appstoreconnect.apple.com/v1"
+          BUNDLE_ID = "me.maddin.nordicsports.companion"
+          NAME = os.environ["PROFILE_NAME"]
+          token = jwt.encode(
+              {"iss": os.environ["ASC_ISSUER_ID"], "iat": int(time.time()), "exp": int(time.time()) + 900, "aud": "appstoreconnect-v1"},
+              open(os.environ["KEY_PATH"], encoding="utf-8").read(), algorithm="ES256",
+              headers={"kid": os.environ["ASC_KEY_ID"], "typ": "JWT"},
+          )
+
+          def call(method, path, body=None):
+              request = urllib.request.Request(
+                  API + path, method=method, data=json.dumps(body).encode() if body else None,
+                  headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+              )
+              try:
+                  with urllib.request.urlopen(request) as response:
+                      text = response.read()
+                      return json.loads(text) if text else {}
+              except urllib.error.HTTPError as e:
+                  print(method, path, "-> HTTP", e.code)
+                  for err in json.load(e).get("errors", []):
+                      print(" -", err.get("code"), "|", err.get("title"), "|", err.get("detail"))
+                  raise SystemExit(1)
+
+          bundle = call("GET", "/bundleIds?filter[identifier]=" + BUNDLE_ID)["data"]
+          bundle = [b for b in bundle if b["attributes"]["identifier"] == BUNDLE_ID]
+          if not bundle:
+              raise SystemExit("No App ID " + BUNDLE_ID + " in the developer portal")
+
+          serial = os.environ["CERT_SERIAL"].lstrip("0").upper()
+          certs = call("GET", "/certificates?limit=200")["data"]
+          cert = [c for c in certs if (c["attributes"].get("serialNumber") or "").lstrip("0").upper() == serial]
+          if not cert:
+              raise SystemExit("The signing certificate (serial " + serial + ") is not in this team - revoked?")
+          print("certificate:", cert[0]["attributes"].get("name"), cert[0]["attributes"].get("certificateType"))
+
+          for old in call("GET", "/profiles?filter[name]=" + urllib.parse.quote(NAME))["data"]:
+              call("DELETE", "/profiles/" + old["id"])
+              print("removed the previous profile", old["id"])
+
+          created = call("POST", "/profiles", {"data": {
+              "type": "profiles",
+              "attributes": {"name": NAME, "profileType": "IOS_APP_STORE"},
+              "relationships": {
+                  "bundleId": {"data": {"type": "bundleIds", "id": bundle[0]["id"]}},
+                  "certificates": {"data": [{"type": "certificates", "id": cert[0]["id"]}]},
+              },
+          }})["data"]
+          content = base64.b64decode(created["attributes"]["profileContent"])
+          uuid = created["attributes"]["uuid"]
+          home = pathlib.Path.home()
+          for folder in ["Library/MobileDevice/Provisioning Profiles", "Library/Developer/Xcode/UserData/Provisioning Profiles"]:
+              target = home / folder
+              target.mkdir(parents=True, exist_ok=True)
+              (target / (uuid + ".mobileprovision")).write_bytes(content)
+          print("installed profile", NAME, uuid)
+          PY
 
       - name: Archive
         run: |
@@ -111,11 +183,9 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$ARCHIVE_PATH" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
             CURRENT_PROJECT_VERSION=${{ github.run_number }}
 
       - name: Upload to TestFlight

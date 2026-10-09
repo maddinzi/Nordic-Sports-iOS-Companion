@@ -2,7 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Export the archive for App Store Connect and upload it straight to TestFlight. -->
+    <!-- Export the archive for App Store Connect and upload it straight to TestFlight,
+         signed with the team's Apple Distribution certificate and the App Store profile
+         the workflow creates (.github/workflows/ios-testflight.yml, PROFILE_NAME). -->
     <key>method</key>
     <string>app-store-connect</string>
     <key>destination</key>
@@ -10,7 +12,14 @@
     <key>teamID</key>
     <string>6H79YB6QQS</string>
     <key>signingStyle</key>
-    <string>automatic</string>
+    <string>manual</string>
+    <key>signingCertificate</key>
+    <string>Apple Distribution</string>
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>me.maddin.nordicsports.companion</key>
+        <string>Nordic Sports Companion App Store CI</string>
+    </dict>
     <key>uploadSymbols</key>
     <true/>
     <key>manageAppVersionAndBuildNumber</key>
