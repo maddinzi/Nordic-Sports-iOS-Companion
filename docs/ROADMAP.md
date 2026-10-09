@@ -110,6 +110,9 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
    *Seventh slice:* `TrainingsplanWorkbookReader` on the shared XML model and
    `kotlinx.datetime.LocalDate` (the app's matcher converts at its boundary); identical
    output on the real plan workbook. No org.w3c.dom or javax.xml left in the workbook code.
+   Merged 2026-10-09 after CI only: the training plan feature is switched off
+   (`TrainingsplanFeature.ENABLED = false`, no trace in the UI), so it was not device-tested.
+   Test it on a device before switching it back on, and leave it out of the iOS MVP.
    Next: `StravaLinkResolver` (rule vs. Room/UI split), Strava title rules.
    Findings:
    - Most remaining logic takes `ActivityEventEntity` (Room) as input, so the Room
