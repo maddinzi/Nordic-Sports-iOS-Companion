@@ -49,6 +49,15 @@ native. Either way the screens stay thin over the shared view models.
   the Strava Universal Link; no separate Preview id, TestFlight replaces it). App Store
   Connect API key as GitHub secrets `ASC_ISSUER_ID`, `ASC_KEY_ID`, `ASC_KEY_P8` (Admin role,
   so CI can create certificates and profiles without a Mac).
+- **First TestFlight build: green (2026-10-09).** Workflow `.github/workflows/ios-testflight.yml`
+  (started by hand): XcodeGen, archive, upload. Signing is manual: the team's Apple
+  Distribution certificate (created from a CSR made on Windows with openssl) is stored as
+  `DIST_CERT_P12` (base64, SHA1/3DES p12 so macOS can import it) and `DIST_CERT_PASSWORD`;
+  each run creates the App Store profile "Nordic Sports Companion App Store CI" via the API.
+  No registered device is needed. **The certificate expires 2027-10-09**: before then,
+  create a new one the same way and update both secrets. Backup: the athlete's password
+  manager. No iPhone yet: an iPad (iPadOS 17+) is being organised for TestFlight and the
+  watch link spike; the app is iPhone-only and runs on iPad in compatibility mode.
 - Confirm option B, the repo layout and the minimum iOS version (proposal: iOS 17).
 - Agree on feature scope for the first iOS release (see step 5).
 
