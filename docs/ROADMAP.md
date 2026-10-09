@@ -88,9 +88,12 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
    Android's exact format). *Third slice done:* `EntityMapping` (Room rows <-> domain)
    and `DiaryEntryRecord` on kotlinx JSON via `JsonCompat` (Android org.json reading rules),
    parity-tested against the real org.json in both directions. Shared tests: 42; CI green
-   on macOS (iOS simulator). Next candidates: `WatchSettings` (watch settings protocol,
-   org.json objects), `StravaActivityMatcher` (needs its `Context` dependency split off),
-   `StravaTtbMapping`.
+   on macOS (iOS simulator); merged into `main` 2026-10-09 after a device test.
+   *Fourth slice done:* the watch settings protocol (`WatchSettings`, reconciler, stored
+   JSON), `WatchStrengthRoutine`, plus shared tables `WatchLanguage` and `StrengthCatalog`;
+   Android labels stay in `:app` (`WatchSettingLabels.kt`, label keys). Shared tests: 59.
+   Next candidates: `StravaActivityMatcher` (needs its `Context` dependency split off),
+   `StravaTtbMapping`, then the TTB workbook editor (XML library decision).
    Findings:
    - Most remaining logic takes `ActivityEventEntity` (Room) as input, so the Room
      entities have to move (step 5) before TTB/HR-zone/matching logic can follow, or that
