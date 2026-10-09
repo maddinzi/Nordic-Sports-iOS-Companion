@@ -82,6 +82,12 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
    *First slice done:* watch payload model (`WatchActivityEvent`, `WatchBuildInfo`,
    `WatchIntervalPlan`, `WatchRecordingBoostBurst`, `WatchAppIds`), `ReviewState`,
    `RollerskiTechniqueInference`, `StravaSyncPolicy`, with 23 tests in `commonTest`.
+   *Second slice done:* `DiaryFields` (fingerprint parity-tested against the old
+   implementation), the TTB model and `TtbMapping` (`TtbModel.kt`), `HrZoneIntensityMapping`
+   with its tests, `JsonNumbers` (org.json replacement for number columns, writes
+   Android's exact format). Shared tests: 38. Next candidates: `DiaryEntryRecord`,
+   `EntityMapping`, `WatchSettings` (org.json objects), `StravaActivityMatcher`
+   (needs its `Context` dependency split off), `StravaTtbMapping`.
    Findings:
    - Most remaining logic takes `ActivityEventEntity` (Room) as input, so the Room
      entities have to move (step 5) before TTB/HR-zone/matching logic can follow, or that
