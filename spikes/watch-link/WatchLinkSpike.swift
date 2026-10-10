@@ -58,7 +58,7 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
 
     func chooseWatch() {
         add("opening Garmin Connect for device selection")
-        ConnectIQ.sharedInstance().showConnectIQDeviceSelection()
+        ConnectIQ.sharedInstance().showDeviceSelection()
     }
 
     /// Garmin Connect Mobile returns the athlete's selection through our URL scheme.
@@ -66,8 +66,8 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         guard url.scheme == Self.urlScheme else { return }
         let parsed = ConnectIQ.sharedInstance().parseDeviceSelectionResponse(from: url) as? [IQDevice] ?? []
         add("device selection: \(parsed.count) device(s): \(parsed.map { $0.friendlyName ?? "?" }.joined(separator: ", "))")
-        ConnectIQ.sharedInstance().unregisterForAllDeviceEvents(self)
-        ConnectIQ.sharedInstance().unregisterForAllAppMessages(self)
+        ConnectIQ.sharedInstance().unregister(forAllDeviceEvents: self)
+        ConnectIQ.sharedInstance().unregister(forAllAppMessages: self)
         devices = parsed
         saveDevices(parsed)
         registerAll()
@@ -82,7 +82,7 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
             for watchApp in Self.watchApps {
                 // The SDK headers carry no nullability, so its factories return `IQApp!`.
                 guard let uuid = UUID(uuidString: watchApp.id) else { continue }
-                let made: IQApp? = IQApp(uuid: uuid, storeUuid: uuid, device: device)
+                let made: IQApp? = IQApp(uuid: uuid, store: uuid, device: device)
                 guard let app = made else { continue }
                 apps.append(app)
                 ConnectIQ.sharedInstance().register(forAppMessages: app, delegate: self)
@@ -119,12 +119,15 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
 
     // MARK: - Delegates
 
+    // The exact Objective-C selectors, so the SDK finds them whatever Swift calls them.
+    @objc(deviceStatusChanged:status:)
     func deviceStatusChanged(_ device: IQDevice!, status: IQDeviceStatus) {
         let name = Self.name(of: status)
         DispatchQueue.main.async { self.statuses[device.uuid] = name }
         add("device \(device.friendlyName ?? "?"): \(name)")
     }
 
+    @objc(receivedMessage:fromApp:)
     func receivedMessage(_ message: Any!, from app: IQApp!) {
         let state = Thread.isMainThread
             ? UIApplication.shared.applicationState
