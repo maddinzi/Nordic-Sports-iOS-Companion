@@ -138,8 +138,21 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
    Not in use: the diary backport has had no UI entry point since 0.9.80 (dormant code,
    earlier `diary_backport` rows are still shown); it is out of the iOS scope, iOS only
    needs to display such rows. The Trainingsplan feature is switched off as well.
-   Open in step 2: 2.4 (HTTP clients on Ktor, token storage behind an interface) and
-   2.6 (platform interfaces in `shared`).
+   *2.4 done (HTTP on Ktor 3.6, token storage behind an interface):*
+   - 2.4a: `SecretStore` interface (Android: encrypted prefs, iOS: Keychain) and
+     `StravaTokenStore` in `shared`. Merged.
+   - 2.4b: `StravaApi` (read, list, create, update activities); coroutines 1.8.1 -> 1.11.0.
+     Merged 2026-10-10 after CI and a device test.
+   - 2.4c: `WebhookServerApi`, `FeedbackApi`, `StravaOAuthApi` (code exchange, refresh,
+     deauthorize) and `ensureFreshStravaToken`; Android keeps the AppAuth consent screen.
+     Merged 2026-10-10 after CI and a device test.
+   - 2.4d: `OneDriveGraphApi` (share link, workbook location, download, metadata, uploads,
+     backup folders), `OneDriveGraphError`, the diary file I/O types. No `HttpURLConnection`
+     left in the app. Dropbox and Google Drive use their vendors' Android SDKs and stay per
+     platform. The Microsoft and Strava consent screens are per platform.
+   Every shared client is tested against Ktor's MockEngine. One app-wide `HttpClient`
+   (Android: `HttpURLConnection` engine, iOS: `NSURLSession`).
+   Open in step 2: 2.6 (platform interfaces in `shared`).
    Findings:
    - Most remaining logic takes `ActivityEventEntity` (Room) as input, so the Room
      entities have to move (step 5) before TTB/HR-zone/matching logic can follow, or that
