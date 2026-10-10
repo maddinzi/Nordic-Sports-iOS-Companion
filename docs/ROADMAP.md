@@ -150,6 +150,7 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
      backup folders), `OneDriveGraphError`, the diary file I/O types. No `HttpURLConnection`
      left in the app. Dropbox and Google Drive use their vendors' Android SDKs and stay per
      platform. The Microsoft and Strava consent screens are per platform.
+     Merged 2026-10-10 after CI and a device test.
    Every shared client is tested against Ktor's MockEngine. One app-wide `HttpClient`
    (Android: `HttpURLConnection` engine, iOS: `NSURLSession`).
    Open in step 2: 2.6 (platform interfaces in `shared`).
