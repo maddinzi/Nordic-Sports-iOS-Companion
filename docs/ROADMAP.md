@@ -153,7 +153,14 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
      Merged 2026-10-10 after CI and a device test.
    Every shared client is tested against Ktor's MockEngine. One app-wide `HttpClient`
    (Android: `HttpURLConnection` engine, iOS: `NSURLSession`).
-   Open in step 2: 2.6 (platform interfaces in `shared`).
+   *2.6a done:* platform interfaces in `shared`, implemented by the existing Android
+   classes: `WatchEventSource`, `WatchSettingsTransport`, `DiaryFileStore` (plus the shared
+   `IssueReportingDiaryFileStore` rule), `CompanionScheduler`, `ActivityNotifier`,
+   `PlaceNameLookup` (plus `formatPlaceName`), and `StravaTitlePollSchedule`. Token stores
+   came with 2.4 (`SecretStore`). No `TrainingsplanProvider`: the feature is switched off.
+   Shared tests: 173. Merged 2026-10-10 after CI and a device test.
+   Open in step 2: the flow logic that still reads Room/SharedPreferences directly
+   (settings stores, `TtbForwarder`'s diary write, `StravaActivitySync`).
    Findings:
    - Most remaining logic takes `ActivityEventEntity` (Room) as input, so the Room
      entities have to move (step 5) before TTB/HR-zone/matching logic can follow, or that
