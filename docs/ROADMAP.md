@@ -159,8 +159,18 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
    `PlaceNameLookup` (plus `formatPlaceName`), and `StravaTitlePollSchedule`. Token stores
    came with 2.4 (`SecretStore`). No `TrainingsplanProvider`: the feature is switched off.
    Shared tests: 173. Merged 2026-10-10 after CI and a device test.
-   Open in step 2: the flow logic that still reads Room/SharedPreferences directly
-   (settings stores, `TtbForwarder`'s diary write, `StravaActivitySync`).
+   *2.6b done:* `KeyValueStore` (Android: the existing SharedPreferences files and keys,
+   iOS: one `UserDefaults` suite per store) with `SyncModeStore`, `AutomationSettingsStore`,
+   `AutoDiarySettingsStore`, `TtbSettingsStore`, `StravaSettingsStore`,
+   `PlaceNamesSettingsStore`, `DiaryConnectionStore` (+ `DiaryProvider`; destination ids
+   parity-tested against the old MessageDigest code) and `WatchSettingsSync` (+
+   `PlatformLock`, `WatchTransferEventKind`). Android keeps `getInstance(context)` as
+   extensions (`AppSingleton`). The privacy-sync grep now covers `shared` too.
+   Merged 2026-10-10 after CI and a device test.
+   Paused (decided 2026-10-10): 2.6c `TtbForwarder`'s diary write flow and 2.6d
+   `StravaActivitySync` (+ `StravaLinkResolver`), the largest step-2 items, wait for
+   spike 1 (watch link on a real iPhone) as the go/no-go. They also need a decision on
+   how shared code gets localized texts (see step 5.7).
    Findings:
    - Most remaining logic takes `ActivityEventEntity` (Room) as input, so the Room
      entities have to move (step 5) before TTB/HR-zone/matching logic can follow, or that
