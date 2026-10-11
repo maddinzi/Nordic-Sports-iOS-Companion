@@ -71,7 +71,8 @@ These carry the real risk. Do them before investing in the shared module.
    receipt reply works, plus the settings snapshot / "A to B" change messages.
    *Built:* `spikes/watch-link/` (Connect IQ SDK 1.8.0 via SPM, both app ids, receipts,
    settings request, persistent log with app state); TestFlight build 11 (2026-10-10).
-   Waiting for the test iPhone (iPhone 12); test plan in `spikes/watch-link/README.md`.
+   *Tested 2026-10-11 (build 14): go* with the app open or in the background; a closed
+   app is still open. Findings: `docs/spike-1-watch-link.md`.
 2. **Background:** what BGTaskScheduler and background fetch really deliver for diary
    sync and Strava title updates. Expect "when the app is opened" as the reliable baseline.
 3. **Strava OAuth:** ASWebAuthenticationSession with a Universal Link (needs
@@ -80,6 +81,8 @@ These carry the real risk. Do them before investing in the shared module.
 4. **Diary file round-trip:** open a real TTB workbook from the Files app (security-scoped
    bookmark), from OneDrive (MSAL iOS), Dropbox (SwiftyDropbox) and Google Drive, edit it,
    and write it back.
+   *Files app tested 2026-10-11 (build 14): go* (180 entries read and re-written by the
+   shared code). Findings: `docs/spike-4-diary-file.md`. The cloud providers are still open.
 
 Outcome: a short findings note per spike in `docs/`, and a go / no-go per feature.
 

@@ -34,3 +34,6 @@ Thumbs.db
 
 # Python
 __pycache__/
+
+# Spike logs shared from the iPhone (personal data, GPS positions)
+logs/
