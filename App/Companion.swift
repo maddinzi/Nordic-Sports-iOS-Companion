@@ -21,6 +21,10 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var syncLines: [String] = []
     @Published private(set) var lastSync: Date?
     @Published private(set) var stravaConnected = false
+    @Published private(set) var diaryName = ""
+    @Published private(set) var diaryIssue = ""
+    @Published private(set) var diarySettings = DiarySettings(autoUpdate: true, roundDurationUp: true, compactDiary: true)
+    @Published private(set) var diaryBusy = false
     @Published var message: String?
 
     let core: CompanionCore
@@ -39,10 +43,12 @@ final class Companion: NSObject, ObservableObject {
             stravaClientSecret: setting("StravaClientSecret"),
             webhookBaseUrl: "https://api.nordicsports.maddin.me",
             webhookApiKey: setting("WebhookApiKey"),
+            diaryFile: FilesDiaryAccess.shared,
             debug: { line in NSLog("[core] %@", line) }
         )
         super.init()
         stravaConnected = core.stravaConnected()
+        refreshDiary()
     }
 
     // MARK: - Activities
@@ -81,7 +87,7 @@ final class Companion: NSObject, ObservableObject {
     /// Like Android's onResume: a quiet sync whenever the app comes to the foreground.
     func syncOnOpen() async {
         await refresh()
-        guard stravaConnected, !syncing else { return }
+        guard stravaConnected || core.diaryConnected(), !syncing else { return }
         await sync()
     }
 
@@ -96,6 +102,7 @@ final class Companion: NSObject, ObservableObject {
         } catch {
             message = error.localizedDescription
         }
+        refreshDiary()
         await refresh()
     }
 
@@ -110,6 +117,7 @@ final class Companion: NSObject, ObservableObject {
         } catch {
             message = error.localizedDescription
         }
+        refreshDiary()
         await refresh()
     }
 
@@ -166,6 +174,81 @@ final class Companion: NSObject, ObservableObject {
         }
         stravaConnected = core.stravaConnected()
         message = L10n.get("main_toast_strava_disconnected")
+    }
+
+    // MARK: - Diary
+
+    var diaryConnected: Bool { !diaryName.isEmpty }
+
+    private func refreshDiary() {
+        diaryName = core.diaryConnected() ? core.diaryWorkbookName() : ""
+        diaryIssue = core.diaryIssue()
+        diarySettings = core.diarySettings()
+    }
+
+    /// A workbook picked in the Files app: remembered, read once and connected when it opens
+    /// as a TTB diary.
+    func connectDiary(_ url: URL) async {
+        if let problem = FilesDiaryAccess.shared.remember(url) {
+            message = problem
+            return
+        }
+        diaryBusy = true
+        defer { diaryBusy = false }
+        do {
+            let problem = try await core.connectDiary(fileName: url.lastPathComponent)
+            if problem.isEmpty {
+                refreshDiary()
+                message = String(format: L10n.get("connect_diary_connected_to"), url.lastPathComponent)
+            } else {
+                FilesDiaryAccess.shared.restorePrevious()
+                message = problem
+            }
+        } catch {
+            message = error.localizedDescription
+        }
+        refreshDiary()
+    }
+
+    func disconnectDiary() {
+        core.disconnectDiary()
+        FilesDiaryAccess.shared.forget()
+        refreshDiary()
+    }
+
+    func setDiaryAutoUpdate(_ on: Bool) { core.setDiaryAutoUpdate(enabled: on); refreshDiary() }
+    func setDiaryRoundDurationUp(_ on: Bool) { core.setDiaryRoundDurationUp(enabled: on); refreshDiary() }
+    func setDiaryCompact(_ on: Bool) { core.setDiaryCompact(enabled: on); refreshDiary() }
+
+    /// "Write to diary now": everything due from the last [days] days.
+    func writeDiary(days: Int32) async {
+        guard !syncing else { return }
+        syncing = true
+        defer { syncing = false }
+        do {
+            let report = try await core.writeDiary(days: days)
+            syncLines = report.lines
+            lastSync = Date()
+        } catch {
+            message = error.localizedDescription
+        }
+        refreshDiary()
+        await refresh()
+    }
+
+    /// "Push to diary" for one activity; the sync log shows what was written.
+    func pushToDiary(_ activityId: String) async {
+        guard !syncing else { return }
+        syncing = true
+        defer { syncing = false }
+        do {
+            let problem = try await core.pushToDiary(activityId: activityId)
+            if !problem.isEmpty { message = problem }
+        } catch {
+            message = error.localizedDescription
+        }
+        refreshDiary()
+        await refresh()
     }
 
     // MARK: - Texts

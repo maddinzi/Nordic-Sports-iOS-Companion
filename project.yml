@@ -82,6 +82,9 @@ targets:
         StravaClientId: $(STRAVA_CLIENT_ID)
         StravaClientSecret: $(STRAVA_CLIENT_SECRET)
         WebhookApiKey: $(WEBHOOK_API_KEY)
+        # The diary backups (Documents/diary-backups) show in Files under On My iPhone.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
         # HTTPS only (standard encryption, exempt) - skips the export compliance question.
         ITSAppUsesNonExemptEncryption: false
         # Garmin Connect Mobile returns the watch selection through this scheme.

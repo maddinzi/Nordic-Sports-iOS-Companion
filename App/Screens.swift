@@ -1,5 +1,6 @@
 import NordicSportsShared
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The first iOS Companion (roadmap step 4): activities from the watch, linked to Strava and
 /// retitled there, plus the spike screen for diagnostics. The Android texts are used where a
@@ -81,6 +82,9 @@ struct ActivityRow: View {
                 if !item.stravaActivityId.isEmpty {
                     Image(systemName: "link").foregroundStyle(.orange)
                 }
+                if item.diaryWritten {
+                    Image(systemName: "book.closed").foregroundStyle(item.diaryOutdated ? Color.yellow : Color.green)
+                }
                 if item.reviewPending {
                     Image(systemName: "exclamationmark.circle").foregroundStyle(.blue)
                 }
@@ -96,7 +100,11 @@ struct ActivityRow: View {
 }
 
 struct ActivityDetailScreen: View {
+    @EnvironmentObject var companion: Companion
     let item: ActivityItem
+
+    /// The row as the list has it now, so a push shows its result here too.
+    private var current: ActivityItem { companion.activities.first { $0.id == item.id } ?? item }
 
     var body: some View {
         Form {
@@ -146,6 +154,25 @@ struct ActivityDetailScreen: View {
                     Text("Another activity starts at almost the same time; check both.").foregroundStyle(.red)
                 }
             }
+            if companion.diaryConnected {
+                Section(L10n.get("activity_detail_diary_card_title")) {
+                    if current.diaryWritten {
+                        Label(companion.diaryName, systemImage: "book.closed")
+                        if current.diaryOutdated {
+                            Text(L10n.get(companion.diarySettings.autoUpdate
+                                ? "activity_detail_diary_outdated_auto" : "activity_detail_diary_outdated_manual"))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    if !current.diaryWritten || current.diaryOutdated {
+                        Button(L10n.get(current.diaryWritten ? "activity_detail_diary_update" : "activity_detail_diary_push")) {
+                            Task { await companion.pushToDiary(item.id) }
+                        }
+                        .disabled(companion.syncing)
+                    }
+                    if companion.syncing { ProgressView() }
+                }
+            }
             if !item.watch.isEmpty {
                 Section("Source") { LabeledContent("Watch", value: item.watch) }
             }
@@ -160,6 +187,9 @@ struct ActivityDetailScreen: View {
 struct SettingsScreen: View {
     @EnvironmentObject var companion: Companion
     @ObservedObject var watch = WatchLinkSpike.shared
+    @State private var pickingDiary = false
+
+    private static let xlsx = UTType(filenameExtension: "xlsx") ?? .data
 
     var body: some View {
         NavigationStack {
@@ -185,6 +215,39 @@ struct SettingsScreen: View {
                         Button("Connect Strava") { companion.connectStrava() }
                     }
                 }
+                Section(L10n.get("status_diary_label")) {
+                    if companion.diaryConnected {
+                        Label(String(format: L10n.get("connect_diary_connected_to"), companion.diaryName), systemImage: "book.closed")
+                        if !companion.diaryIssue.isEmpty {
+                            Text(L10n.get("status_diary_issue_title")).foregroundStyle(.red)
+                            Text(companion.diaryIssue).font(.footnote).foregroundStyle(.secondary)
+                        }
+                        Toggle("Write new activities automatically", isOn: Binding(
+                            get: { companion.diarySettings.autoUpdate },
+                            set: { companion.setDiaryAutoUpdate($0) }
+                        ))
+                        Toggle("Round durations up", isOn: Binding(
+                            get: { companion.diarySettings.roundDurationUp },
+                            set: { companion.setDiaryRoundDurationUp($0) }
+                        ))
+                        Toggle("Compact diary entries", isOn: Binding(
+                            get: { companion.diarySettings.compactDiary },
+                            set: { companion.setDiaryCompact($0) }
+                        ))
+                        Button("Write the last 7 days to the diary") { Task { await companion.writeDiary(days: 7) } }
+                            .disabled(companion.syncing)
+                        Button("Choose another workbook") { pickingDiary = true }
+                        Button(L10n.get("connect_diary_disconnect_button"), role: .destructive) { companion.disconnectDiary() }
+                    } else {
+                        Text("Pick your TTB diary workbook in the Files app (iCloud Drive, On My iPhone, or OneDrive).")
+                            .foregroundStyle(.secondary)
+                        Button("Choose diary workbook") { pickingDiary = true }
+                    }
+                    if companion.diaryBusy {
+                        HStack { ProgressView(); Text(L10n.get("connect_diary_connecting")) }
+                    }
+                }
+                .disabled(companion.diaryBusy)
                 if companion.syncing || !companion.syncLines.isEmpty || companion.lastSync != nil {
                     Section("Last sync") {
                         if companion.syncing { ProgressView() }
@@ -204,6 +267,12 @@ struct SettingsScreen: View {
                 }
             }
             .navigationTitle("Settings")
+            .fileImporter(isPresented: $pickingDiary, allowedContentTypes: [Self.xlsx]) { result in
+                switch result {
+                case .success(let url): Task { await companion.connectDiary(url) }
+                case .failure(let error): companion.message = error.localizedDescription
+                }
+            }
         }
     }
 }

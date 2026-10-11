@@ -18,6 +18,24 @@ Strava and retitled there, as on Android.
 6. Open an activity: date, duration, distance, heart rate, zones, the Strava link.
 7. Share the Diagnostics log afterwards (into `logs/`).
 
+## Build 16 additions: receipts and the diary (roadmap step 5.1)
+
+8. **Receipts:** the watch's backlog of older activities arrives once more and then stops.
+   The watch's About › DOWN log shows `receipt` and `removed` for each one, and those
+   activities no longer come back after the next watch app start.
+9. Settings › Athlete's Diary › **Choose diary workbook**: pick the TTB workbook in
+   Files (OneDrive, iCloud Drive or On My iPhone). After "Connecting…" it shows
+   "Connected to "<file>"". A file that is not a TTB workbook is refused, with the reason.
+10. Settings › **Write the last 7 days to the diary**: Last sync lists the pending
+    activities, the backup, "written …" for each, and the upload. Then open the workbook
+    in Excel: the entries are there, as Android writes them.
+11. Activities: written activities show a green book. Open one that isn't written yet:
+    **Push to Diary** writes just that one.
+12. In Files › On My iPhone › Nordic Sports › diary-backups there is a copy of the
+    workbook from before each write (newest 30).
+13. Quit the app and reopen it: the diary stays connected, and the next sync writes new
+    watch activities without picking the file again.
+
 # Spike 1: watch link (throw-away)
 
 Question: does the Connect IQ iOS SDK (`garmin/connectiq-companion-app-sdk-ios` 1.8.0)

@@ -246,6 +246,13 @@ Diagnostics; Strava sign-in with ASWebAuthenticationSession and an https callbac
 
 ### Step 5: Feature parity, in priority order
 1. TTB diary write-back (Files app first, then OneDrive, Dropbox, Google Drive)
+   *Files app built (2026-10-11, for TestFlight build 16):* the run around the shared
+   `DiaryWriter` moved into shared `DiarySync` (Android's `TtbForwarder` delegates to it).
+   `CompanionCore` connects the workbook picked in Files, writes after each sync, and offers
+   Write now, Push to Diary and the three diary switches. Swift's `FilesDiaryAccess` holds
+   the bookmark, does coordinated read and write, and keeps backups in
+   Documents/diary-backups. The iOS Kotlin (iosMain) now compiles on Windows
+   (`:shared:compileKotlinIosArm64`), so only Swift and the framework link wait for CI.
 2. Strava full sync, backfill, conflict / self-echo handling
 3. Watch settings, interval plans, strength routines
 4. Add activity by hand, delete with tombstone
