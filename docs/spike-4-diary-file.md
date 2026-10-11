@@ -10,14 +10,12 @@ spike; OneDrive (MSAL), Dropbox and Google Drive sign-in are not covered yet.
 | Open via the Files picker, security-scoped access | OK (`scoped access true`) |
 | Workbook structure | 263 zip parts, 61 worksheets |
 | Diary entries (shared Kotlin TTB code) | 180, from 2026-04-27 to 2026-10-10, 14 disciplines (one entry without a discipline, `?`) |
-| Read time | 6.3 s and 6.4 s |
+| Read time | 6.1 to 6.4 s; once 14.1 s, right after a launch while the watch connection was being set up |
 | Re-write (iOS zlib) and read back | 181 ms, every part identical |
 | Save the re-written copy | OK; the athlete reports that it opened fine |
-| Remembered workbook (bookmark) | Resolved, but only within the same app session |
+| Remembered workbook (bookmark) | Survives closing the app: resolved and read in two new app sessions (17:01, 17:03), no picker needed |
 
 ## Not yet shown
-- **The bookmark after the app was swiped away.** The log has no second launch, so
-  "Read again" never ran in a new app session.
 - **The entry count against the Android app** (180) and which entry has no discipline.
   The Android app must show the same count, and the same entry without a discipline.
 
