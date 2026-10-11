@@ -254,6 +254,10 @@ Diagnostics; Strava sign-in with ASWebAuthenticationSession and an https callbac
    Documents/diary-backups. The iOS Kotlin (iosMain) now compiles on Windows
    (`:shared:compileKotlinIosArm64`), so only Swift and the framework link wait for CI.
 2. Strava full sync, backfill, conflict / self-echo handling
+   *Also built for build 17 (2026-10-11):* 5.3 watch settings (no interval plans or strength
+   routines yet), 5.4 add by hand and delete (shared `ActivityDeleter`; a manual activity
+   is not created on Strava from iOS yet, it is linked when Strava has it), 5.6 diary/app/
+   transfer logs, activity history, JSON export (shared `DataExport`) and feedback.
 3. Watch settings, interval plans, strength routines
 4. Add activity by hand, delete with tombstone
 5. Place names, Recording Boost export, data export / deletion (Trainingsplan only if
