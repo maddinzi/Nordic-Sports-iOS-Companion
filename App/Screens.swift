@@ -13,7 +13,7 @@ struct RootView: View {
             ActivitiesScreen()
                 .tabItem { Label("Activities", systemImage: "list.bullet") }
             SettingsScreen()
-                .tabItem { Label("Settings", systemImage: "gearshape") }
+                .tabItem { Label(L10n.get("status_title"), systemImage: "gearshape") }
             WatchLinkSpikeView()
                 .tabItem { Label("Diagnostics", systemImage: "stethoscope") }
         }
@@ -30,6 +30,7 @@ struct RootView: View {
 
 struct ActivitiesScreen: View {
     @EnvironmentObject var companion: Companion
+    @State private var adding = false
 
     var body: some View {
         NavigationStack {
@@ -52,7 +53,16 @@ struct ActivitiesScreen: View {
             }
             .navigationTitle("Activities")
             .refreshable { await companion.sync() }
+            .sheet(isPresented: $adding) { AddActivitySheet().environmentObject(companion) }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        adding = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel(L10n.get("add_activity_title"))
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     if companion.syncing {
                         ProgressView()
@@ -101,7 +111,9 @@ struct ActivityRow: View {
 
 struct ActivityDetailScreen: View {
     @EnvironmentObject var companion: Companion
+    @Environment(\.dismiss) private var dismiss
     let item: ActivityItem
+    @State private var confirmingDelete = false
 
     /// The row as the list has it now, so a push shows its result here too.
     private var current: ActivityItem { companion.activities.first { $0.id == item.id } ?? item }
@@ -109,22 +121,22 @@ struct ActivityDetailScreen: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("Start", value: Format.date(item.startEpochSec))
-                LabeledContent("Duration", value: Format.duration(item.elapsedSec))
-                if item.distanceM > 0 { LabeledContent("Distance", value: Format.distance(item.distanceM)) }
-                if item.avgHeartRate > 0 { LabeledContent("Avg. heart rate", value: "\(item.avgHeartRate) bpm") }
-                if item.maxHeartRate > 0 { LabeledContent("Max. heart rate", value: "\(item.maxHeartRate) bpm") }
-                if item.totalAscentM > 0 { LabeledContent("Ascent", value: "\(Int(item.totalAscentM)) m") }
-                if item.calories > 0 { LabeledContent("Calories", value: "\(item.calories) kcal") }
-                if !item.locationName.isEmpty { LabeledContent("Place", value: item.locationName) }
+                LabeledContent(L10n.get("activity_detail_started_label"), value: Format.date(item.startEpochSec))
+                LabeledContent(L10n.get("activity_detail_duration_label"), value: Format.duration(item.elapsedSec))
+                if item.distanceM > 0 { LabeledContent(L10n.get("activity_detail_distance_label"), value: Format.distance(item.distanceM)) }
+                if item.avgHeartRate > 0 { LabeledContent(L10n.get("activity_detail_avg_hr_label"), value: "\(item.avgHeartRate) bpm") }
+                if item.maxHeartRate > 0 { LabeledContent(L10n.get("activity_detail_max_hr_label"), value: "\(item.maxHeartRate) bpm") }
+                if item.totalAscentM > 0 { LabeledContent(L10n.get("activity_detail_ascent_label"), value: "\(Int(item.totalAscentM)) m") }
+                if item.calories > 0 { LabeledContent(L10n.get("activity_detail_calories_label"), value: "\(item.calories) kcal") }
+                if !item.locationName.isEmpty { LabeledContent(L10n.get("activity_detail_location_label"), value: item.locationName) }
             }
             Section(L10n.get("activity_detail_training_type_label")) {
-                LabeledContent("Type", value: Format.presetWord(item.preset))
+                LabeledContent(L10n.get("activity_detail_sport_label"), value: Format.presetWord(item.preset))
                 if !item.trainingType.isEmpty, item.trainingType != "unknown" {
                     LabeledContent("Intensity", value: Format.trainingTypeWord(item.trainingType))
                 }
-                if item.rpe > 0 { LabeledContent("RPE", value: "\(item.rpe)") }
-                if item.feeling > 0 { LabeledContent("Feeling", value: "\(item.feeling)") }
+                if item.rpe > 0 { LabeledContent(L10n.get("activity_detail_rpe_label"), value: "\(item.rpe)") }
+                if item.feeling > 0 { LabeledContent(L10n.get("activity_detail_feeling_label"), value: "\(item.feeling)") }
             }
             let zones = item.hrZonePercents.map { $0.floatValue }
             if zones.contains(where: { $0 > 0 }) {
@@ -174,8 +186,27 @@ struct ActivityDetailScreen: View {
                 }
             }
             if !item.watch.isEmpty {
-                Section("Source") { LabeledContent("Watch", value: item.watch) }
+                Section { LabeledContent(L10n.get("activity_detail_device_label"), value: item.watch) }
             }
+            Section {
+                NavigationLink(L10n.get("activity_change_log_title")) { ActivityLogScreen(activityId: item.id) }
+                Button(L10n.get("activity_detail_delete_confirm_button"), role: .destructive) { confirmingDelete = true }
+                    .disabled(companion.syncing)
+            }
+        }
+        .confirmationDialog(
+            L10n.get("activity_detail_delete_confirm_title"),
+            isPresented: $confirmingDelete,
+            titleVisibility: .visible
+        ) {
+            Button(L10n.get("activity_detail_delete_confirm_button"), role: .destructive) {
+                Task {
+                    if await companion.deleteActivity(item.id) { dismiss() }
+                }
+            }
+        } message: {
+            Text(L10n.get("activity_detail_delete_confirm_body") + (item.stravaActivityId.isEmpty
+                ? "" : "\n\n" + L10n.get("activity_detail_delete_confirm_strava_note")))
         }
         .navigationTitle(item.title.isEmpty ? L10n.get("activity_detail_title_fallback") : item.title)
         .navigationBarTitleDisplayMode(.inline)
@@ -188,6 +219,7 @@ struct SettingsScreen: View {
     @EnvironmentObject var companion: Companion
     @ObservedObject var watch = WatchLinkSpike.shared
     @State private var pickingDiary = false
+    @State private var exportURL: URL?
 
     private static let xlsx = UTType(filenameExtension: "xlsx") ?? .data
 
@@ -199,6 +231,7 @@ struct SettingsScreen: View {
                         LabeledContent(device.friendlyName ?? "?", value: watch.statuses[device.uuid] ?? "")
                     }
                     Button("Choose watch in Garmin Connect") { watch.chooseWatch() }
+                    NavigationLink("Watch settings") { WatchSettingsScreen() }
                 }
                 Section("Strava") {
                     if !companion.stravaConfigured {
@@ -218,6 +251,9 @@ struct SettingsScreen: View {
                 Section(L10n.get("status_diary_label")) {
                     if companion.diaryConnected {
                         Label(String(format: L10n.get("connect_diary_connected_to"), companion.diaryName), systemImage: "book.closed")
+                        Text("New activities are written at each sync: when the app opens, or pull down on Activities.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                         if !companion.diaryIssue.isEmpty {
                             Text(L10n.get("status_diary_issue_title")).foregroundStyle(.red)
                             Text(companion.diaryIssue).font(.footnote).foregroundStyle(.secondary)
@@ -262,11 +298,32 @@ struct SettingsScreen: View {
                         }
                     }
                 }
+                Section(L10n.get("status_data_logs_heading")) {
+                    NavigationLink(L10n.get("status_view_diary_log")) {
+                        LogScreen(title: L10n.get("diary_work_log_title"), kind: .diary)
+                    }
+                    NavigationLink(L10n.get("status_view_app_log")) {
+                        LogScreen(title: L10n.get("app_log_title"), kind: .app)
+                    }
+                    NavigationLink("Watch transfer log") {
+                        LogScreen(title: "Watch transfer log", kind: .transfer)
+                    }
+                }
+                Section(L10n.get("status_my_data_heading")) {
+                    if let exportURL {
+                        ShareLink(item: exportURL) { Label(exportURL.lastPathComponent, systemImage: "square.and.arrow.up") }
+                    } else {
+                        Button(L10n.get("status_download_my_data")) {
+                            Task { exportURL = await companion.exportFile() }
+                        }
+                    }
+                    NavigationLink(L10n.get("feedback_title")) { FeedbackScreen() }
+                }
                 Section {
                     LabeledContent("Version", value: Format.appVersion)
                 }
             }
-            .navigationTitle("Settings")
+            .navigationTitle(L10n.get("status_title"))
             .fileImporter(isPresented: $pickingDiary, allowedContentTypes: [Self.xlsx]) { result in
                 switch result {
                 case .success(let url): Task { await companion.connectDiary(url) }

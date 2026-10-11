@@ -36,6 +36,25 @@ Strava and retitled there, as on Android.
 13. Quit the app and reopen it: the diary stays connected, and the next sync writes new
     watch activities without picking the file again.
 
+## Build 17 additions (roadmap 5.3, 5.4, 5.6 and fixes)
+
+14. **Diary on OneDrive:** pick the workbook once (no third try), "Write the last 7 days".
+    If the write is refused again, Diagnostics now says why ("write failed: … writable …").
+15. **Watch settings:** open Nordic Sports on the watch once, then Settings › Watch settings
+    lists its settings. Change one (e.g. Auto pause): "Waiting for the watch", then
+    confirmed after the watch app has been open. Diagnostics shows "settings to …: success".
+16. **Add by hand:** Activities › + › type, duration, "Ended now" › Save. It appears in the
+    list; the next sync writes it to the diary.
+17. **Delete:** open an activity › Delete. Message says whether it is still on Strava and
+    whether the diary entry went too. It does not come back after the next sync.
+18. **History:** activity › "Activity history" shows inserted/linked/written lines.
+19. **Logs:** Settings › Data logs: diary log, app log (Strava/diary connected, settings),
+    watch transfer log (arrivals, receipts, settings).
+20. **Export my data:** Settings › My Data › Export, then share/save the JSON file.
+21. **Feedback:** Settings › My Data › Send feedback; it reaches the admin console.
+22. Diagnostics: each "app in foreground" line now shows the Background App Refresh state
+    and Low Power Mode.
+
 # Spike 1: watch link (throw-away)
 
 Question: does the Connect IQ iOS SDK (`garmin/connectiq-companion-app-sdk-ios` 1.8.0)

@@ -1,5 +1,6 @@
 import ConnectIQ
 import Foundation
+import NordicSportsShared
 import UIKit
 import UserNotifications
 
@@ -8,7 +9,7 @@ import UserNotifications
 /// watch app ids, a receipt back, a settings request, and what arrives while the app is in
 /// the background or was closed. Everything is logged with timestamps and kept across app
 /// starts, so the log itself is the finding.
-final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, IQAppMessageDelegate {
+final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, IQAppMessageDelegate, WatchMessenger {
     static let shared = WatchLinkSpike()
 
     /// Registered in project.yml (CFBundleURLTypes); Garmin Connect Mobile calls back with it.
@@ -148,8 +149,27 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
                 let startTime = await Companion.shared.receive(message: dict, variant: variant)
                 if startTime > 0 {
                     let receiptTime = NSNumber(value: Int32(truncatingIfNeeded: startTime))
-                    self.send(["type": "receipt", "startTime": receiptTime], to: app, what: "receipt \(startTime)")
+                    self.send(["type": "receipt", "startTime": receiptTime], to: app, what: "receipt \(startTime)") { result in
+                        let sent = result.rawValue == 0
+                        let status = Self.name(of: result)
+                        Task { @MainActor in
+                            Companion.shared.core.watchReceiptResult(startTime: startTime, variant: variant, sent: sent, status: status)
+                        }
+                    }
                 }
+            }
+        }
+        // The watch's settings snapshot (sent at every watch app start): the shared
+        // WatchSettingsSync stores it and resends changes still waiting.
+        if let dict, type == "settings", JSONSerialization.isValidJSONObject(dict),
+           let data = try? JSONSerialization.data(withJSONObject: dict),
+           let json = String(data: data, encoding: .utf8) {
+            let deviceId = Self.deviceId(app.device)
+            let watchName = app.device.friendlyName ?? "?"
+            let appId = app.uuid.uuidString.lowercased()
+            Task { @MainActor in
+                Companion.shared.core.watchSettingsReceived(deviceId: deviceId, watchName: watchName, appId: appId, json: json)
+                Companion.shared.refreshWatchSettings()
             }
         }
         if state != .active {
@@ -159,10 +179,56 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
 
     // MARK: - Helpers
 
-    private func send(_ message: [String: Any], to app: IQApp, what: String) {
+    private func send(_ message: [String: Any], to app: IQApp, what: String, done: ((IQSendMessageResult) -> Void)? = nil) {
         ConnectIQ.sharedInstance().sendMessage(message, to: app, progress: { _, _ in }) { result in
             self.add("\(what) to \(self.label(app)): \(Self.name(of: result))")
+            done?(result)
         }
+    }
+
+    // MARK: - WatchMessenger (settings from the shared core)
+
+    /// A settings message from the shared WatchSettingsSync, as JSON. Numbers go out as
+    /// 32-bit Ints like Android's (the watch ignored Int64 NSNumbers in the receipt), true
+    /// and false as booleans. The result goes back to the core under [requestId].
+    func sendToWatch(requestId: Int32, deviceId: Int64, appId: String, json: String) -> Bool {
+        guard let data = json.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let message = Self.watchValue(object) as? [String: Any],
+              let app = apps.first(where: { Self.deviceId($0.device) == deviceId && $0.uuid.uuidString.lowercased() == appId.lowercased() })
+        else {
+            add("settings for an unknown watch or app (\(appId)) not sent")
+            return false
+        }
+        send(message, to: app, what: "settings") { result in
+            let sent = result.rawValue == 0
+            let status = Self.name(of: result)
+            Task { @MainActor in
+                Companion.shared.core.watchMessageResult(requestId: requestId, sent: sent, status: status)
+                Companion.shared.refreshWatchSettings()
+            }
+        }
+        return true
+    }
+
+    /// The Companion's id for a watch: the first 8 bytes of its Connect IQ UUID (stable).
+    static func deviceId(_ device: IQDevice) -> Int64 {
+        var value: UInt64 = 0
+        withUnsafeBytes(of: device.uuid.uuid) { raw in
+            for byte in raw.prefix(8) { value = value << 8 | UInt64(byte) }
+        }
+        return Int64(bitPattern: value)
+    }
+
+    private static func watchValue(_ value: Any) -> Any {
+        if let number = value as? NSNumber {
+            if CFGetTypeID(number) == CFBooleanGetTypeID() { return NSNumber(value: number.boolValue) }
+            if CFNumberIsFloatType(number) { return NSNumber(value: number.floatValue) }
+            return NSNumber(value: Int32(truncatingIfNeeded: number.int64Value))
+        }
+        if let list = value as? [Any] { return list.map(watchValue) }
+        if let dict = value as? [String: Any] { return dict.mapValues(watchValue) }
+        return value
     }
 
     private func label(_ app: IQApp) -> String {

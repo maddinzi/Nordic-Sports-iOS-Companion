@@ -27,7 +27,7 @@ struct NordicSportsCompanionApp: App {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active:
-                WatchLinkSpike.shared.add("app in foreground")
+                WatchLinkSpike.shared.add("app in foreground, \(BackgroundSpike.refreshStatusLine)")
                 // Like Android's onResume: Strava events and title updates on every open.
                 Task { await companion.syncOnOpen() }
             case .background:

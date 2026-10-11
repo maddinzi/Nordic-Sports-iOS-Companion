@@ -25,6 +25,7 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var diaryIssue = ""
     @Published private(set) var diarySettings = DiarySettings(autoUpdate: true, roundDurationUp: true, compactDiary: true)
     @Published private(set) var diaryBusy = false
+    @Published private(set) var watchSettings: [WatchSettingsView] = []
     @Published var message: String?
 
     let core: CompanionCore
@@ -44,11 +45,13 @@ final class Companion: NSObject, ObservableObject {
             webhookBaseUrl: "https://api.nordicsports.maddin.me",
             webhookApiKey: setting("WebhookApiKey"),
             diaryFile: FilesDiaryAccess.shared,
+            watchMessenger: WatchLinkSpike.shared,
             debug: { line in NSLog("[core] %@", line) }
         )
         super.init()
         stravaConnected = core.stravaConnected()
         refreshDiary()
+        refreshWatchSettings()
     }
 
     // MARK: - Activities
@@ -251,6 +254,134 @@ final class Companion: NSObject, ObservableObject {
         await refresh()
     }
 
+    // MARK: - Watch settings
+
+    func refreshWatchSettings() {
+        watchSettings = core.watchSettings()
+    }
+
+    /// [value] is 0/1 for an on/off setting, else the option's value; sent right away.
+    func changeWatchSetting(deviceId: Int64, key: String, value: Int32) {
+        core.changeWatchSetting(deviceId: deviceId, key: key, value: value)
+        refreshWatchSettings()
+    }
+
+    func askWatchAgain(deviceId: Int64) {
+        core.refreshWatchSettings(deviceId: deviceId)
+        refreshWatchSettings()
+    }
+
+    func dismissWatchNote(deviceId: Int64, key: String) {
+        core.dismissWatchSettingNote(deviceId: deviceId, key: key)
+        refreshWatchSettings()
+    }
+
+    // MARK: - Logs, export, feedback
+
+    enum LogKind { case diary, app, transfer }
+
+    func logLines(_ kind: LogKind) async -> [LogLine] {
+        do {
+            switch kind {
+            case .diary: return try await core.diaryWorkLog(limit: 500)
+            case .app: return try await core.appLogLines(limit: 500)
+            case .transfer: return try await core.transferLogLines(limit: 500)
+            }
+        } catch {
+            message = error.localizedDescription
+            return []
+        }
+    }
+
+    func activityLog(_ activityId: String) async -> [LogLine] {
+        (try? await core.activityLog(activityId: activityId)) ?? []
+    }
+
+    /// "Export my data": the JSON written to a temporary file, for the share sheet.
+    func exportFile() async -> URL? {
+        do {
+            let json = try await core.exportJson()
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(core.exportFileName())
+            try json.write(to: url, atomically: true, encoding: .utf8)
+            return url
+        } catch {
+            message = String(format: L10n.get("main_toast_export_failed"), error.localizedDescription)
+            return nil
+        }
+    }
+
+    /// "sent", "tooMany" or "failed".
+    func sendFeedback(category: String, app: String, text: String, email: String, includeDetails: Bool) async -> String {
+        var details: [String: String] = [:]
+        if includeDetails {
+            details = Self.deviceDetails()
+            details["language"] = language
+            if let watch = try? await core.latestWatchName(), !watch.isEmpty { details["watch"] = watch }
+        }
+        do {
+            return try await core.sendFeedback(
+                category: category, app: app, message: text, contactEmail: email,
+                appVersion: Format.appVersion, details: details
+            )
+        } catch {
+            return "failed"
+        }
+    }
+
+    /// The phone model ("iPhone13,2") and iOS version, as the feedback's technical details.
+    static func deviceDetails() -> [String: String] {
+        var system = utsname()
+        uname(&system)
+        let model = withUnsafeBytes(of: &system.machine) { raw in
+            String(decoding: raw.prefix(while: { $0 != 0 }), as: UTF8.self)
+        }
+        return ["phone": "Apple \(model)", "ios": UIDevice.current.systemVersion]
+    }
+
+    // MARK: - Add and delete
+
+    var manualTypes: [ManualTypeView] { core.manualTypes() }
+
+    /// Stores an activity entered by hand; returns its id, or nil when that failed.
+    func addActivity(typeKey: String, start: Date, minutes: Int) async -> String? {
+        do {
+            let id = try await core.addActivity(
+                typeKey: typeKey,
+                startEpochSec: Int64(start.timeIntervalSince1970),
+                elapsedSec: Int32(minutes * 60)
+            )
+            message = L10n.get("main_toast_activity_saved")
+            await refresh()
+            return id
+        } catch {
+            message = error.localizedDescription
+            return nil
+        }
+    }
+
+    /// Deletes an activity (the Strava activity stays); returns what to tell the athlete.
+    func deleteActivity(_ activityId: String) async -> Bool {
+        do {
+            guard let result = try await core.deleteActivity(activityId: activityId) else {
+                message = L10n.get("main_toast_activity_delete_failed")
+                return false
+            }
+            if let failure = result.diaryRemovalMessage, result.diaryRemovalAttempted, !result.diaryEntryRemoved {
+                message = String(format: L10n.get("main_toast_activity_deleted_diary_removal_failed"), failure)
+            } else if result.diaryEntryRemoved {
+                message = L10n.get(result.stillOnStrava
+                    ? "main_toast_activity_deleted_diary_removed_still_on_strava" : "main_toast_activity_deleted_diary_removed")
+            } else {
+                message = L10n.get(result.stillOnStrava ? "main_toast_activity_deleted_still_on_strava" : "main_toast_activity_deleted")
+            }
+            await refresh()
+            return true
+        } catch {
+            message = L10n.get("main_toast_activity_delete_failed")
+            return false
+        }
+    }
+
     // MARK: - Texts
 
     /// The phone's language among the Companion's six, English otherwise.
@@ -286,5 +417,10 @@ extension Companion: ASWebAuthenticationPresentationContextProviding {
 enum L10n {
     static func get(_ name: String) -> String {
         NSLocalizedString(name, comment: "")
+    }
+
+    /// A `<plurals>` text for [count] (the catalog's plural variations).
+    static func plural(_ name: String, _ count: Int) -> String {
+        String.localizedStringWithFormat(NSLocalizedString(name, comment: ""), count)
     }
 }

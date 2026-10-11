@@ -58,6 +58,12 @@ final class BackgroundSpike {
         task.setTaskCompleted(success: true)
     }
 
+    /// Background App Refresh as iOS reports it, plus Low Power Mode (which makes it
+    /// "restricted"); logged at every app open (build 15 showed "restricted").
+    static var refreshStatusLine: String {
+        "Background App Refresh: \(refreshStatus()), Low Power Mode \(ProcessInfo.processInfo.isLowPowerModeEnabled ? "on" : "off")"
+    }
+
     private static func refreshStatus() -> String {
         switch UIApplication.shared.backgroundRefreshStatus {
         case .available: return "on"
