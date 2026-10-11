@@ -118,21 +118,55 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
         return false
     }
 
+    /// A coordinated write in place. Build 16 with OneDrive in Files: "no permission to save",
+    /// so a refused write is logged with what iOS reports about the file, and then tried
+    /// again without `.forReplacing` through a file handle (no create, only overwrite).
     func writeWorkbook(data: Data) -> Bool {
         let written: Bool? = withWorkbook { url in
-            var coordinatorError: NSError?
-            var result: Result<Void, Error> = .failure(CocoaError(.fileWriteUnknown))
-            NSFileCoordinator().coordinate(writingItemAt: url, options: .forReplacing, error: &coordinatorError) { writeURL in
-                // In place, not atomic: access is granted to this one file, not to its folder,
-                // so a temporary file next to it may not be allowed.
-                result = Result { try data.write(to: writeURL) }
+            do {
+                try Self.coordinatedWrite(url, options: .forReplacing) { writeURL in
+                    // In place, not atomic: access is granted to this one file, not to its
+                    // folder, so a temporary file next to it may not be allowed.
+                    try data.write(to: writeURL)
+                }
+                return true
+            } catch {
+                log("write failed: \(Self.describe(error)); \(Self.writeState(url))")
+                try Self.coordinatedWrite(url, options: []) { writeURL in
+                    let handle = try FileHandle(forWritingTo: writeURL)
+                    defer { try? handle.close() }
+                    try handle.truncate(atOffset: 0)
+                    try handle.write(contentsOf: data)
+                }
+                log("write through a file handle worked")
+                return true
             }
-            if let coordinatorError { throw coordinatorError }
-            try result.get()
-            return true
         }
-        if written == nil { log("write failed: \(lastFailure)") }
+        if written == nil { log("write failed for good: \(lastFailure)") }
         return written ?? false
+    }
+
+    private static func coordinatedWrite(
+        _ url: URL,
+        options: NSFileCoordinator.WritingOptions,
+        _ write: (URL) throws -> Void
+    ) throws {
+        var coordinatorError: NSError?
+        var result: Result<Void, Error> = .failure(CocoaError(.fileWriteUnknown))
+        NSFileCoordinator().coordinate(writingItemAt: url, options: options, error: &coordinatorError) { writeURL in
+            result = Result { try write(writeURL) }
+        }
+        if let coordinatorError { throw coordinatorError }
+        try result.get()
+    }
+
+    /// Whether iOS calls the file writable, and its POSIX permissions and lock flag.
+    private static func writeState(_ url: URL) -> String {
+        let writable = (try? url.resourceValues(forKeys: [.isWritableKey]))?.isWritable.map { "\($0)" } ?? "?"
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let permissions = (attributes?[.posixPermissions] as? NSNumber).map { String($0.intValue, radix: 8) } ?? "?"
+        let locked = (attributes?[.immutable] as? NSNumber)?.boolValue.description ?? "?"
+        return "writable \(writable), permissions \(permissions), locked \(locked), \(describe(url))"
     }
 
     func failure() -> String { lastFailure }
