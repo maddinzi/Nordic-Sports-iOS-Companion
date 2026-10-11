@@ -393,11 +393,31 @@ final class Companion: NSObject, ObservableObject {
             )
             message = L10n.get("main_toast_activity_saved")
             await refresh()
+            Task { await syncNewActivity(id) }
             return id
         } catch {
             message = error.localizedDescription
             return nil
         }
+    }
+
+    /// As Android, right after adding by hand (automated mode): link it to the same session
+    /// on Strava or create it there, then write it to the diary.
+    private func syncNewActivity(_ id: String) async {
+        guard !syncing else { return }
+        syncing = true
+        defer { syncing = false }
+        do {
+            let report = try await core.syncNewActivity(activityId: id)
+            if !report.lines.isEmpty {
+                syncLines = report.lines
+                lastSync = Date()
+            }
+        } catch {
+            message = error.localizedDescription
+        }
+        refreshDiary()
+        await refresh()
     }
 
     /// Deletes an activity (the Strava activity stays); returns what to tell the athlete.

@@ -256,7 +256,8 @@ Diagnostics; Strava sign-in with ASWebAuthenticationSession and an https callbac
 2. Strava full sync, backfill, conflict / self-echo handling
    *Also built for build 17 (2026-10-11):* 5.3 watch settings (no interval plans or strength
    routines yet), 5.4 add by hand and delete (shared `ActivityDeleter`; a manual activity
-   is not created on Strava from iOS yet, it is linked when Strava has it), 5.6 diary/app/
+   is created on Strava or linked to the same session there since build 18 (shared
+   `ManualStravaLink`); a Strava activity already on its own row is not merged yet), 5.6 diary/app/
    transfer logs, activity history, JSON export (shared `DataExport`) and feedback.
 3. Watch settings, interval plans, strength routines
 4. Add activity by hand, delete with tombstone

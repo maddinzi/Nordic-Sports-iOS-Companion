@@ -60,6 +60,8 @@ Strava and retitled there, as on Android.
 23. Open an activity › pencil: change name, training type, RPE, feeling, diary comment,
     duration or distance › Save. The detail shows the new values; with the diary connected
     and automatic writes on, the diary entry is rewritten (Settings › Last sync).
+25. Add by hand (Strava connected): Settings › Last sync shows "looking up", then "linked"
+    to the same Strava session, or a new manual Strava activity; then the diary write.
 24. With interaction mode "interactive" (set on Android, or the default), a new watch
     activity shows "Review activity": Save it or "Skip review"; either releases the diary write.
 
