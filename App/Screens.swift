@@ -239,6 +239,7 @@ struct SettingsScreen: View {
     @ObservedObject var watch = WatchLinkSpike.shared
     @State private var pickingDiary = false
     @State private var exportURL: URL?
+    @State private var confirmingDeleteAll = false
 
     private static let xlsx = UTType(filenameExtension: "xlsx") ?? .data
 
@@ -337,6 +338,18 @@ struct SettingsScreen: View {
                         }
                     }
                     NavigationLink(L10n.get("feedback_title")) { FeedbackScreen() }
+                    Button(L10n.get("status_delete_my_data"), role: .destructive) { confirmingDeleteAll = true }
+                        .disabled(companion.syncing)
+                }
+                .confirmationDialog(
+                    L10n.get("status_delete_confirm_title"), isPresented: $confirmingDeleteAll, titleVisibility: .visible
+                ) {
+                    Button(L10n.get("status_delete_confirm_button"), role: .destructive) {
+                        exportURL = nil
+                        Task { await companion.deleteAllData() }
+                    }
+                } message: {
+                    Text(L10n.get("status_delete_confirm_body"))
                 }
                 Section {
                     LabeledContent("Version", value: Format.appVersion)

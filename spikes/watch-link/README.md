@@ -55,15 +55,21 @@ Strava and retitled there, as on Android.
 22. Diagnostics: each "app in foreground" line now shows the Background App Refresh state
     and Low Power Mode.
 
-## Build 18 additions (edit and review)
+## Build 18 additions (edit, review, delete my data)
 
 23. Open an activity › pencil: change name, training type, RPE, feeling, diary comment,
     duration or distance › Save. The detail shows the new values; with the diary connected
     and automatic writes on, the diary entry is rewritten (Settings › Last sync).
-25. Add by hand (Strava connected): Settings › Last sync shows "looking up", then "linked"
-    to the same Strava session, or a new manual Strava activity; then the diary write.
 24. With interaction mode "interactive" (set on Android, or the default), a new watch
     activity shows "Review activity": Save it or "Skip review"; either releases the diary write.
+25. Add by hand (Strava connected): Settings › Last sync shows "looking up", then "linked"
+    to the same Strava session, or a new manual Strava activity; then the diary write.
+26. **Delete my data (last, it empties the app):** export first if you want the data,
+    then Settings › My Data › Delete my data › confirm. Activities and logs are empty
+    (the app log starts with "data deleted"), Strava and the diary show "not connected",
+    Strava's "My Apps" no longer lists Nordic Sports, watch settings are empty until the
+    watch reports again, and On My iPhone › Nordic Sports has no `diary-backups`. The diary
+    workbook itself is unchanged. Reconnect Strava and the diary afterwards.
 
 # Spike 1: watch link (throw-away)
 

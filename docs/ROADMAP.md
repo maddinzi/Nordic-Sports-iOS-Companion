@@ -259,6 +259,9 @@ Diagnostics; Strava sign-in with ASWebAuthenticationSession and an https callbac
    is created on Strava or linked to the same session there since build 18 (shared
    `ManualStravaLink`); a Strava activity already on its own row is not merged yet), 5.6 diary/app/
    transfer logs, activity history, JSON export (shared `DataExport`) and feedback.
+   *For build 18:* edit and review (shared `ActivityEditor`), and "Delete my data" (shared
+   `CompanionCore.deleteAllData` with `DataWipeDao`, since Room's `clearAllTables` is
+   Android-only; iOS also drops the diary bookmark, backups and diagnostics log).
 3. Watch settings, interval plans, strength routines
 4. Add activity by hand, delete with tombstone
 5. Place names, Recording Boost export, data export / deletion (Trainingsplan only if

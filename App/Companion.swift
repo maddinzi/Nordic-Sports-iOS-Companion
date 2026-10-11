@@ -310,6 +310,35 @@ final class Companion: NSObject, ObservableObject {
         }
     }
 
+    /// "Delete my data", as Android's: the shared core revokes Strava, forgets the diary and
+    /// the watches' settings and empties the database; here the diary file bookmark, its
+    /// backups, exports and the diagnostics log go too. The diary workbook itself stays.
+    /// PRIVACY-SYNC: what "Delete my data" removes on iOS. Changing this? Re-check the
+    /// Companion's design/privacy-notice-sync.md.
+    func deleteAllData() async {
+        do {
+            try await core.deleteAllData()
+        } catch {
+            message = error.localizedDescription
+        }
+        FilesDiaryAccess.shared.forget()
+        let files = FileManager.default
+        if let documents = files.urls(for: .documentDirectory, in: .userDomainMask).first {
+            try? files.removeItem(at: documents.appendingPathComponent(FilesDiaryAccess.backupFolder, isDirectory: true))
+        }
+        for name in (try? files.contentsOfDirectory(atPath: files.temporaryDirectory.path)) ?? [] where name.hasSuffix(".json") {
+            try? files.removeItem(at: files.temporaryDirectory.appendingPathComponent(name))
+        }
+        WatchLinkSpike.shared.clearLog()
+        WatchLinkSpike.shared.add("all data deleted")
+        stravaConnected = core.stravaConnected()
+        refreshDiary()
+        refreshWatchSettings()
+        syncLines = []
+        await refresh()
+        message = "All data on this iPhone deleted; Strava and the diary disconnected."
+    }
+
     /// "sent", "tooMany" or "failed".
     func sendFeedback(category: String, app: String, text: String, email: String, includeDetails: Bool) async -> String {
         var details: [String: String] = [:]
