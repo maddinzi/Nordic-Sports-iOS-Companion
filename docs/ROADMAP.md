@@ -206,6 +206,12 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
 ### Step 3: iOS project shell (this repo, on a Mac)
 - Xcode project, build configurations (Preview / Store, like the two Android flavors),
   signing, script to build and embed the `shared` XCFramework.
+  *Embedding done (2026-10-11, TestFlight build 12):* the TestFlight workflow checks out
+  the Companion `main` (secret `COMPANION_READ_TOKEN`, fine-grained, read-only Contents),
+  runs `:shared:assembleNordicSportsSharedReleaseXCFramework` and links the static
+  `NordicSportsShared.xcframework` from `Frameworks/`; first Swift calls into shared code
+  on the spike screen. Swift sees top-level Kotlin functions as `<File>Kt.<name>` and
+  objects as `<Name>.shared`. Open: build configurations (Preview / Store).
 - Implement the platform interfaces from step 2.6 with the spike code from step 1.
 - Debug fixtures: a stub watch source like `StubWatchEventSource` for the simulator.
 
