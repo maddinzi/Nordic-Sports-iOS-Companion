@@ -160,7 +160,8 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         return "\(name)@\(app.device.friendlyName ?? "?")"
     }
 
-    private func add(_ line: String) {
+    /// Adds a timestamped line to the log the screen shows (also used by the other spikes).
+    func add(_ line: String) {
         let entry = "\(timeFormat.string(from: Date())) \(line)"
         NSLog("[spike] %@", entry)
         let update = {

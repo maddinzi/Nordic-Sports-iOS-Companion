@@ -32,8 +32,10 @@ targets:
     platform: iOS
     sources:
       - path: App
-      # Spike 1 (throw-away): the app is the watch link test for now.
+      # Spikes 1, 2 and 4 (throw-away): the app is the feasibility test for now.
       - path: spikes/watch-link
+      - path: spikes/background
+      - path: spikes/diary-file
     dependencies:
       - package: ConnectIQ
       # The Companion's shared Kotlin module, built by CI into Frameworks/ (static: linked,
@@ -76,4 +78,10 @@ targets:
         # Woken in the background when the watch sends data (part of what spike 1 measures).
         UIBackgroundModes:
           - bluetooth-central
+          # Spike 2: app refresh and processing tasks (BGTaskScheduler).
+          - fetch
+          - processing
+        BGTaskSchedulerPermittedIdentifiers:
+          - me.maddin.nordicsports.companion.refresh
+          - me.maddin.nordicsports.companion.processing
     scheme: {}

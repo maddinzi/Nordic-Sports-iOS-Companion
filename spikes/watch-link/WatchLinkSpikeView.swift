@@ -21,6 +21,7 @@ struct WatchLinkSpikeView: View {
                     // A text from the generated catalog, in the iPhone's language.
                     Text(String(localized: "settings_page_privacy"))
                 }
+                DiaryFileSpikeSection()
                 Section("Watches") {
                     if spike.devices.isEmpty {
                         Text("No watch selected yet.").foregroundStyle(.secondary)
