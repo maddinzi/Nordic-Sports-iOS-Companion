@@ -35,6 +35,10 @@ targets:
       - path: spikes/watch-link
     dependencies:
       - package: ConnectIQ
+      # The Companion's shared Kotlin module, built by CI into Frameworks/ (static: linked,
+      # not embedded).
+      - framework: Frameworks/NordicSportsShared.xcframework
+        embed: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: me.maddin.nordicsports.companion

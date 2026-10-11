@@ -1,3 +1,4 @@
+import NordicSportsShared
 import SwiftUI
 
 /// The spike's only screen: the selected watches, three actions and the log (newest first).
@@ -12,6 +13,12 @@ struct WatchLinkSpikeView: View {
     var body: some View {
         NavigationStack {
             List {
+                // First calls from Swift into the Companion's shared Kotlin module (roadmap
+                // step 3): proves the XCFramework links and shows how its API reads in Swift.
+                Section("Shared module") {
+                    Text(PlaceNameLookupKt.formatPlaceName(locality: "Innsbruck", subAdminArea: nil, adminArea: "Tyrol", country: "Austria") ?? "-")
+                    Text("Strava title poll 13 after \(StravaTitlePollSchedule.shared.offsetMillis(attempt: 12) / 60_000) min")
+                }
                 Section("Watches") {
                     if spike.devices.isEmpty {
                         Text("No watch selected yet.").foregroundStyle(.secondary)

@@ -29,6 +29,35 @@ jobs:
       - name: Xcode version
         run: xcodebuild -version
 
+      # The shared Kotlin module lives in the private Companion repo. COMPANION_READ_TOKEN is a
+      # fine-grained token with read-only "Contents" on that one repository.
+      - uses: actions/checkout@v7
+        with:
+          repository: maddinzi/Nordic-Sports-Companion
+          ref: main
+          token: ${{ secrets.COMPANION_READ_TOKEN }}
+          path: companion
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Kotlin/Native toolchain (~1 GB), downloaded on first use.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('companion/build.gradle.kts', 'companion/gradle.properties') }}
+
+      # gradlew is committed from Windows without the executable bit. The app links the
+      # static XCFramework from Frameworks/ (project.yml).
+      - name: Build the shared XCFramework
+        working-directory: companion
+        run: |
+          bash ./gradlew --console=plain :shared:assembleNordicSportsSharedReleaseXCFramework
+          mkdir -p ../Frameworks
+          cp -R shared/build/XCFrameworks/release/NordicSportsShared.xcframework ../Frameworks/
+
       - name: Generate the Xcode project
         run: |
           brew install xcodegen
