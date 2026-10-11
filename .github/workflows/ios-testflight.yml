@@ -63,7 +63,25 @@ jobs:
       - name: Generate the iOS texts from the Companion
         run: |
           python3 -m unittest discover -s tools -p "test_*.py"
-          python3 tools/generate_strings.py companion/app/src/main/res App/Localizable.xcstrings
+          python3 tools/generate_strings.py companion/app/src/main/res App/Localizable.xcstrings App/Texts
+
+      # Strava app credentials and the webhook server key (repo secrets) into the gitignored
+      # Secrets.xcconfig that project.yml reads; the app takes them from Info.plist. Values
+      # are never printed; only whether each one is set.
+      - name: App secrets
+        env:
+          STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
+          STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
+          WEBHOOK_API_KEY: ${{ secrets.WEBHOOK_API_KEY }}
+        run: |
+          {
+            echo "STRAVA_CLIENT_ID = $STRAVA_CLIENT_ID"
+            echo "STRAVA_CLIENT_SECRET = $STRAVA_CLIENT_SECRET"
+            echo "WEBHOOK_API_KEY = $WEBHOOK_API_KEY"
+          } > Secrets.xcconfig
+          for name in STRAVA_CLIENT_ID STRAVA_CLIENT_SECRET WEBHOOK_API_KEY; do
+            if [ -n "${!name}" ]; then echo "$name: set"; else echo "$name: MISSING"; fi
+          done
 
       - name: Generate the Xcode project
         run: |
@@ -182,6 +200,19 @@ jobs:
           if not bundle:
               raise SystemExit("No App ID " + BUNDLE_ID + " in the developer portal")
 
+          # Associated Domains (Strava's https sign-in redirect as a Universal Link) must be
+          # on for the App ID before the profile is made, or the entitlement is rejected.
+          capabilities = call("GET", "/bundleIds/" + bundle[0]["id"] + "/bundleIdCapabilities")["data"]
+          if not any(c["attributes"].get("capabilityType") == "ASSOCIATED_DOMAINS" for c in capabilities):
+              call("POST", "/bundleIdCapabilities", {"data": {
+                  "type": "bundleIdCapabilities",
+                  "attributes": {"capabilityType": "ASSOCIATED_DOMAINS"},
+                  "relationships": {"bundleId": {"data": {"type": "bundleIds", "id": bundle[0]["id"]}}},
+              }})
+              print("enabled Associated Domains for", BUNDLE_ID)
+          else:
+              print("Associated Domains already enabled")
+
           serial = os.environ["CERT_SERIAL"].lstrip("0").upper()
           certs = call("GET", "/certificates?limit=200")["data"]
           cert = [c for c in certs if (c["attributes"].get("serialNumber") or "").lstrip("0").upper() == serial]
@@ -235,8 +266,8 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
-      - name: Remove the API key and the keychain
+      - name: Remove the API key, the keychain and the app secrets
         if: always()
         run: |
-          rm -rf "$(dirname "$KEY_PATH")" "$RUNNER_TEMP/dist.p12"
+          rm -rf "$(dirname "$KEY_PATH")" "$RUNNER_TEMP/dist.p12" Secrets.xcconfig
           if [ -n "$KEYCHAIN" ]; then security delete-keychain "$KEYCHAIN" || true; fi

@@ -7,7 +7,12 @@ languages. This script turns them into `Localizable.xcstrings`, which Xcode comp
 the app; Swift reads a text by its Android name: `String(localized: "status_title")`.
 The Android completeness test (TranslationCompletenessTest) keeps guarding the source.
 
-    python3 tools/generate_strings.py <companion>/app/src/main/res App/Localizable.xcstrings
+    python3 tools/generate_strings.py <companion>/app/src/main/res App/Localizable.xcstrings [App/Texts]
+
+With a third argument it also writes one text table per language, `<dir>/texts-<lang>.json`
+(name -> text, or plural form -> text), in Android's own format syntax (`%1$s`, `%d`), with
+English filled in for names a language lacks. The shared Kotlin code reads these
+(`StringTable`), so the log and worklog lines the shared logic writes read as on Android.
 
 Conversions: `%1$s` -> `%1$@` (Swift strings are objects), `%1$d` -> `%1$lld` (Kotlin Int
 and Swift Int are 64 bit on iOS), floats unchanged; Android escapes (`\\'`, `\\"`, `\\n`) are
@@ -70,11 +75,12 @@ def unescape(raw: str) -> str:
     return "".join(out)
 
 
-def text_of(element) -> str:
-    return convert_format(unescape("".join(element.itertext())))
+def text_of(element, android_format: bool = False) -> str:
+    text = unescape("".join(element.itertext()))
+    return text if android_format else convert_format(text)
 
 
-def read_language(folder: Path):
+def read_language(folder: Path, android_format: bool = False):
     """name -> str or {plural form: str}, plus the names marked translatable="false"."""
     texts, fixed = {}, set()
     for name in FILES:
@@ -84,9 +90,9 @@ def read_language(folder: Path):
         for el in ET.parse(path).getroot():
             key = el.get("name")
             if el.tag == "string":
-                texts[key] = text_of(el)
+                texts[key] = text_of(el, android_format)
             elif el.tag == "plurals":
-                forms = {item.get("quantity"): text_of(item) for item in el if item.get("quantity") in PLURAL_FORMS}
+                forms = {item.get("quantity"): text_of(item, android_format) for item in el if item.get("quantity") in PLURAL_FORMS}
                 texts[key] = forms
             else:
                 continue
@@ -121,10 +127,26 @@ def build_catalog(res: Path) -> dict:
     return {"sourceLanguage": "en", "strings": strings, "version": "1.0"}
 
 
+def build_tables(res: Path) -> dict:
+    """language -> {name: text or {plural form: text}} in Android format, English filled in."""
+    english, _ = read_language(res / "values", android_format=True)
+    tables = {}
+    for folder, lang in LANGUAGES.items():
+        texts, _ = read_language(res / folder, android_format=True)
+        tables[lang] = {**english, **texts}
+    return tables
+
+
 def main(argv):
-    if len(argv) != 3:
+    if len(argv) not in (3, 4):
         sys.exit(__doc__)
     res, out = Path(argv[1]), Path(argv[2])
+    if len(argv) == 4:
+        folder = Path(argv[3])
+        folder.mkdir(parents=True, exist_ok=True)
+        for lang, table in build_tables(res).items():
+            (folder / f"texts-{lang}.json").write_text(json.dumps(table, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+        print(f"{folder}: {len(LANGUAGES)} text tables")
     catalog = build_catalog(res)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(catalog, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")

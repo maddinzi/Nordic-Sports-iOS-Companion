@@ -227,12 +227,21 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
   `NordicSportsShared.xcframework` from `Frameworks/`; first Swift calls into shared code
   on the spike screen. Swift sees top-level Kotlin functions as `<File>Kt.<name>` and
   objects as `<Name>.shared`. Open: build configurations (Preview / Store).
+  *Shared core (2026-10-11):* `CompanionCore` (commonMain) wires watch arrival, Strava
+  import, webhook sync, reconcile, backfill, title rewrite, Strava sign-in and the activity
+  list behind plain types; `IosCompanion` (iosMain) builds it on Room + bundled SQLite,
+  UserDefaults, Keychain and NSURLSession. The shared code's texts come from per-language
+  tables generated from `strings.xml` (`StringTable`, `TableTexts`).
 - Implement the platform interfaces from step 2.6 with the spike code from step 1.
 - Debug fixtures: a stub watch source like `StubWatchEventSource` for the simulator.
 
 ### Step 4: Vertical MVP slice
 Watch receives activity, then local DB, then activity list and detail, then Strava
-link/create and title rewrite. Ship to internal TestFlight. Then take the UI decision
+link/create and title rewrite.
+*Built (2026-10-11, one TestFlight build):* SwiftUI tabs Activities / Settings /
+Diagnostics; Strava sign-in with ASWebAuthenticationSession and an https callback
+(Associated Domains, AASA live on the API host since 2026-10-11); sync on app open and on
+"Sync now". Test plan: `spikes/watch-link/README.md`. Ship to internal TestFlight. Then take the UI decision
 (SwiftUI vs Compose Multiplatform).
 
 ### Step 5: Feature parity, in priority order

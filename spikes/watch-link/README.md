@@ -1,3 +1,23 @@
+# First iOS Companion: test plan (roadmap step 4)
+
+The app now has three tabs: **Activities**, **Settings** and **Diagnostics** (the spike
+screen below). Activities from the watch are stored by the shared Kotlin core, linked to
+Strava and retitled there, as on Android.
+
+1. Settings > Watch: the watch from the spike is still selected (else "Choose watch in Garmin Connect").
+2. Settings > Strava > **Connect Strava**: Strava's page opens inside the app; after
+   "Authorize" it returns to the app and shows "Strava connected". (If it stays on a
+   blank page instead: the return link didn't reach the app - tell me.)
+3. Record a short watch activity with the app open: it appears under Activities, and the
+   watch shows "Received". The Diagnostics log has "activity from ...: stored" and the receipt.
+4. Wait until the activity is on Strava, then pull to refresh on Activities (or reopen the
+   app): it gets the link symbol, and its Strava title becomes the watch title (e.g.
+   "Rollski Skating Ausdauer"). Settings > Last sync shows what happened.
+5. Settings > "Pull the last 7 days from Strava": older Strava activities appear, linked
+   to watch activities where they match.
+6. Open an activity: date, duration, distance, heart rate, zones, the Strava link.
+7. Share the Diagnostics log afterwards (into `logs/`).
+
 # Spike 1: watch link (throw-away)
 
 Question: does the Connect IQ iOS SDK (`garmin/connectiq-companion-app-sdk-ios` 1.8.0)

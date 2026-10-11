@@ -136,11 +136,17 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         let type = dict?["type"] as? String ?? (dict?["startTime"] != nil ? "activity" : "?")
         add("received \(type) from \(label(app)) in \(Self.name(of: state)): \(Self.describe(message))")
 
-        // An activity that asks for a receipt (`"rx": 1`) gets `{"type": "receipt",
-        // "startTime": <Int>}` back, exactly as the Android Companion answers it.
-        if let dict, (dict["rx"] as? NSNumber)?.intValue == 1, type != "recordingBoostBurst",
-           let startTime = (dict["startTime"] as? NSNumber)?.int64Value {
-            send(["type": "receipt", "startTime": NSNumber(value: startTime)], to: app, what: "receipt \(startTime)")
+        // Activities go to the shared core, which stores them; only then does a payload with
+        // `"rx": 1` get `{"type": "receipt", "startTime": <Int>}` back, as on Android, so
+        // the watch keeps anything that could not be stored and sends it again.
+        if let dict, type == "activity" {
+            let variant = variantName(app)
+            Task { @MainActor in
+                let startTime = await Companion.shared.receive(message: dict, variant: variant)
+                if startTime > 0 {
+                    self.send(["type": "receipt", "startTime": NSNumber(value: startTime)], to: app, what: "receipt \(startTime)")
+                }
+            }
         }
         if state != .active {
             notify("Watch: \(type) arrived in the \(Self.name(of: state))")
@@ -156,8 +162,12 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
     }
 
     private func label(_ app: IQApp) -> String {
-        let name = Self.watchApps.first { $0.id.lowercased() == app.uuid.uuidString.lowercased() }?.name ?? "?"
-        return "\(name)@\(app.device.friendlyName ?? "?")"
+        "\(variantName(app))@\(app.device.friendlyName ?? "?")"
+    }
+
+    /// "public" or "preview": which of the two watch app ids sent it.
+    private func variantName(_ app: IQApp) -> String {
+        Self.watchApps.first { $0.id.lowercased() == app.uuid.uuidString.lowercased() }?.name ?? "?"
     }
 
     /// Adds a timestamped line to the log the screen shows (also used by the other spikes).

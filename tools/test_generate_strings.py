@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from generate_strings import build_catalog, convert_format, unescape
+from generate_strings import build_catalog, build_tables, convert_format, unescape
 
 
 class ConversionTest(unittest.TestCase):
@@ -46,6 +46,29 @@ class CatalogTest(unittest.TestCase):
         plural = strings["waiting"]["localizations"]["de"]["variations"]["plural"]
         self.assertEqual("%lld Änderungen", plural["other"]["stringUnit"]["value"])
         self.assertEqual({"one", "other"}, set(plural))
+
+
+class TableTest(unittest.TestCase):
+    def test_android_format_and_english_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            res = Path(tmp)
+            (res / "values").mkdir()
+            (res / "values-de").mkdir()
+            (res / "values" / "strings.xml").write_text(
+                '<resources>'
+                '<string name="hello">Hello %1$s, it\\\'s %2$d</string>'
+                '<string name="only_en">Only English</string>'
+                '<plurals name="waiting"><item quantity="one">%d change</item><item quantity="other">%d changes</item></plurals>'
+                '</resources>', encoding="utf-8")
+            (res / "values-de" / "strings.xml").write_text(
+                '<resources><string name="hello">Hallo %1$s, es ist %2$d</string></resources>', encoding="utf-8")
+            tables = build_tables(res)
+
+        self.assertEqual("Hello %1$s, it's %2$d", tables["en"]["hello"])
+        self.assertEqual("Hallo %1$s, es ist %2$d", tables["de"]["hello"])
+        self.assertEqual("Only English", tables["de"]["only_en"])
+        self.assertEqual({"one": "%d change", "other": "%d changes"}, tables["de"]["waiting"])
+        self.assertEqual(set(tables), {"en", "de", "fr", "it", "rm", "gsw"})
 
 
 if __name__ == "__main__":

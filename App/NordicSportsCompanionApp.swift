@@ -1,12 +1,14 @@
 import SwiftUI
 
-/// For now the app is the set of feasibility spikes (roadmap step 1): the watch link
-/// (`spikes/watch-link/`), background runs (`spikes/background/`) and the diary workbook from
-/// the Files app (`spikes/diary-file/`). It reaches a real iPhone through the same TestFlight
-/// chain the Companion will use and already links the shared Kotlin module.
+/// The first iOS Companion (roadmap step 4): watch activities stored by the shared Kotlin
+/// core, linked to Strava and retitled there (App/). The feasibility spikes stay reachable
+/// on the Diagnostics tab: the watch link (`spikes/watch-link/`, which also carries the real
+/// watch connection for now), background runs (`spikes/background/`) and the diary workbook
+/// from the Files app (`spikes/diary-file/`).
 @main
 struct NordicSportsCompanionApp: App {
     @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var companion = Companion.shared
 
     init() {
         WatchLinkSpike.shared.start()
@@ -17,7 +19,8 @@ struct NordicSportsCompanionApp: App {
 
     var body: some Scene {
         WindowGroup {
-            WatchLinkSpikeView()
+            RootView()
+                .environmentObject(companion)
                 // Garmin Connect Mobile returns the device selection through our URL scheme.
                 .onOpenURL { url in WatchLinkSpike.shared.handle(url: url) }
         }
@@ -25,6 +28,8 @@ struct NordicSportsCompanionApp: App {
             switch phase {
             case .active:
                 WatchLinkSpike.shared.add("app in foreground")
+                // Like Android's onResume: Strava events and title updates on every open.
+                Task { await companion.syncOnOpen() }
             case .background:
                 WatchLinkSpike.shared.add("app in background")
                 BackgroundSpike.shared.schedule(reason: "app went to background")

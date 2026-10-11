@@ -32,10 +32,24 @@ targets:
     platform: iOS
     sources:
       - path: App
-      # Spikes 1, 2 and 4 (throw-away): the app is the feasibility test for now.
+      # Spikes 1, 2 and 4 (throw-away), on the Diagnostics tab; the watch link spike also
+      # carries the real watch connection until it gets its own adapter.
       - path: spikes/watch-link
       - path: spikes/background
       - path: spikes/diary-file
+    # Strava app credentials and the webhook server key, written by CI from the repo's secrets
+    # (gitignored; never committed). Read by the app from Info.plist (Companion.swift).
+    configFiles:
+      Debug: Secrets.xcconfig
+      Release: Secrets.xcconfig
+    # Strava's https sign-in redirect returns to the app through the server's
+    # apple-app-site-association (api.nordicsports.maddin.me/.well-known/).
+    entitlements:
+      path: App/NordicSportsCompanion.entitlements
+      properties:
+        com.apple.developer.associated-domains:
+          - applinks:api.nordicsports.maddin.me
+          - webcredentials:api.nordicsports.maddin.me
     dependencies:
       - package: ConnectIQ
       # The Companion's shared Kotlin module, built by CI into Frameworks/ (static: linked,
@@ -55,14 +69,19 @@ targets:
       properties:
         CFBundleDisplayName: Nordic Sports Companion
         CFBundleDevelopmentRegion: en
-        # Same six languages as the Android Companion; texts from App/Localizable.xcstrings,
-        # generated on CI by tools/generate_strings.py.
+        # Same six languages as the Android Companion; texts from App/Localizable.xcstrings
+        # (Swift) and App/Texts/texts-<lang>.json (shared Kotlin code), both generated on CI
+        # by tools/generate_strings.py.
         CFBundleLocalizations: [en, de, fr, it, rm, gsw]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # From Secrets.xcconfig (CI); empty in a build without the secrets.
+        StravaClientId: $(STRAVA_CLIENT_ID)
+        StravaClientSecret: $(STRAVA_CLIENT_SECRET)
+        WebhookApiKey: $(WEBHOOK_API_KEY)
         # HTTPS only (standard encryption, exempt) - skips the export compliance question.
         ITSAppUsesNonExemptEncryption: false
         # Garmin Connect Mobile returns the watch selection through this scheme.
