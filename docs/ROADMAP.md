@@ -173,7 +173,12 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
    `PlatformLock`, `WatchTransferEventKind`). Android keeps `getInstance(context)` as
    extensions (`AppSingleton`). The privacy-sync grep now covers `shared` too.
    Merged 2026-10-10 after CI and a device test.
-   Paused (decided 2026-10-10): 2.6c `TtbForwarder`'s diary write flow and 2.6d
+   *2.6c on branch (2026-10-11, waiting for an Android device test):* the diary write cycle
+   is the shared `DiaryWriter` (download, duplicate folding, editor, backup, upload, records
+   only after the upload; texts and platform services through `DiaryWriterTexts` /
+   `DiaryWriterPlatform`), the selection of due activities is `DiaryPendingSelector`, and
+   `InteractionModeStore` is shared. `TtbForwarder` keeps provider sign-in and Android's texts.
+   Was paused (decided 2026-10-10, resumed after spike 1's go): 2.6c `TtbForwarder`'s diary write flow and 2.6d
    `StravaActivitySync` (+ `StravaLinkResolver`), the largest step-2 items, wait for
    spike 1 (watch link on a real iPhone) as the go/no-go. Texts: decided 2026-10-11
    (`docs/decision-shared-texts.md`, option A): shared code asks the platform for its texts
