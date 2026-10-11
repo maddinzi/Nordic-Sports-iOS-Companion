@@ -6,6 +6,10 @@ name: iOS TestFlight
 # ASC_ISSUER_ID, ASC_KEY_ID and ASC_KEY_P8 (never printed, deleted after the run).
 on:
   workflow_dispatch:
+    inputs:
+      companion_ref:
+        description: "Companion branch or tag for the shared module (main unless a branch awaits its Android test)"
+        default: main
 
 jobs:
   testflight:
@@ -34,7 +38,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: maddinzi/Nordic-Sports-Companion
-          ref: main
+          ref: ${{ inputs.companion_ref || 'main' }}
           token: ${{ secrets.COMPANION_READ_TOKEN }}
           path: companion
 
