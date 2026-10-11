@@ -237,11 +237,8 @@ struct ActivityDetailScreen: View {
 struct SettingsScreen: View {
     @EnvironmentObject var companion: Companion
     @ObservedObject var watch = WatchLinkSpike.shared
-    @State private var pickingDiary = false
     @State private var exportURL: URL?
     @State private var confirmingDeleteAll = false
-
-    private static let xlsx = UTType(filenameExtension: "xlsx") ?? .data
 
     var body: some View {
         NavigationStack {
@@ -271,6 +268,9 @@ struct SettingsScreen: View {
                 Section(L10n.get("status_diary_label")) {
                     if companion.diaryConnected {
                         Label(String(format: L10n.get("connect_diary_connected_to"), companion.diaryName), systemImage: "book.closed")
+                        if !companion.activeDiarySource.isEmpty {
+                            Text(companion.activeDiarySource).font(.footnote).foregroundStyle(.secondary)
+                        }
                         Text("New activities are written at each sync: when the app opens, or pull down on Activities.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -292,13 +292,11 @@ struct SettingsScreen: View {
                         ))
                         Button("Write the last 7 days to the diary") { Task { await companion.writeDiary(days: 7) } }
                             .disabled(companion.syncing)
-                        Button("Choose another workbook") { pickingDiary = true }
-                        Button(L10n.get("connect_diary_disconnect_button"), role: .destructive) { companion.disconnectDiary() }
                     } else {
-                        Text("Pick your TTB diary workbook in the Files app (iCloud Drive, On My iPhone, or OneDrive).")
+                        Text("Connect your TTB diary: OneDrive, Dropbox, Google Drive, or a workbook in the Files app.")
                             .foregroundStyle(.secondary)
-                        Button("Choose diary workbook") { pickingDiary = true }
                     }
+                    NavigationLink(L10n.get("connect_diary_title")) { DiaryLocationsScreen() }
                     if companion.diaryBusy {
                         HStack { ProgressView(); Text(L10n.get("connect_diary_connecting")) }
                     }
@@ -356,12 +354,6 @@ struct SettingsScreen: View {
                 }
             }
             .navigationTitle(L10n.get("status_title"))
-            .fileImporter(isPresented: $pickingDiary, allowedContentTypes: [Self.xlsx]) { result in
-                switch result {
-                case .success(let url): Task { await companion.connectDiary(url) }
-                case .failure(let error): companion.message = error.localizedDescription
-                }
-            }
         }
     }
 }

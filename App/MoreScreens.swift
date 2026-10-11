@@ -1,5 +1,6 @@
 import NordicSportsShared
 import SwiftUI
+import UniformTypeIdentifiers
 
 // Roadmap step 5.3, 5.4 and 5.6 on iOS: the watch app's settings, adding an activity by
 // hand, the transparency logs and feedback. Logic and texts come from the shared core
@@ -433,6 +434,128 @@ struct EditActivitySheet: View {
                     .disabled(saving)
                 }
             }
+        }
+    }
+}
+
+// MARK: - Diary locations
+
+/// Android's "Athlete's Diary connections": the Files app and the three clouds, each
+/// connected on its own; one is active and receives the diary entries. A cloud needs a
+/// sign-in (system sheet) and then the folder's sharing link (Dropbox: link or path).
+struct DiaryLocationsScreen: View {
+    @EnvironmentObject var companion: Companion
+    @State private var pickingFile = false
+    @State private var links: [String: String] = [:]
+    @State private var choice: DiaryLocateView?
+    @State private var choosing = false
+
+    private static let xlsx = UTType(filenameExtension: "xlsx") ?? .data
+
+    var body: some View {
+        Form {
+            Section {
+                Text(L10n.get("connect_diary_intro")).font(.footnote).foregroundStyle(.secondary)
+            }
+            ForEach(companion.diarySources, id: \.key) { source in
+                Section(source.name) { rows(source) }
+            }
+            if companion.diaryBusy {
+                HStack { ProgressView(); Text(L10n.get("connect_diary_connecting")) }
+            }
+        }
+        .disabled(companion.diaryBusy)
+        .navigationTitle(L10n.get("connect_diary_title"))
+        .navigationBarTitleDisplayMode(.inline)
+        .fileImporter(isPresented: $pickingFile, allowedContentTypes: [Self.xlsx]) { result in
+            switch result {
+            case .success(let url): Task { await companion.connectDiary(url) }
+            case .failure(let error): companion.message = error.localizedDescription
+            }
+        }
+        .confirmationDialog(
+            L10n.get("connect_diary_file_selection_title"), isPresented: $choosing, titleVisibility: .visible, presenting: choice
+        ) { found in
+            ForEach(Array(found.candidates.enumerated()), id: \.offset) { index, name in
+                Button(name) { Task { show(await companion.chooseCloudWorkbook(index)) } }
+            }
+        } message: { found in
+            if found.status == "confirm" {
+                Text("No TTB folder there. Use this workbook as the diary?")
+            } else if found.candidates.isEmpty {
+                Text("'\(found.folderName)' has no files in it - nothing to pick from.")
+            } else {
+                Text("Couldn't find exactly one .xlsx file in '\(found.folderName)'. Pick the diary workbook:")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func rows(_ source: DiarySourceView) -> some View {
+        if !source.available {
+            Text(source.key == "LOCAL" ? "Not available." : "Not available in this build.").foregroundStyle(.secondary)
+        } else {
+            if source.connected {
+                Label(String(format: L10n.get("connect_diary_connected_to"), source.workbookName), systemImage: "book.closed")
+                if source.active {
+                    Text(L10n.get("connect_diary_active")).font(.footnote).foregroundStyle(.green)
+                } else {
+                    Text(L10n.get("connect_diary_not_active")).font(.footnote).foregroundStyle(.secondary)
+                    Button("Make active") {
+                        companion.setActiveDiary(source.key)
+                    }
+                }
+            }
+            if source.key == "LOCAL" {
+                if !source.connected {
+                    Text("A workbook in iCloud Drive or On My iPhone. OneDrive files open read-only here; connect OneDrive below instead.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                Button(source.connected ? "Choose another workbook" : "Choose diary workbook") { pickingFile = true }
+            } else if !source.signedIn {
+                Button("Sign in to \(source.name)") { companion.signInCloud(source.key) }
+            } else {
+                TextField(locationLabel(source.key), text: Binding(
+                    get: { links[source.key] ?? source.location },
+                    set: { links[source.key] = $0 }
+                ))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                Button(L10n.get("connect_diary_connect_button")) {
+                    let link = links[source.key] ?? source.location
+                    Task { show(await companion.connectCloud(source.key, location: link)) }
+                }
+                .disabled((links[source.key] ?? source.location).trimmingCharacters(in: .whitespaces).isEmpty)
+                Button("Sign out of \(source.name)", role: .destructive) { companion.signOutCloud(source.key) }
+            }
+            if source.connected {
+                Button(L10n.get("connect_diary_disconnect_button"), role: .destructive) { companion.disconnectDiary(source.key) }
+            }
+        }
+    }
+
+    private func locationLabel(_ key: String) -> String {
+        switch key {
+        case "ONE_DRIVE": return L10n.get("connect_diary_location_label_onedrive")
+        case "DROPBOX": return L10n.get("connect_diary_location_label_dropbox")
+        default: return L10n.get("connect_diary_location_label_google_drive")
+        }
+    }
+
+    private func show(_ result: DiaryLocateView?) {
+        guard let result else { return }
+        switch result.status {
+        case "connected":
+            companion.message = String(format: L10n.get("connect_diary_connected_to"), result.workbookName)
+        case "confirm", "choose":
+            choice = result
+            choosing = !result.candidates.isEmpty
+            if result.candidates.isEmpty {
+                companion.message = "'\(result.folderName)' has no files in it - nothing to pick from."
+            }
+        default:
+            companion.message = result.message
         }
     }
 }

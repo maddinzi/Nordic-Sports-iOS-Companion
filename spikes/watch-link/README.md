@@ -55,7 +55,7 @@ Strava and retitled there, as on Android.
 22. Diagnostics: each "app in foreground" line now shows the Background App Refresh state
     and Low Power Mode.
 
-## Build 18 additions (edit, review, delete my data)
+## Build 18 additions (edit, review, diary clouds, delete my data)
 
 23. Open an activity › pencil: change name, training type, RPE, feeling, diary comment,
     duration or distance › Save. The detail shows the new values; with the diary connected
@@ -64,7 +64,17 @@ Strava and retitled there, as on Android.
     activity shows "Review activity": Save it or "Skip review"; either releases the diary write.
 25. Add by hand (Strava connected): Settings › Last sync shows "looking up", then "linked"
     to the same Strava session, or a new manual Strava activity; then the diary write.
-26. **Delete my data (last, it empties the app):** export first if you want the data,
+27. **OneDrive:** Settings › Diary › "Athlete's Diary connections" › OneDrive › "Sign in to
+    OneDrive" (Microsoft's sheet; allow the access). Paste the OneDrive sharing link of the
+    diary folder (as on Android) › Connect. It shows "Active"; then "Write the last 7 days".
+    The entries must appear in the workbook on the PC. This replaces the Files-app route for
+    OneDrive, which iOS opens read-only.
+28. **Dropbox and Google Drive:** the same with a test copy of the workbook: sign in, paste
+    the folder link (Dropbox also takes a path such as "/TTB") › Connect, then "Make active"
+    and write once. Switch back to OneDrive with "Make active" afterwards.
+29. **Choosing a file:** paste a folder without a TTB subfolder: one workbook asks
+    "Use this workbook?", several show a list to pick from.
+30. **Delete my data (last, it empties the app):** export first if you want the data,
     then Settings › My Data › Delete my data › confirm. Activities and logs are empty
     (the app log starts with "data deleted"), Strava and the diary show "not connected",
     Strava's "My Apps" no longer lists Nordic Sports, watch settings are empty until the

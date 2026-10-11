@@ -82,6 +82,10 @@ targets:
         StravaClientId: $(STRAVA_CLIENT_ID)
         StravaClientSecret: $(STRAVA_CLIENT_SECRET)
         WebhookApiKey: $(WEBHOOK_API_KEY)
+        # The diary clouds' app ids (sign-in with PKCE, no secrets); empty hides that cloud.
+        OneDriveClientId: $(ONEDRIVE_CLIENT_ID)
+        DropboxAppKey: $(DROPBOX_APP_KEY)
+        GoogleClientId: $(GOOGLE_IOS_CLIENT_ID)
         # The diary backups (Documents/diary-backups) show in Files under On My iPhone.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true

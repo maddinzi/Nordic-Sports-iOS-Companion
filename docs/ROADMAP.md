@@ -262,6 +262,11 @@ Diagnostics; Strava sign-in with ASWebAuthenticationSession and an https callbac
    *For build 18:* edit and review (shared `ActivityEditor`), and "Delete my data" (shared
    `CompanionCore.deleteAllData` with `DataWipeDao`, since Room's `clearAllTables` is
    Android-only; iOS also drops the diary bookmark, backups and diagnostics log).
+   Diary clouds for build 18: OneDrive, Dropbox and Google Drive sign in on iOS with PKCE in
+   the system sheet (shared `CloudOAuthApi`, tokens in one Keychain service per cloud) and
+   write over their web APIs (shared `OneDriveGraphApi`, new `DropboxApi` and
+   `GoogleDriveApi`), because build 17 showed OneDrive's Files-app provider hands files out
+   read-only. Backups stay on the iPhone (Documents/diary-backups) for every cloud.
 3. Watch settings, interval plans, strength routines
 4. Add activity by hand, delete with tombstone
 5. Place names, Recording Boost export, data export / deletion (Trainingsplan only if

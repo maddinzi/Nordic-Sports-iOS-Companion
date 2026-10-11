@@ -25,6 +25,7 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var diaryIssue = ""
     @Published private(set) var diarySettings = DiarySettings(autoUpdate: true, roundDurationUp: true, compactDiary: true)
     @Published private(set) var diaryBusy = false
+    @Published private(set) var diarySources: [DiarySourceView] = []
     @Published private(set) var watchSettings: [WatchSettingsView] = []
     @Published var message: String?
 
@@ -44,6 +45,9 @@ final class Companion: NSObject, ObservableObject {
             stravaClientSecret: setting("StravaClientSecret"),
             webhookBaseUrl: "https://api.nordicsports.maddin.me",
             webhookApiKey: setting("WebhookApiKey"),
+            oneDriveClientId: setting("OneDriveClientId"),
+            dropboxAppKey: setting("DropboxAppKey"),
+            googleClientId: setting("GoogleClientId"),
             diaryFile: FilesDiaryAccess.shared,
             watchMessenger: WatchLinkSpike.shared,
             debug: { line in NSLog("[core] %@", line) }
@@ -187,7 +191,11 @@ final class Companion: NSObject, ObservableObject {
         diaryName = core.diaryConnected() ? core.diaryWorkbookName() : ""
         diaryIssue = core.diaryIssue()
         diarySettings = core.diarySettings()
+        diarySources = core.diarySources()
     }
+
+    /// The active diary's place ("OneDrive", "Files", ...), or "".
+    var activeDiarySource: String { diarySources.first { $0.active }?.name ?? "" }
 
     /// A workbook picked in the Files app: remembered, read once and connected when it opens
     /// as a TTB diary.
@@ -213,10 +221,91 @@ final class Companion: NSObject, ObservableObject {
         refreshDiary()
     }
 
-    func disconnectDiary() {
-        core.disconnectDiary()
-        FilesDiaryAccess.shared.forget()
+    /// Forgets one place's diary connection ("LOCAL", "ONE_DRIVE", ...); a cloud stays signed in.
+    func disconnectDiary(_ source: String) {
+        core.disconnectDiary(provider: source)
+        if source == "LOCAL" { FilesDiaryAccess.shared.forget() }
         refreshDiary()
+    }
+
+    func setActiveDiary(_ source: String) {
+        core.setActiveDiary(provider: source)
+        refreshDiary()
+    }
+
+    // MARK: - Diary clouds
+
+    /// Signs in to OneDrive, Dropbox or Google Drive in the system sign-in sheet (PKCE).
+    func signInCloud(_ source: String) {
+        let scheme = core.cloudCallbackScheme(provider: source)
+        guard let url = URL(string: core.cloudSignInUrl(provider: source)), !scheme.isEmpty else {
+            message = "This build has no app id for that service."
+            return
+        }
+        let session: ASWebAuthenticationSession
+        if #available(iOS 17.4, *) {
+            session = ASWebAuthenticationSession(url: url, callback: .customScheme(scheme)) { callbackURL, error in
+                Task { @MainActor in await self.finishCloudSignIn(callbackURL, error) }
+            }
+        } else {
+            session = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme) { callbackURL, error in
+                Task { @MainActor in await self.finishCloudSignIn(callbackURL, error) }
+            }
+        }
+        session.presentationContextProvider = self
+        authSession = session
+        if !session.start() {
+            message = "The sign-in could not start."
+        }
+    }
+
+    private func finishCloudSignIn(_ callbackURL: URL?, _ error: Error?) async {
+        authSession = nil
+        if let error {
+            if (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin { return }
+            message = error.localizedDescription
+            return
+        }
+        guard let callbackURL else { return }
+        do {
+            let reason = try await core.completeCloudSignIn(callbackUrl: callbackURL.absoluteString)
+            if !reason.isEmpty { message = reason }
+        } catch {
+            message = error.localizedDescription
+        }
+        refreshDiary()
+    }
+
+    func signOutCloud(_ source: String) {
+        core.signOutCloud(provider: source)
+        refreshDiary()
+    }
+
+    /// Finds the workbook behind a pasted link (or Dropbox path); see `DiaryLocateView`.
+    func connectCloud(_ source: String, location: String) async -> DiaryLocateView? {
+        diaryBusy = true
+        defer { diaryBusy = false }
+        do {
+            let result = try await core.connectCloudDiary(provider: source, location: location)
+            refreshDiary()
+            return result
+        } catch {
+            message = error.localizedDescription
+            return nil
+        }
+    }
+
+    func chooseCloudWorkbook(_ index: Int) async -> DiaryLocateView? {
+        diaryBusy = true
+        defer { diaryBusy = false }
+        do {
+            let result = try await core.chooseCloudWorkbook(index: Int32(index))
+            refreshDiary()
+            return result
+        } catch {
+            message = error.localizedDescription
+            return nil
+        }
     }
 
     func setDiaryAutoUpdate(_ on: Bool) { core.setDiaryAutoUpdate(enabled: on); refreshDiary() }

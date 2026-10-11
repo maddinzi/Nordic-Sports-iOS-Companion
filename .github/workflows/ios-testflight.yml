@@ -77,13 +77,19 @@ jobs:
           STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
           STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
           WEBHOOK_API_KEY: ${{ secrets.WEBHOOK_API_KEY }}
+          ONEDRIVE_CLIENT_ID: ${{ secrets.ONEDRIVE_CLIENT_ID }}
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
         run: |
           {
             echo "STRAVA_CLIENT_ID = $STRAVA_CLIENT_ID"
             echo "STRAVA_CLIENT_SECRET = $STRAVA_CLIENT_SECRET"
             echo "WEBHOOK_API_KEY = $WEBHOOK_API_KEY"
+            echo "ONEDRIVE_CLIENT_ID = $ONEDRIVE_CLIENT_ID"
+            echo "DROPBOX_APP_KEY = $DROPBOX_APP_KEY"
+            echo "GOOGLE_IOS_CLIENT_ID = $GOOGLE_IOS_CLIENT_ID"
           } > Secrets.xcconfig
-          for name in STRAVA_CLIENT_ID STRAVA_CLIENT_SECRET WEBHOOK_API_KEY; do
+          for name in STRAVA_CLIENT_ID STRAVA_CLIENT_SECRET WEBHOOK_API_KEY ONEDRIVE_CLIENT_ID DROPBOX_APP_KEY GOOGLE_IOS_CLIENT_ID; do
             if [ -n "${!name}" ]; then echo "$name: set"; else echo "$name: MISSING"; fi
           done
 
