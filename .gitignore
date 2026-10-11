@@ -17,6 +17,8 @@ Pods/
 
 # Shared framework built from the Companion repo (Kotlin Multiplatform)
 Frameworks/*.xcframework
+# Generated from the Companion's strings.xml on CI (tools/generate_strings.py)
+App/Localizable.xcstrings
 
 # Secrets (never commit)
 *.xcconfig.local

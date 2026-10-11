@@ -172,8 +172,9 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
    Merged 2026-10-10 after CI and a device test.
    Paused (decided 2026-10-10): 2.6c `TtbForwarder`'s diary write flow and 2.6d
    `StravaActivitySync` (+ `StravaLinkResolver`), the largest step-2 items, wait for
-   spike 1 (watch link on a real iPhone) as the go/no-go. They also need a decision on
-   how shared code gets localized texts (see step 5.7).
+   spike 1 (watch link on a real iPhone) as the go/no-go. Texts: decided 2026-10-11
+   (`docs/decision-shared-texts.md`, option A): shared code asks the platform for its texts
+   through small interfaces; iOS strings are generated from the Android `strings.xml`.
    Findings:
    - Most remaining logic takes `ActivityEventEntity` (Room) as input, so the Room
      entities have to move (step 5) before TTB/HR-zone/matching logic can follow, or that

@@ -8,6 +8,7 @@ options:
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
+  developmentLanguage: en
 
 settings:
   base:
@@ -51,6 +52,10 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Nordic Sports Companion
+        CFBundleDevelopmentRegion: en
+        # Same six languages as the Android Companion; texts from App/Localizable.xcstrings,
+        # generated on CI by tools/generate_strings.py.
+        CFBundleLocalizations: [en, de, fr, it, rm, gsw]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}

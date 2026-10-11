@@ -18,6 +18,8 @@ struct WatchLinkSpikeView: View {
                 Section("Shared module") {
                     Text(PlaceNameLookupKt.formatPlaceName(locality: "Innsbruck", subAdminArea: nil, adminArea: "Tyrol", country: "Austria") ?? "-")
                     Text("Strava title poll 13 after \(StravaTitlePollSchedule.shared.offsetMillis(attempt: 12) / 60_000) min")
+                    // A text from the generated catalog, in the iPhone's language.
+                    Text(String(localized: "settings_page_privacy"))
                 }
                 Section("Watches") {
                     if spike.devices.isEmpty {

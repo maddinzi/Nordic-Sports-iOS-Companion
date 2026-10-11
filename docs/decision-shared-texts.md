@@ -1,6 +1,7 @@
-# Decision needed: translated texts on iOS and in `shared`
+# Decision: translated texts on iOS and in `shared`
 
-Status: proposal, 2026-10-10. Needed before roadmap 2.6c/2.6d (diary write flow, Strava
+Status: **decided 2026-10-11: option A** (text interfaces in `shared`, iOS strings generated
+from the Android `strings.xml` on CI). Proposed 2026-10-10. Needed before roadmap 2.6c/2.6d (diary write flow, Strava
 sync), which produce texts for logs and messages, and before the first iOS screens.
 
 ## The situation

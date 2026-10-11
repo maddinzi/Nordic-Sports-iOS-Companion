@@ -58,6 +58,13 @@ jobs:
           mkdir -p ../Frameworks
           cp -R shared/build/XCFrameworks/release/NordicSportsShared.xcframework ../Frameworks/
 
+      # The Android texts are the only source of every text in all six languages
+      # (docs/decision-shared-texts.md); the generated catalog is compiled into the app.
+      - name: Generate the iOS texts from the Companion
+        run: |
+          python3 -m unittest discover -s tools -p "test_*.py"
+          python3 tools/generate_strings.py companion/app/src/main/res App/Localizable.xcstrings
+
       - name: Generate the Xcode project
         run: |
           brew install xcodegen
