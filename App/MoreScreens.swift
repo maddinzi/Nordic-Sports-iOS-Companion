@@ -325,3 +325,114 @@ struct AddActivitySheet: View {
         start = endedNow ? Date().addingTimeInterval(-Double(duration) * 60) : Date()
     }
 }
+
+// MARK: - Edit an activity
+
+/// Android's detail-screen edits that matter most on the go: name, training type, RPE,
+/// feeling, diary comment and corrected duration/distance. Saving is the review.
+struct EditActivitySheet: View {
+    @EnvironmentObject var companion: Companion
+    @Environment(\.dismiss) private var dismiss
+    let item: ActivityItem
+    @State private var title: String
+    @State private var trainingType: String
+    @State private var rpe: Int
+    @State private var feeling: Int
+    @State private var comment: String
+    @State private var minutes: String
+    @State private var kilometers: String
+    @State private var saving = false
+
+    init(item: ActivityItem) {
+        self.item = item
+        _title = State(initialValue: item.title)
+        _trainingType = State(initialValue: item.trainingType)
+        _rpe = State(initialValue: Int(item.rpe))
+        _feeling = State(initialValue: Int(item.feeling))
+        _comment = State(initialValue: item.diaryComment)
+        _minutes = State(initialValue: item.overrideElapsedSec > 0 ? String(item.overrideElapsedSec / 60) : "")
+        _kilometers = State(initialValue: item.overrideDistanceM > 0 ? String(format: "%.1f", Double(item.overrideDistanceM) / 1000) : "")
+    }
+
+    private var trainingOptions: [(String, String)] {
+        item.preset == "strength"
+            ? [("hypertrophy", "activity_detail_training_option_hypertrophy"),
+               ("speedStrength", "activity_detail_training_option_speed_strength"),
+               ("strengthEndurance", "activity_detail_training_option_strength_endurance")]
+            : [("endurance", "activity_detail_training_option_endurance"),
+               ("intervals", "activity_detail_training_option_intervals"),
+               ("technique", "activity_detail_training_option_technique"),
+               ("sprints", "activity_detail_training_option_sprints")]
+    }
+
+    private static let feelings = [
+        "activity_detail_feeling_option_not_entered", "activity_detail_feeling_option_very_weak",
+        "activity_detail_feeling_option_weak", "activity_detail_feeling_option_normal",
+        "activity_detail_feeling_option_good", "activity_detail_feeling_option_very_good",
+    ]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField(L10n.get("activity_detail_name_label"), text: $title)
+                    Picker(L10n.get("activity_detail_training_type_label"), selection: $trainingType) {
+                        ForEach(trainingOptions, id: \.0) { option in Text(L10n.get(option.1)).tag(option.0) }
+                        if !trainingOptions.contains(where: { $0.0 == trainingType }) {
+                            Text(Format.trainingTypeWord(trainingType)).tag(trainingType)
+                        }
+                    }
+                }
+                Section {
+                    Picker(L10n.get("activity_detail_rpe_label"), selection: $rpe) {
+                        ForEach(0...10, id: \.self) { value in Text(value == 0 ? "–" : "\(value)").tag(value) }
+                    }
+                    Picker(L10n.get("activity_detail_feeling_label"), selection: $feeling) {
+                        ForEach(Self.feelings.indices, id: \.self) { index in Text(L10n.get(Self.feelings[index])).tag(index) }
+                    }
+                }
+                Section(L10n.get("activity_detail_diary_comment_label")) {
+                    TextEditor(text: $comment).frame(minHeight: 80)
+                }
+                Section {
+                    LabeledContent(L10n.get("activity_detail_duration_label")) {
+                        TextField(Format.duration(item.elapsedSec), text: $minutes)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                        Text("min").foregroundStyle(.secondary)
+                    }
+                    LabeledContent(L10n.get("activity_detail_distance_label")) {
+                        TextField(item.distanceM > 0 ? String(format: "%.1f", Double(item.distanceM) / 1000) : "0", text: $kilometers)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                        Text("km").foregroundStyle(.secondary)
+                    }
+                } footer: {
+                    Text("Leave empty to keep the watch's values.")
+                }
+            }
+            .navigationTitle(L10n.get("activity_detail_review_heading"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        Task {
+                            saving = true
+                            let km = Double(kilometers.replacingOccurrences(of: ",", with: ".")) ?? 0
+                            let saved = await companion.saveActivity(
+                                item.id, title: title, trainingType: trainingType, rpe: rpe, feeling: feeling,
+                                comment: comment, minutes: Int(minutes) ?? 0, kilometers: km
+                            )
+                            saving = false
+                            if saved { dismiss() }
+                        }
+                    }
+                    .disabled(saving)
+                }
+            }
+        }
+    }
+}

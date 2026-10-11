@@ -338,6 +338,47 @@ final class Companion: NSObject, ObservableObject {
         return ["phone": "Apple \(model)", "ios": UIDevice.current.systemVersion]
     }
 
+    // MARK: - Edit and review
+
+    /// Saves the athlete's edits (saving is the review), then lets the next sync write the
+    /// diary: iOS has no background job for that yet, so it runs right away.
+    func saveActivity(
+        _ activityId: String, title: String, trainingType: String, rpe: Int, feeling: Int,
+        comment: String, minutes: Int, kilometers: Double
+    ) async -> Bool {
+        do {
+            let saved = try await core.saveActivity(
+                activityId: activityId, title: title, trainingType: trainingType,
+                rpe: Int32(rpe), feeling: Int32(feeling), diaryComment: comment,
+                overrideElapsedSec: Int32(max(0, minutes) * 60), overrideDistanceM: Float(max(0, kilometers) * 1000)
+            )
+            guard saved.boolValue else { return false }
+            message = L10n.get("main_toast_activity_updated")
+            await afterEdit()
+            return true
+        } catch {
+            message = error.localizedDescription
+            return false
+        }
+    }
+
+    func skipReview(_ activityId: String) async {
+        do {
+            try await core.skipReview(activityId: activityId)
+        } catch {
+            message = error.localizedDescription
+        }
+        await afterEdit()
+    }
+
+    private func afterEdit() async {
+        if diaryConnected, diarySettings.autoUpdate {
+            await sync()
+        } else {
+            await refresh()
+        }
+    }
+
     // MARK: - Add and delete
 
     var manualTypes: [ManualTypeView] { core.manualTypes() }

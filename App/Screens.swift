@@ -114,12 +114,25 @@ struct ActivityDetailScreen: View {
     @Environment(\.dismiss) private var dismiss
     let item: ActivityItem
     @State private var confirmingDelete = false
+    @State private var editing = false
 
     /// The row as the list has it now, so a push shows its result here too.
     private var current: ActivityItem { companion.activities.first { $0.id == item.id } ?? item }
 
     var body: some View {
         Form {
+            if current.reviewPending {
+                Section(L10n.get("activity_detail_review_heading")) {
+                    Text(String(format: L10n.get("activity_detail_review_body_waits"),
+                                Format.date(current.reviewDeadlineEpochMillis / 1000)))
+                        .font(.footnote)
+                    Button(L10n.get("activity_detail_review_heading")) { editing = true }
+                    Button(L10n.get("activity_detail_review_skip")) {
+                        Task { await companion.skipReview(item.id) }
+                    }
+                    .disabled(companion.syncing)
+                }
+            }
             Section {
                 LabeledContent(L10n.get("activity_detail_started_label"), value: Format.date(item.startEpochSec))
                 LabeledContent(L10n.get("activity_detail_duration_label"), value: Format.duration(item.elapsedSec))
@@ -208,8 +221,14 @@ struct ActivityDetailScreen: View {
             Text(L10n.get("activity_detail_delete_confirm_body") + (item.stravaActivityId.isEmpty
                 ? "" : "\n\n" + L10n.get("activity_detail_delete_confirm_strava_note")))
         }
-        .navigationTitle(item.title.isEmpty ? L10n.get("activity_detail_title_fallback") : item.title)
+        .navigationTitle(current.title.isEmpty ? L10n.get("activity_detail_title_fallback") : current.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { editing = true } label: { Image(systemName: "pencil") }
+            }
+        }
+        .sheet(isPresented: $editing) { EditActivitySheet(item: current).environmentObject(companion) }
     }
 }
 

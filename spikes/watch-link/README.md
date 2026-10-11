@@ -55,6 +55,14 @@ Strava and retitled there, as on Android.
 22. Diagnostics: each "app in foreground" line now shows the Background App Refresh state
     and Low Power Mode.
 
+## Build 18 additions (edit and review)
+
+23. Open an activity › pencil: change name, training type, RPE, feeling, diary comment,
+    duration or distance › Save. The detail shows the new values; with the diary connected
+    and automatic writes on, the diary entry is rewritten (Settings › Last sync).
+24. With interaction mode "interactive" (set on Android, or the default), a new watch
+    activity shows "Review activity": Save it or "Skip review"; either releases the diary write.
+
 # Spike 1: watch link (throw-away)
 
 Question: does the Connect IQ iOS SDK (`garmin/connectiq-companion-app-sdk-ios` 1.8.0)
