@@ -138,13 +138,17 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
 
         // Activities go to the shared core, which stores them; only then does a payload with
         // `"rx": 1` get `{"type": "receipt", "startTime": <Int>}` back, as on Android, so
-        // the watch keeps anything that could not be stored and sends it again.
+        // the watch keeps anything that could not be stored and sends it again. The start
+        // time goes out as a 32-bit Int like Android's (`receiptMessage`): the watch drops a
+        // receipt whose startTime is not a Monkey C Number/Long, and an Int64 NSNumber from
+        // iOS was never accepted (log3: every receipt "success", the watch resent them all).
         if let dict, type == "activity" {
             let variant = variantName(app)
             Task { @MainActor in
                 let startTime = await Companion.shared.receive(message: dict, variant: variant)
                 if startTime > 0 {
-                    self.send(["type": "receipt", "startTime": NSNumber(value: startTime)], to: app, what: "receipt \(startTime)")
+                    let receiptTime = NSNumber(value: Int32(truncatingIfNeeded: startTime))
+                    self.send(["type": "receipt", "startTime": receiptTime], to: app, what: "receipt \(startTime)")
                 }
             }
         }
