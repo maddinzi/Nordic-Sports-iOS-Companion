@@ -360,6 +360,12 @@ final class Companion: NSObject, ObservableObject {
         refreshWatchSettings()
     }
 
+    /// Sets data field slot [index] of set [key] ("DataFields_rollski") to catalog field [field].
+    func changeWatchDataField(deviceId: Int64, key: String, index: Int32, field: Int32) {
+        core.changeWatchDataField(deviceId: deviceId, key: key, index: index, field: field)
+        refreshWatchSettings()
+    }
+
     func dismissWatchNote(deviceId: Int64, key: String) {
         core.dismissWatchSettingNote(deviceId: deviceId, key: key)
         refreshWatchSettings()

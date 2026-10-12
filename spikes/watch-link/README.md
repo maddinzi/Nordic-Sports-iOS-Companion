@@ -74,6 +74,15 @@ Strava and retitled there, as on Android.
     and write once. Switch back to OneDrive with "Make active" afterwards.
 29. **Choosing a file:** paste a folder without a TTB subfolder: one workbook asks
     "Use this workbook?", several show a list to pick from.
+## Build 19 additions (data fields)
+
+31. Needs the watch build with data field sync (sideload, 0.9.87-dev). Open Nordic Sports on
+    the watch once, then Settings › Watch settings › the watch › "Data fields": Rollski, XC
+    Skiing, Running (two screens each) and Training (one screen) show the watch's fields.
+    Change one field › "waiting" until the watch confirms; on the watch the technique menu ›
+    Data fields shows the new field. Change one on the watch: the phone shows it after the
+    watch's next report.
+
 30. **Delete my data (last, it empties the app):** export first if you want the data,
     then Settings › My Data › Delete my data › confirm. Activities and logs are empty
     (the app log starts with "data deleted"), Strava and the diary show "not connected",

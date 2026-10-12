@@ -28,6 +28,9 @@ struct WatchSettingsScreen: View {
                             .foregroundStyle(.orange)
                     }
                     Button(L10n.get("watch_settings_refresh")) { companion.askWatchAgain(deviceId: watch.deviceId) }
+                    if !watch.dataFieldGroups.isEmpty {
+                        NavigationLink(L10n.get("watch_data_fields_title")) { WatchDataFieldsScreen(deviceId: watch.deviceId) }
+                    }
                 } header: {
                     Text(watch.watchName)
                 }
@@ -42,6 +45,54 @@ struct WatchSettingsScreen: View {
         }
         .navigationTitle("Watch settings")
         .onAppear { companion.refreshWatchSettings() }
+    }
+}
+
+/// One watch's data fields, grouped by activity type like the watch menu: per screen the
+/// left, right and bottom field, each a choice of the watch's field catalog.
+struct WatchDataFieldsScreen: View {
+    @EnvironmentObject var companion: Companion
+    let deviceId: Int64
+
+    var body: some View {
+        let watch = companion.watchSettings.first { $0.deviceId == deviceId }
+        Form {
+            ForEach(watch?.dataFieldGroups ?? [], id: \.key) { group in
+                Section {
+                    ForEach(Array(group.screens.enumerated()), id: \.offset) { _, screen in
+                        if !screen.title.isEmpty {
+                            Text(screen.title).font(.footnote).foregroundStyle(.secondary)
+                        }
+                        ForEach(screen.slots, id: \.index) { slot in
+                            Picker(slot.label, selection: Binding(
+                                get: { slot.field },
+                                set: { companion.changeWatchDataField(deviceId: deviceId, key: group.key, index: slot.index, field: $0) }
+                            )) {
+                                ForEach(watch?.dataFieldOptions ?? [], id: \.value) { option in
+                                    Text(option.label).tag(option.value)
+                                }
+                            }
+                        }
+                    }
+                    if !group.note.isEmpty {
+                        HStack {
+                            Text(group.note).font(.footnote).foregroundStyle(group.pending ? Color.orange : Color.red)
+                            if !group.pending {
+                                Spacer()
+                                Button(L10n.get("watch_settings_note_dismiss")) {
+                                    companion.dismissWatchNote(deviceId: deviceId, key: group.key)
+                                }
+                                .font(.footnote)
+                            }
+                        }
+                    }
+                } header: {
+                    Text(group.title)
+                }
+            }
+        }
+        .navigationTitle(L10n.get("watch_data_fields_title"))
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
