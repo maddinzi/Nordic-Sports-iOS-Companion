@@ -268,6 +268,10 @@ Diagnostics; Strava sign-in with ASWebAuthenticationSession and an https callbac
    `GoogleDriveApi`), because build 17 showed OneDrive's Files-app provider hands files out
    read-only. Backups stay on the iPhone (Documents/diary-backups) for every cloud.
 3. Watch settings, interval plans, strength routines
+   *For build 19 (2026-10-12):* the watch's data fields per activity type (shared
+   `WatchDataFields`, needs watch 0.9.87-dev), and the interval plan and strength routine
+   editors (shared `WatchPlanEditor` turns the watch editor's choices into rows; SwiftUI
+   only shows them). Remaining builds until parity: `docs/feature-parity.md`.
 4. Add activity by hand, delete with tombstone
 5. Place names, Recording Boost export, data export / deletion (Trainingsplan only if
    switched back on on Android; the diary backport is not ported, see step 2)

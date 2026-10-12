@@ -74,7 +74,7 @@ Strava and retitled there, as on Android.
     and write once. Switch back to OneDrive with "Make active" afterwards.
 29. **Choosing a file:** paste a folder without a TTB subfolder: one workbook asks
     "Use this workbook?", several show a list to pick from.
-## Build 19 additions (data fields)
+## Build 19 additions (data fields, interval plans, strength routines)
 
 31. Needs the watch build with data field sync (sideload, 0.9.87-dev). Open Nordic Sports on
     the watch once, then Settings › Watch settings › the watch › "Data fields": Rollski, XC
@@ -82,6 +82,12 @@ Strava and retitled there, as on Android.
     Change one field › "waiting" until the watch confirms; on the watch the technique menu ›
     Data fields shows the new field. Change one on the watch: the phone shows it after the
     watch's next report.
+32. **Interval plans and strength routines:** Settings › Watch settings › the watch ›
+    "Interval plans": the three slots show the watch's plans ("4x 4:00 / 3:00"). Open one,
+    change work or reps (or "Start from" a built-in plan) › Save: "waiting", then confirmed
+    after the watch app has been open; on the watch the plan shows the change. The same
+    for "Strength routines": add an exercise, change sets, weight, remove one, Save. Clear
+    a slot once and check it is empty on the watch.
 
 30. **Delete my data (last, it empties the app):** export first if you want the data,
     then Settings › My Data › Delete my data › confirm. Activities and logs are empty

@@ -366,6 +366,22 @@ final class Companion: NSObject, ObservableObject {
         refreshWatchSettings()
     }
 
+    /// The editor for plan or routine slot [key] ("IntervalPlan1", "StrengthRoutine2").
+    func openWatchPlan(deviceId: Int64, key: String) -> PlanEditView? {
+        core.openWatchPlan(deviceId: deviceId, key: key)
+    }
+
+    /// [view] after picking [option] in row [rowId] (an action row's option, or 0 to remove).
+    func editWatchPlan(_ view: PlanEditView, key: String, rowId: String, option: Int32) -> PlanEditView {
+        core.editWatchPlan(key: key, draft: view.draft, canClear: view.canClear, rowId: rowId, option: option) ?? view
+    }
+
+    /// Sends [draft] to the watch; an empty draft clears the slot.
+    func saveWatchPlan(deviceId: Int64, key: String, draft: [KotlinInt]) {
+        core.saveWatchPlan(deviceId: deviceId, key: key, draft: draft)
+        refreshWatchSettings()
+    }
+
     func dismissWatchNote(deviceId: Int64, key: String) {
         core.dismissWatchSettingNote(deviceId: deviceId, key: key)
         refreshWatchSettings()

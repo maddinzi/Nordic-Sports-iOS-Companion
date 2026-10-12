@@ -31,6 +31,12 @@ struct WatchSettingsScreen: View {
                     if !watch.dataFieldGroups.isEmpty {
                         NavigationLink(L10n.get("watch_data_fields_title")) { WatchDataFieldsScreen(deviceId: watch.deviceId) }
                     }
+                    if !watch.intervalSlots.isEmpty {
+                        NavigationLink(L10n.get("watch_interval_menu")) { WatchPlansScreen(deviceId: watch.deviceId, routines: false) }
+                    }
+                    if !watch.routineSlots.isEmpty {
+                        NavigationLink(L10n.get("watch_strength_routines")) { WatchPlansScreen(deviceId: watch.deviceId, routines: true) }
+                    }
                 } header: {
                     Text(watch.watchName)
                 }
@@ -93,6 +99,144 @@ struct WatchDataFieldsScreen: View {
         }
         .navigationTitle(L10n.get("watch_data_fields_title"))
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// One watch's interval plans or strength routines: the three slots with the watch's
+/// summary; each opens [WatchPlanEditScreen].
+struct WatchPlansScreen: View {
+    @EnvironmentObject var companion: Companion
+    let deviceId: Int64
+    let routines: Bool
+
+    var body: some View {
+        let watch = companion.watchSettings.first { $0.deviceId == deviceId }
+        Form {
+            Section { Text(L10n.get(routines ? "watch_routines_intro" : "watch_intervals_intro")).font(.footnote).foregroundStyle(.secondary) }
+            ForEach((routines ? watch?.routineSlots : watch?.intervalSlots) ?? [], id: \.key) { slot in
+                Section {
+                    NavigationLink {
+                        WatchPlanEditScreen(deviceId: deviceId, key: slot.key, title: slot.title, routine: routines)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(slot.title)
+                            Text(slot.summary).font(.subheadline).foregroundStyle(.secondary)
+                            if !slot.detail.isEmpty {
+                                Text(slot.detail).font(.footnote).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    if !slot.note.isEmpty {
+                        HStack {
+                            Text(slot.note).font(.footnote).foregroundStyle(slot.pending ? Color.orange : Color.red)
+                            if !slot.pending {
+                                Spacer()
+                                Button(L10n.get("watch_settings_note_dismiss")) {
+                                    companion.dismissWatchNote(deviceId: deviceId, key: slot.key)
+                                }
+                                .font(.footnote)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle(L10n.get(routines ? "watch_strength_routines" : "watch_interval_menu"))
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { companion.refreshWatchSettings() }
+    }
+}
+
+/// Edits one plan or routine with the watch editor's own choices (shared WatchPlanEditor).
+/// Back discards the draft; Save sends it to the watch.
+struct WatchPlanEditScreen: View {
+    @EnvironmentObject var companion: Companion
+    @Environment(\.dismiss) private var dismiss
+    let deviceId: Int64
+    let key: String
+    let title: String
+    let routine: Bool
+    @State private var view: PlanEditView?
+    @State private var confirmClear = false
+
+    var body: some View {
+        Form {
+            if let view {
+                Section { Text(view.summary).font(.headline) }
+                ForEach(Array(view.sections.enumerated()), id: \.offset) { _, section in
+                    Section {
+                        ForEach(section.rows, id: \.id) { row in
+                            PlanRow(row: row) { option in
+                                self.view = companion.editWatchPlan(view, key: key, rowId: row.id, option: option)
+                            }
+                        }
+                        if !section.removeId.isEmpty {
+                            Button(L10n.get("watch_strength_remove_exercise"), role: .destructive) {
+                                self.view = companion.editWatchPlan(view, key: key, rowId: section.removeId, option: 0)
+                            }
+                        }
+                    } header: {
+                        if !section.title.isEmpty { Text(section.title) }
+                    }
+                }
+                if view.canClear {
+                    Section {
+                        Button(L10n.get(routine ? "watch_strength_clear" : "watch_interval_clear"), role: .destructive) {
+                            confirmClear = true
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button(L10n.get("watch_intervals_save")) {
+                    if let view { companion.saveWatchPlan(deviceId: deviceId, key: key, draft: view.draft) }
+                    dismiss()
+                }
+                .disabled(view == nil)
+            }
+        }
+        .confirmationDialog(L10n.get(routine ? "watch_strength_clear" : "watch_interval_clear"), isPresented: $confirmClear) {
+            Button(L10n.get(routine ? "watch_strength_clear" : "watch_interval_clear"), role: .destructive) {
+                companion.saveWatchPlan(deviceId: deviceId, key: key, draft: [])
+                dismiss()
+            }
+        }
+        .onAppear {
+            if view == nil { view = companion.openWatchPlan(deviceId: deviceId, key: key) }
+        }
+    }
+}
+
+/// A picker for a row with a selection; a menu for an action row ("Start from", "Add exercise")
+/// or a value outside the watch's list.
+private struct PlanRow: View {
+    let row: PlanEditRow
+    let pick: (Int32) -> Void
+
+    var body: some View {
+        if row.selected >= 0 {
+            Picker(row.label, selection: Binding(get: { row.selected }, set: { pick($0) })) {
+                ForEach(Array(row.options.enumerated()), id: \.offset) { index, option in
+                    Text(option).tag(Int32(index))
+                }
+            }
+        } else {
+            Menu {
+                ForEach(Array(row.options.enumerated()), id: \.offset) { index, option in
+                    Button(option) { pick(Int32(index)) }
+                }
+            } label: {
+                HStack {
+                    Text(row.label).foregroundStyle(Color.primary)
+                    Spacer()
+                    Text(row.value.isEmpty ? "…" : row.value).foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 }
 
