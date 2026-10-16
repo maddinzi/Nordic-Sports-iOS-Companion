@@ -269,7 +269,7 @@ Diagnostics; Strava sign-in with ASWebAuthenticationSession and an https callbac
    read-only. Backups stay on the iPhone (Documents/diary-backups) for every cloud.
 3. Watch settings, interval plans, strength routines
    *For build 19 (2026-10-12):* the watch's data fields per activity type (shared
-   `WatchDataFields`, needs watch 0.9.87-dev), and the interval plan and strength routine
+   `WatchDataFields`, needs watch 0.9.90), and the interval plan and strength routine
    editors (shared `WatchPlanEditor` turns the watch editor's choices into rows; SwiftUI
    only shows them). Remaining builds until parity: `docs/feature-parity.md`.
 4. Add activity by hand, delete with tombstone
