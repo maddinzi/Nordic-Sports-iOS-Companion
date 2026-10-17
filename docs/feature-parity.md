@@ -22,11 +22,13 @@ iPhone; *build 19* = built, waiting for the next TestFlight build; *-* = missing
 | Watch | Nickname to every watch (`Nickname` key, Companion wins) | yes | - | 20 | Shared `AthleteProfileStore`, `WatchSettingsSync(nickname = ...)`, `pushNickname()`; `CompanionCore` passes no nickname yet, so iOS leaves the watches' nickname alone |
 | Watch | Recording on the watch card (`activityStart` / `activityStop`, settings `at`) | yes | - | 20 | Shared `WatchLiveActivityTracker`; the iOS watch link routes only `activity` and `settings` so far. Place name with the build 21 geocoder |
 | Watch | Watch crash reports (`crashReport`), sent as feedback on Send | yes | - | 20 | Shared `WatchCrashReports`, `FeedbackSource.CRASH_REPORT`; needs routing, a card and "Delete my data" coverage |
+| Watch | Ask the watch to resend its queue when it connects again (`{"type": "resend"}`) | part | - | 22 | Android 0.9.94 (`ConnectIqWatchEventSource.requestResend`); the iOS watch link needs the same on its device-status callback |
 | Watch | Language offer watch <-> app | part | - | 21 | |
 | Watch | Recording Boost bursts (reassembly, CSV files, list) | part | - | 21 | File export: Files app |
 | Activities | Local database, list with sync badges, detail | yes | MVP | | Android 0.9.91: the detail header repeats the list tile with the name, the top bar says "Activity" |
 | Activities | Home screen by nickname ("All caught up, Anna!") | no | - | 22 | Android UI (0.9.91); the `_named` strings are in the generated text table |
 | Activities | Open items first, oldest on top; "To review" / "Done" headings; green frame for one just finished | part | - | 22 | `ReviewState.openItemsFirst` shared; the list UI and the just-finished frame per platform (Android 0.9.93) |
+| Activities | Detail buttons: "Save & send" (automated) / "Save" + "Send now" (manual), saving first; "Create on Strava" only without a Strava link; diary without Strava; in-sync + review as one home box | part | - | 22 | Android 0.9.94, UI per platform |
 | Activities | Edit, review window | yes | build 18 | | |
 | Activities | Interaction mode (interactive / automatic) setting | yes | - | 20 | Store shared; iOS has no switch yet, uses the default |
 | Activities | Add by hand, delete with tombstone | yes | build 17 | | Strava link/create for manual: build 18 |
