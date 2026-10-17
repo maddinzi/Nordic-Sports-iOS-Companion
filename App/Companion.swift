@@ -585,11 +585,13 @@ final class Companion: NSObject, ObservableObject {
 
     // MARK: - Texts
 
-    /// The phone's language among the Companion's six, English otherwise.
+    /// The phone's language among the Companion's nine, English otherwise ("no", older
+    /// iOS's Norwegian, counts as Bokmål).
     private static func preferredLanguage() -> String {
-        let supported = ["en", "de", "fr", "it", "rm", "gsw"]
+        let supported = ["en", "de", "fr", "it", "rm", "gsw", "nb", "fi", "sv"]
         for tag in Locale.preferredLanguages {
-            let code = tag.split(separator: "-").first.map(String.init)?.lowercased() ?? ""
+            var code = tag.split(separator: "-").first.map(String.init)?.lowercased() ?? ""
+            if code == "no" { code = "nb" }
             if supported.contains(code) { return code }
         }
         return "en"

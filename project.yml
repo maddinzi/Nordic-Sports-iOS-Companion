@@ -16,7 +16,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
     # Lockstep with the Companion's versionName (and the watch version). CI sets the build
     # number (CURRENT_PROJECT_VERSION) from the workflow run number.
-    MARKETING_VERSION: "0.9.92"
+    MARKETING_VERSION: "0.9.93"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
 
@@ -72,7 +72,7 @@ targets:
         # Same six languages as the Android Companion; texts from App/Localizable.xcstrings
         # (Swift) and App/Texts/texts-<lang>.json (shared Kotlin code), both generated on CI
         # by tools/generate_strings.py.
-        CFBundleLocalizations: [en, de, fr, it, rm, gsw]
+        CFBundleLocalizations: [en, de, fr, it, rm, gsw, nb, fi, sv]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}

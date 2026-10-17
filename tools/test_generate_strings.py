@@ -68,7 +68,7 @@ class TableTest(unittest.TestCase):
         self.assertEqual("Hallo %1$s, es ist %2$d", tables["de"]["hello"])
         self.assertEqual("Only English", tables["de"]["only_en"])
         self.assertEqual({"one": "%d change", "other": "%d changes"}, tables["de"]["waiting"])
-        self.assertEqual(set(tables), {"en", "de", "fr", "it", "rm", "gsw"})
+        self.assertEqual(set(tables), {"en", "de", "fr", "it", "rm", "gsw", "nb", "fi", "sv"})
 
 
 if __name__ == "__main__":

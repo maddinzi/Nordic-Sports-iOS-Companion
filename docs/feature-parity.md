@@ -26,6 +26,7 @@ iPhone; *build 19* = built, waiting for the next TestFlight build; *-* = missing
 | Watch | Recording Boost bursts (reassembly, CSV files, list) | part | - | 21 | File export: Files app |
 | Activities | Local database, list with sync badges, detail | yes | MVP | | Android 0.9.91: the detail header repeats the list tile with the name, the top bar says "Activity" |
 | Activities | Home screen by nickname ("All caught up, Anna!") | no | - | 22 | Android UI (0.9.91); the `_named` strings are in the generated text table |
+| Activities | Open items first, oldest on top; "To review" / "Done" headings; green frame for one just finished | part | - | 22 | `ReviewState.openItemsFirst` shared; the list UI and the just-finished frame per platform (Android 0.9.93) |
 | Activities | Edit, review window | yes | build 18 | | |
 | Activities | Interaction mode (interactive / automatic) setting | yes | - | 20 | Store shared; iOS has no switch yet, uses the default |
 | Activities | Add by hand, delete with tombstone | yes | build 17 | | Strava link/create for manual: build 18 |
@@ -36,6 +37,8 @@ iPhone; *build 19* = built, waiting for the next TestFlight build; *-* = missing
 | Strava | Duplicate merger (a Strava activity on its own row) | part | - | 20 | |
 | Strava | Strength description | part | - | 20 | Wording in `WatchActivityEvent`; check the iOS write path |
 | Diary | Write-back, Push to Diary, three diary switches | yes | build 16 | | |
+| Diary | TTB rules 0.9.93: ids in the hidden register sheet (no cell note), compact "Title: comment" joined with "; ", oldest first, back-to-back sessions in one slot, formula results recalculated before upload | yes | - | 22 | All in shared (`DiaryWriter`, `TtbWorkbookEditor`, `TtbRecalculator`); arrives with the next XCFramework. Text `ttb_forwarder_legacy_notes_moved` is in the table |
+| Diary | "Compact diary" for the last n days (temporary, remove a few versions after 0.9.93) | part | - | 22 | `DiarySync.rewriteRecent` shared; iOS needs the settings row (Android: under the Strava backfill) |
 | Diary | Files app workbook | part | build 16 | | Read-only for OneDrive's provider, hence the clouds |
 | Diary | OneDrive, Dropbox, Google Drive | yes | build 18 | | PKCE sign-in, Keychain tokens |
 | Diary | Backups | part | build 16 | | On the iPhone (Documents/diary-backups) for every cloud |
@@ -48,7 +51,7 @@ iPhone; *build 19* = built, waiting for the next TestFlight build; *-* = missing
 | App | Feedback | yes | build 17 | | |
 | App | Feedback: pick the watch (from activities and settings reports), "Include my nickname" | part | - | 20 | Shared `mergeKnownWatches()`; iOS sends only `latestWatchName()` |
 | App | Nickname setting (Settings › App), used in notifications | part | - | 20 | Shared `AthleteProfileStore.clean()`; "Delete my data" must clear it (`CompanionCore.deleteAllData`) |
-| App | Languages en, de, fr, it, rm, gsw | part | part | 22 | Generated from Android strings; some iOS labels still English |
+| App | Languages en, de, fr, it, rm, gsw, nb, fi, sv | part | part | 22 | Generated from Android strings (nb, fi, sv since 0.9.93: generator, `CFBundleLocalizations`, language pick); some iOS labels still English |
 | App | Onboarding guide, about, changelog, settings search | no | - | 22 | Android 0.9.90: the guide starts with "How shall I call you?", then Strava, then the diary |
 | App | Theme (light / dark / system) | no | system | | iOS follows the system |
 | Trainingsplan | Plan annotation | part | - | - | Off on Android; not in iOS scope until re-enabled |

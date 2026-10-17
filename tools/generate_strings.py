@@ -33,6 +33,9 @@ LANGUAGES = {
     "values-it": "it",
     "values-rm": "rm",
     "values-b+gsw": "gsw",
+    "values-nb": "nb",
+    "values-fi": "fi",
+    "values-sv": "sv",
 }
 FILES = ["strings.xml", "watch_labels.xml"]
 PLURAL_FORMS = {"zero", "one", "two", "few", "many", "other"}
