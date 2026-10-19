@@ -198,7 +198,7 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
             }
         }
         if state != .active {
-            notify("Watch: \(type) arrived in the \(Self.name(of: state))")
+            add("\(type) arrived in the \(Self.name(of: state))")
         }
     }
 
@@ -275,13 +275,6 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
             self.defaults.set(self.log, forKey: "spike.log")
         }
         if Thread.isMainThread { update() } else { DispatchQueue.main.async(execute: update) }
-    }
-
-    private func notify(_ text: String) {
-        let content = UNMutableNotificationContent()
-        content.title = "Nordic Sports spike"
-        content.body = text
-        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
     }
 
     private func saveDevices(_ devices: [IQDevice]) {

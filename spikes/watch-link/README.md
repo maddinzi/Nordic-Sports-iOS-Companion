@@ -112,6 +112,32 @@ Strava and retitled there, as on Android.
 40. **Crash card** (only if the watch app ever closes unexpectedly): Activities shows "Your
     watch app closed unexpectedly"; Review lists exactly what would be sent; Send or Not now.
 
+## Build 20 additions (duplicate merger, strength description, notifications, background sync)
+
+Build 20 also brings everything from build 19 (steps 31-40), so test both on build 20.
+
+41. **Update first:** install build 20 over build 19 without deleting the app. Activities,
+    Strava and the diary are all still there (the database moves to version 30, the diary
+    destinations of Android 0.9.96). Sync now works as before.
+42. **Duplicate merger:** an activity that is on Strava but not from the watch (recorded with
+    the Strava app, say) shows as its own row after a sync. "Add activity by hand" for the
+    same session (same start, same length): afterwards there is one row, linked to Strava,
+    and Settings › Last sync says "Merged an existing entry for Strava activity …".
+43. **Strength description:** a Strength or Stabi activity with sets logged on the watch: once
+    its Strava copy is linked and retitled (sync), the Strava description shows the block
+    "Strength (Nordic Sports)" with the exercises and "n sets · kg". Your own description
+    text stays; a second sync adds nothing.
+44. **Notification:** app in the background (home screen), save an activity on the watch: a
+    notification "New … activity ready for you to update" ("Anna, your new …" with a
+    nickname; "… arrived" with Review new activities off). In automated sync mode the
+    diary is written right away.
+45. **Sync mode:** Settings › App › Sync mode › Manual: opening the app and a new activity
+    no longer sync on their own (Sync now still does). Switch back to Automated.
+46. **Background sync:** Background App Refresh on, Low Power Mode off, app left in the
+    background for some hours. The Diagnostics log shows `bg: refresh task ran …` followed
+    by `bg: refresh sync: synced (n lines)`; iOS decides when (often only at night or
+    while charging).
+
 30. **Delete my data (last, it empties the app):** export first if you want the data,
     then Settings › My Data › Delete my data › confirm. Activities and logs are empty
     (the app log starts with "data deleted"), Strava and the diary show "not connected",

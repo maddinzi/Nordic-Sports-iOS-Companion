@@ -2,12 +2,11 @@ import BackgroundTasks
 import Foundation
 import UIKit
 
-/// Spike 2 (roadmap step 1, throw-away): what does iOS really give the Companion in the
-/// background? Registers an app refresh task (short, "about every 15 minutes at the
-/// earliest") and a processing task (longer, needs network), asks for them again after every
-/// run and whenever the app goes to the background, and logs each wake-up into the spike log
-/// with how long it has been since the previous one. Together with spike 1's arrivals the log
-/// shows whether sync can run in the background or only when the app is opened.
+/// Background sync (from spike 2): registers an app refresh task (short, "about every 15
+/// minutes at the earliest", iOS decides) and a processing task (longer, needs network), asks
+/// for them again after every run and whenever the app goes to the background, and runs the
+/// Companion's sync in each ([Companion.backgroundSync], automated sync mode only). Every
+/// wake-up is logged with how long it has been since the previous one.
 final class BackgroundSpike {
     static let shared = BackgroundSpike()
 
@@ -52,10 +51,36 @@ final class BackgroundSpike {
         defaults.set(now, forKey: key)
         let state = DispatchQueue.main.sync { UIApplication.shared.applicationState }
         log("bg: \(kind) task ran (\(since) since the previous one, app \(state == .background ? "in background" : "not in background"))")
-        task.expirationHandler = { self.log("bg: \(kind) task expired before it finished") }
         schedule(reason: "after \(kind)")
-        // A real sync would run here (webhook events, diary write); the spike only measures.
-        task.setTaskCompleted(success: true)
+        // setTaskCompleted exactly once: when the sync ends, or when iOS ends the time.
+        let finish = Finish(task)
+        let work = Task { @MainActor in
+            let outcome = await Companion.shared.backgroundSync()
+            self.log("bg: \(kind) sync: \(outcome)")
+            finish.complete(success: true)
+        }
+        task.expirationHandler = {
+            work.cancel()
+            self.log("bg: \(kind) task expired before it finished")
+            finish.complete(success: false)
+        }
+    }
+
+    /// Completes a background task once, whichever of sync end and expiry comes first.
+    private final class Finish {
+        private let task: BGTask
+        private var done = false
+        private let lock = NSLock()
+
+        init(_ task: BGTask) { self.task = task }
+
+        func complete(success: Bool) {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !done else { return }
+            done = true
+            task.setTaskCompleted(success: success)
+        }
     }
 
     /// Background App Refresh as iOS reports it, plus Low Power Mode (which makes it

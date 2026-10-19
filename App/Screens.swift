@@ -398,6 +398,18 @@ struct SettingsScreen: View {
                                   : "interaction_option_passive_description"))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                    Picker(L10n.get("sync_mode_section_title"), selection: Binding(
+                        get: { companion.syncAutomatically },
+                        set: { companion.setSyncAutomatically($0) }
+                    )) {
+                        Text(L10n.get("sync_mode_option_automated")).tag(true)
+                        Text(L10n.get("sync_mode_option_manual")).tag(false)
+                    }
+                    Text(L10n.get(companion.syncAutomatically
+                                  ? "sync_mode_option_automated_description"
+                                  : "sync_mode_option_manual_description"))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 } header: {
                     Text(L10n.get("settings_group_app"))
                 }

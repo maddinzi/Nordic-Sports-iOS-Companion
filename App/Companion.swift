@@ -3,6 +3,7 @@ import Foundation
 import NordicSportsShared
 import SwiftUI
 import UIKit
+import UserNotifications
 
 /// The app's state on top of the shared Kotlin core (`CompanionCore`, built by
 /// `IosCompanion` in the Companion repo): the activity list, Strava sign-in and sync. Every
@@ -31,6 +32,7 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var crashReports: [CrashReportView] = []
     @Published private(set) var nickname = ""
     @Published private(set) var reviewNewActivities = true
+    @Published private(set) var syncAutomatically = true
     @Published var message: String?
 
     let core: CompanionCore
@@ -63,6 +65,7 @@ final class Companion: NSObject, ObservableObject {
         refreshWatchCards()
         nickname = core.nickname()
         reviewNewActivities = core.reviewNewActivities()
+        syncAutomatically = core.syncAutomatically()
     }
 
     // MARK: - Activities
@@ -89,6 +92,14 @@ final class Companion: NSObject, ObservableObject {
             let result = try await core.receiveWatchMessage(json: json, variant: variant, nowEpochMillis: now)
             WatchLinkSpike.shared.add("activity from \(variant): \(result.summary)")
             await refresh()
+            if !result.activityId.isEmpty {
+                notifyNewActivity(result)
+                // As Android in automated mode: forward on arrival (the diary now; Strava's
+                // copy follows by webhook at the next sync).
+                if core.syncAutomatically(), stravaConnected || core.diaryConnected() {
+                    Task { await sync() }
+                }
+            }
             return result.receiptStartTime
         } catch {
             WatchLinkSpike.shared.add("activity could not be stored: \(error.localizedDescription)")
@@ -98,11 +109,35 @@ final class Companion: NSObject, ObservableObject {
 
     // MARK: - Sync
 
-    /// Like Android's onResume: a quiet sync whenever the app comes to the foreground.
+    /// Like Android's onResume: a quiet sync whenever the app comes to the foreground
+    /// (automated sync mode only).
     func syncOnOpen() async {
         await refresh()
-        guard stravaConnected || core.diaryConnected(), !syncing else { return }
+        guard core.syncAutomatically(), stravaConnected || core.diaryConnected(), !syncing else { return }
         await sync()
+    }
+
+    /// A background run (BGTaskScheduler; Android: the daily ActivitySyncWorker): the same
+    /// sync as on opening, in automated mode only. Returns a line for the Diagnostics log.
+    func backgroundSync() async -> String {
+        guard core.syncAutomatically() else { return "manual sync mode, nothing run" }
+        guard stravaConnected || core.diaryConnected() else { return "neither Strava nor a diary connected" }
+        guard !syncing else { return "a sync is already running" }
+        await sync()
+        return "synced (\(syncLines.count) lines)"
+    }
+
+    /// Android's new-activity notification (title with the nickname, review or not); iOS
+    /// shows it while the app is not on screen.
+    private func notifyNewActivity(_ result: WatchMessageResult) {
+        let content = UNMutableNotificationContent()
+        content.title = result.notificationTitle
+        content.body = result.notificationBody
+        content.threadIdentifier = "activity-reviews"
+        content.userInfo = ["activityId": result.activityId]
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: "activity-\(result.activityId)", content: content, trigger: nil)
+        )
     }
 
     func sync() async {
@@ -423,6 +458,12 @@ final class Companion: NSObject, ObservableObject {
         reviewNewActivities = core.reviewNewActivities()
     }
 
+    func setSyncAutomatically(_ on: Bool) {
+        core.setSyncAutomatically(on: on)
+        syncAutomatically = core.syncAutomatically()
+        if on { BackgroundSpike.shared.schedule(reason: "sync mode automated") }
+    }
+
     func feedbackWatches() async -> [FeedbackWatchView] {
         (try? await core.feedbackWatches()) ?? []
     }
@@ -493,6 +534,7 @@ final class Companion: NSObject, ObservableObject {
         refreshWatchCards()
         nickname = core.nickname()
         reviewNewActivities = core.reviewNewActivities()
+        syncAutomatically = core.syncAutomatically()
         syncLines = []
         await refresh()
         message = "All data on this iPhone deleted; Strava and the diary disconnected."
