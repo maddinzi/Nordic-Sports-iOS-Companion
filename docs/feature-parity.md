@@ -52,6 +52,7 @@ iPhone; *build 19* = built, waiting for the next TestFlight build; *-* = missing
 | Logs | Diary, app, transfer log, activity history | yes | build 17 | | Texts tidied (`tidyLogText`) in `CompanionCore` since 0.9.92, as on Android |
 | Logs | Strava API usage screen | part | - | 21 | |
 | App | Feedback | yes | build 17 | | |
+| App | Minimum supported version from the server (`api/client-config.php`): below it nothing syncs, only export and delete | part | - | 22 | Android 0.9.96 (`ClientStatus`, `ui/BuildExpiryScreen.kt`); shared `core/BuildExpiry` and `ClientConfigApi` are ready, iOS needs the check at app start and the blocking screen. Sideload expiry is Android-only: TestFlight builds expire after 90 days on their own |
 | App | Feedback: pick the watch (from activities and settings reports), "Include my nickname" | part | build 19 |  | `feedbackWatches()` (shared `mergeKnownWatches`), nickname as `details.nickname` |
 | App | Nickname setting (Settings › App), used in notifications | part | build 19 |  | Settings › App; "Delete my data" clears it; not yet in notifications (iOS has none yet) |
 | App | Languages en, de, fr, it, rm, gsw, nb, fi, sv | part | part | 22 | Generated from Android strings (nb, fi, sv since 0.9.93: generator, `CFBundleLocalizations`, language pick); some iOS labels still English |
