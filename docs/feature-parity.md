@@ -23,6 +23,7 @@ iPhone; *build 19* = built, waiting for the next TestFlight build; *-* = missing
 | Watch | Recording on the watch card (`activityStart` / `activityStop`, settings `at`) | yes | - | 20 | Shared `WatchLiveActivityTracker`; the iOS watch link routes only `activity` and `settings` so far. Place name with the build 21 geocoder |
 | Watch | Watch crash reports (`crashReport`), sent as feedback on Send | yes | - | 20 | Shared `WatchCrashReports`, `FeedbackSource.CRASH_REPORT`; needs routing, a card and "Delete my data" coverage |
 | Watch | Ask the watch to resend its queue when it connects again (`{"type": "resend"}`) | part | - | 22 | Android 0.9.94 (`ConnectIqWatchEventSource.requestResend`); the iOS watch link needs the same on its device-status callback |
+| Watch | Heart rate sensor section from the watch's `HrStrapInfo` / `HrStrapName` / `HrStrapBleName` (shared `WatchHrStrapInfo`: state, check time, strap name, Bluetooth name, model name, ANT+ ID, serial, battery); no "HR Chest Strap" switch | part | - | 22 | Android 0.9.95 (`WatchSettingsSection.HrStrapDetails`); parsing is shared, the iOS watch settings page needs the read-only section |
 | Watch | Language offer watch <-> app | part | - | 21 | |
 | Watch | Recording Boost bursts (reassembly, CSV files, list) | part | - | 21 | File export: Files app |
 | Activities | Local database, list with sync badges, detail | yes | MVP | | Android 0.9.91: the detail header repeats the list tile with the name, the top bar says "Activity" |
