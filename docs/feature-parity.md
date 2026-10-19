@@ -46,6 +46,7 @@ iPhone; *build 19* = built, waiting for the next TestFlight build; *-* = missing
 | Diary | OneDrive, Dropbox, Google Drive | yes | build 18 | | PKCE sign-in, Keychain tokens |
 | Diary | Backups | part | build 16 | | On the iPhone (Documents/diary-backups) for every cloud |
 | Diary | Connection problems on the start screen | yes | build 16 | | |
+| Diary | Settings: one row and page per connection (Strava, each diary destination "TTB diary · OneDrive", Cloud accounts only while a cloud is signed in, "Add connection") | no | - | | Android branch `settings-connection-rows` (diary destinations stage 1, `design/diary-destinations.md` in the Companion repo); UI per platform, page order in Android's `SettingsPageModel.kt` |
 | Sync | Background sync and its mode (automatic / manual) | part | - | 20 | Background App Refresh was "restricted" on the test phone |
 | Data | Export my data (JSON), delete my data | yes | build 17 / 18 | | |
 | Data | Activity JSON files, folder choice | no | - | later | Optional on iOS |
