@@ -28,6 +28,9 @@ struct WatchSettingsScreen: View {
                             .foregroundStyle(.orange)
                     }
                     Button(L10n.get("watch_settings_refresh")) { companion.askWatchAgain(deviceId: watch.deviceId) }
+                    if let sync = watch.sync {
+                        WatchSyncRow(sync: sync)
+                    }
                     if !watch.dataFieldGroups.isEmpty {
                         NavigationLink(L10n.get("watch_data_fields_title")) { WatchDataFieldsScreen(deviceId: watch.deviceId) }
                     }
@@ -40,6 +43,15 @@ struct WatchSettingsScreen: View {
                 } header: {
                     Text(watch.watchName)
                 }
+                if let hr = watch.hrStrap {
+                    Section(hr.title) {
+                        Text(hr.status).foregroundStyle(hr.notFound ? Color.red : Color.primary)
+                        Text(hr.checked).font(.footnote).foregroundStyle(.secondary)
+                        ForEach(hr.lines, id: \.label) { line in
+                            LabeledContent(line.label, value: line.value)
+                        }
+                    }
+                }
                 ForEach(watch.groups, id: \.title) { group in
                     Section(group.title) {
                         ForEach(group.items, id: \.key) { item in
@@ -51,6 +63,30 @@ struct WatchSettingsScreen: View {
         }
         .navigationTitle("Watch settings")
         .onAppear { companion.refreshWatchSettings() }
+    }
+}
+
+/// The last settings message to or from the watch (Android's sync strip): direction, what
+/// happened and when, and what it means.
+private struct WatchSyncRow: View {
+    let sync: WatchSyncView
+
+    var body: some View {
+        let color: Color = sync.kind == "failed" ? .red : (sync.kind == "received" ? .green : .accentColor)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "iphone")
+                Image(systemName: sync.kind == "failed" ? "exclamationmark.triangle"
+                      : (sync.toWatch ? "arrow.right" : "arrow.left"))
+                    .foregroundStyle(color)
+                Image(systemName: "applewatch")
+                Text(sync.direction).font(.footnote).foregroundStyle(.secondary)
+            }
+            let at = Date(timeIntervalSince1970: TimeInterval(sync.atEpochMillis) / 1000).formatted(date: .omitted, time: .shortened)
+            Text("\(sync.title) · \(at)").font(.subheadline).foregroundStyle(color)
+            Text(sync.detail).font(.footnote)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -362,6 +398,9 @@ struct FeedbackScreen: View {
     @State private var text = ""
     @State private var email = ""
     @State private var includeDetails = true
+    @State private var includeNickname = false
+    @State private var watches: [FeedbackWatchView] = []
+    @State private var watchIndex = 0
     @State private var sending = false
     @State private var sent = false
     @State private var error: String?
@@ -390,8 +429,25 @@ struct FeedbackScreen: View {
                         Text(L10n.get("feedback_app_both")).tag("both")
                     }
                 }
+                if app != "companion" && !watches.isEmpty {
+                    Section {
+                        Picker(L10n.get("feedback_watch_label"), selection: $watchIndex) {
+                            ForEach(Array(watches.enumerated()), id: \.offset) { index, watch in
+                                Text(watch.name).tag(index)
+                            }
+                        }
+                    }
+                }
                 Section(L10n.get("feedback_message_label")) {
                     TextEditor(text: $text).frame(minHeight: 140)
+                }
+                if !companion.nickname.isEmpty {
+                    Section {
+                        Toggle(L10n.get("feedback_nickname_switch"), isOn: $includeNickname)
+                        Text(String(format: L10n.get(includeNickname ? "feedback_nickname_on" : "feedback_nickname_off"), companion.nickname))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Section(L10n.get("feedback_email_label")) {
                     TextField("", text: $email)
@@ -421,8 +477,10 @@ struct FeedbackScreen: View {
                         Task {
                             sending = true
                             error = nil
+                            let watch = app != "companion" && watches.indices.contains(watchIndex) ? watches[watchIndex] : nil
                             let result = await companion.sendFeedback(
-                                category: category, app: app, text: text, email: email, includeDetails: includeDetails
+                                category: category, app: app, text: text, email: email, includeDetails: includeDetails,
+                                watch: watch, includeNickname: includeNickname
                             )
                             sending = false
                             switch result {
@@ -439,6 +497,7 @@ struct FeedbackScreen: View {
             }
         }
         .navigationTitle(L10n.get("feedback_title"))
+        .task { watches = await companion.feedbackWatches() }
     }
 }
 

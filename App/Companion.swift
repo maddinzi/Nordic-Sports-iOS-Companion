@@ -27,6 +27,10 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var diaryBusy = false
     @Published private(set) var diarySources: [DiarySourceView] = []
     @Published private(set) var watchSettings: [WatchSettingsView] = []
+    @Published private(set) var liveActivities: [LiveActivityView] = []
+    @Published private(set) var crashReports: [CrashReportView] = []
+    @Published private(set) var nickname = ""
+    @Published private(set) var reviewNewActivities = true
     @Published var message: String?
 
     let core: CompanionCore
@@ -56,6 +60,9 @@ final class Companion: NSObject, ObservableObject {
         stravaConnected = core.stravaConnected()
         refreshDiary()
         refreshWatchSettings()
+        refreshWatchCards()
+        nickname = core.nickname()
+        reviewNewActivities = core.reviewNewActivities()
     }
 
     // MARK: - Activities
@@ -382,6 +389,44 @@ final class Companion: NSObject, ObservableObject {
         refreshWatchSettings()
     }
 
+    /// The activity list's watch cards: recordings running on a watch, crash reports.
+    func refreshWatchCards() {
+        liveActivities = core.liveActivities()
+        crashReports = core.crashReports()
+    }
+
+    func dismissCrashReport(_ id: String) {
+        core.dismissCrashReport(id: id)
+        refreshWatchCards()
+    }
+
+    /// Sends crash report [id] with the athlete's [note] and the phone details; "sent",
+    /// "tooMany" or "failed". Only this tap sends it.
+    func sendCrashReport(_ id: String, note: String) async -> String {
+        var details = Self.deviceDetails()
+        details["language"] = language
+        let result = (try? await core.sendCrashReport(id: id, note: note, appVersion: Format.appVersion, details: details)) ?? "failed"
+        refreshWatchCards()
+        return result
+    }
+
+    // MARK: - Nickname and review
+
+    /// Stores the nickname (cleaned as the watch can show it) and sends it to the watches.
+    func setNickname(_ value: String) {
+        nickname = core.setNickname(value: value)
+        refreshWatchSettings()
+    }
+
+    func setReviewNewActivities(_ on: Bool) {
+        core.setReviewNewActivities(on: on)
+        reviewNewActivities = core.reviewNewActivities()
+    }
+
+    func feedbackWatches() async -> [FeedbackWatchView] {
+        (try? await core.feedbackWatches()) ?? []
+    }
+
     func dismissWatchNote(deviceId: Int64, key: String) {
         core.dismissWatchSettingNote(deviceId: deviceId, key: key)
         refreshWatchSettings()
@@ -445,19 +490,30 @@ final class Companion: NSObject, ObservableObject {
         stravaConnected = core.stravaConnected()
         refreshDiary()
         refreshWatchSettings()
+        refreshWatchCards()
+        nickname = core.nickname()
+        reviewNewActivities = core.reviewNewActivities()
         syncLines = []
         await refresh()
         message = "All data on this iPhone deleted; Strava and the diary disconnected."
     }
 
-    /// "sent", "tooMany" or "failed".
-    func sendFeedback(category: String, app: String, text: String, email: String, includeDetails: Bool) async -> String {
+    /// "sent", "tooMany" or "failed". [watch]: the watch the athlete picked (its details are added with the phone's), or nil.
+    func sendFeedback(
+        category: String, app: String, text: String, email: String, includeDetails: Bool,
+        watch: FeedbackWatchView? = nil, includeNickname: Bool = false
+    ) async -> String {
         var details: [String: String] = [:]
         if includeDetails {
             details = Self.deviceDetails()
             details["language"] = language
-            if let watch = try? await core.latestWatchName(), !watch.isEmpty { details["watch"] = watch }
+            if let watch {
+                details.merge(watch.details) { _, new in new }
+            } else if let name = try? await core.latestWatchName(), !name.isEmpty {
+                details["watch"] = name
+            }
         }
+        if includeNickname, !nickname.isEmpty { details["nickname"] = nickname }
         do {
             return try await core.sendFeedback(
                 category: category, app: app, message: text, contactEmail: email,

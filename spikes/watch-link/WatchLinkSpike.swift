@@ -124,8 +124,29 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
     @objc(deviceStatusChanged:status:)
     func deviceStatusChanged(_ device: IQDevice!, status: IQDeviceStatus) {
         let name = Self.name(of: status)
-        DispatchQueue.main.async { self.statuses[device.uuid] = name }
+        let update = { () -> Bool in
+            let changed = self.statuses[device.uuid] != name
+            self.statuses[device.uuid] = name
+            return changed
+        }
+        let changed = Thread.isMainThread ? update() : DispatchQueue.main.sync(execute: update)
         add("device \(device.friendlyName ?? "?"): \(name)")
+        // As Android: a watch that connects again keeps its name, and is asked to resend what
+        // it still has queued (an activity sent while the link was down), at most once a minute.
+        guard status == .connected, changed else { return }
+        let deviceId = Self.deviceId(device)
+        let watchName = device.friendlyName
+        Task { @MainActor in
+            let appId = Companion.shared.core.watchConnected(deviceId: deviceId, watchName: watchName)
+            guard !appId.isEmpty,
+                  let app = self.apps.first(where: { Self.deviceId($0.device) == deviceId && $0.uuid.uuidString.lowercased() == appId.lowercased() })
+            else { return }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            self.send(["type": "resend"], to: app, what: "resend request") { result in
+                let status = Self.name(of: result)
+                Task { @MainActor in Companion.shared.core.resendRequested(deviceId: deviceId, status: status) }
+            }
+        }
     }
 
     @objc(receivedMessage:fromApp:)
@@ -159,17 +180,21 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
                 }
             }
         }
-        // The watch's settings snapshot (sent at every watch app start): the shared
-        // WatchSettingsSync stores it and resends changes still waiting.
-        if let dict, type == "settings", JSONSerialization.isValidJSONObject(dict),
+        // Everything else goes to the shared core too: the settings snapshot (sent at every
+        // watch app start; WatchSettingsSync stores it and resends changes still waiting), a
+        // recording that started or was discarded, and a crash report.
+        if let dict, type != "activity", JSONSerialization.isValidJSONObject(dict),
            let data = try? JSONSerialization.data(withJSONObject: dict),
            let json = String(data: data, encoding: .utf8) {
             let deviceId = Self.deviceId(app.device)
             let watchName = app.device.friendlyName ?? "?"
             let appId = app.uuid.uuidString.lowercased()
             Task { @MainActor in
-                Companion.shared.core.watchSettingsReceived(deviceId: deviceId, watchName: watchName, appId: appId, json: json)
+                if !Companion.shared.core.watchMessage(deviceId: deviceId, watchName: watchName, appId: appId, json: json) {
+                    self.add("message of type \(type) not handled")
+                }
                 Companion.shared.refreshWatchSettings()
+                Companion.shared.refreshWatchCards()
             }
         }
         if state != .active {

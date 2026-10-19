@@ -18,12 +18,12 @@ iPhone; *build 19* = built, waiting for the next TestFlight build; *-* = missing
 | Watch | Watch settings: view and change | yes | build 17 | | `WatchSettingsSync` |
 | Watch | Data fields per activity type | yes | build 19 | | Needs watch 0.9.90 (full version); on Android since 0.9.90 |
 | Watch | Interval plans, strength routines | yes | build 19 | | Shared `WatchPlanEditor` builds the editor rows; Android keeps its own Compose editor |
-| Watch | Settings sync strip (sent / received, failure reason) and "1 update waiting" line | yes | - | 20 | Shared `WatchSettingsSync.activity`; iOS UI only. iOS should also call `nameSeen()` on connect, as Android does, so a watch keeps its name |
-| Watch | Nickname to every watch (`Nickname` key, Companion wins) | yes | - | 20 | Shared `AthleteProfileStore`, `WatchSettingsSync(nickname = ...)`, `pushNickname()`; `CompanionCore` passes no nickname yet, so iOS leaves the watches' nickname alone |
-| Watch | Recording on the watch card (`activityStart` / `activityStop`, settings `at`) | yes | - | 20 | Shared `WatchLiveActivityTracker`; the iOS watch link routes only `activity` and `settings` so far. Place name with the build 21 geocoder |
-| Watch | Watch crash reports (`crashReport`), sent as feedback on Send | yes | - | 20 | Shared `WatchCrashReports`, `FeedbackSource.CRASH_REPORT`; needs routing, a card and "Delete my data" coverage |
-| Watch | Ask the watch to resend its queue when it connects again (`{"type": "resend"}`) | part | - | 22 | Android 0.9.94 (`ConnectIqWatchEventSource.requestResend`); the iOS watch link needs the same on its device-status callback |
-| Watch | Heart rate sensor section from the watch's `HrStrapInfo` / `HrStrapName` / `HrStrapBleName` (shared `WatchHrStrapInfo`: state, check time, strap name, Bluetooth name, model name, ANT+ ID, serial, battery); no "HR Chest Strap" switch | part | - | 22 | Android 0.9.95 (`WatchSettingsSection.HrStrapDetails`); parsing is shared, the iOS watch settings page needs the read-only section |
+| Watch | Settings sync strip (sent / received, failure reason) and "1 update waiting" line | yes | build 19 |  | Shared `WatchSyncView` in `WatchSettingsView.sync` (texts in `TableTexts`); iOS calls `watchConnected()` on connect, which keeps the name |
+| Watch | Nickname to every watch (`Nickname` key, Companion wins) | yes | build 19 |  | `CompanionCore` passes the nickname to `WatchSettingsSync`; `setNickname()` pushes it |
+| Watch | Recording on the watch card (`activityStart` / `activityStop`, settings `at`) | yes | build 19 |  | `CompanionCore.watchMessage()` routes `activityStart` / `activityStop`, `liveActivities()`; coordinates shown until the build 21 geocoder |
+| Watch | Watch crash reports (`crashReport`), sent as feedback on Send | yes | build 19 |  | `crashReports()`, `sendCrashReport()`, `dismissCrashReport()`; "Delete my data" clears them |
+| Watch | Ask the watch to resend its queue when it connects again (`{"type": "resend"}`) | part | build 19 |  | `watchConnected()` returns the app id (once a minute per watch), `resendRequested()` logs it |
+| Watch | Heart rate sensor section from the watch's `HrStrapInfo` / `HrStrapName` / `HrStrapBleName` (shared `WatchHrStrapInfo`: state, check time, strap name, Bluetooth name, model name, ANT+ ID, serial, battery); no "HR Chest Strap" switch | part | build 19 |  | `WatchSettingsView.hrStrap` built in `CompanionCore` as Android's `HrStrapDetails` |
 | Watch | Language offer watch <-> app | part | - | 21 | |
 | Watch | Recording Boost bursts (reassembly, CSV files, list) | part | - | 21 | File export: Files app |
 | Activities | Local database, list with sync badges, detail | yes | MVP | | Android 0.9.91: the detail header repeats the list tile with the name, the top bar says "Activity" |
@@ -31,7 +31,7 @@ iPhone; *build 19* = built, waiting for the next TestFlight build; *-* = missing
 | Activities | Open items first, oldest on top; "To review" / "Done" headings; green frame for one just finished | part | - | 22 | `ReviewState.openItemsFirst` shared; the list UI and the just-finished frame per platform (Android 0.9.93) |
 | Activities | Detail buttons: "Save & send" (automated) / "Save" + "Send now" (manual), saving first; "Create on Strava" only without a Strava link; diary without Strava; in-sync + review as one home box | part | - | 22 | Android 0.9.94, UI per platform |
 | Activities | Edit, review window | yes | build 18 | | |
-| Activities | Interaction mode (interactive / automatic) setting | yes | - | 20 | Store shared; iOS has no switch yet, uses the default |
+| Activities | Interaction mode (interactive / automatic) setting | yes | build 19 |  | `reviewNewActivities()` / `setReviewNewActivities()`, Settings › App |
 | Activities | Add by hand, delete with tombstone | yes | build 17 | | Strava link/create for manual: build 18 |
 | Activities | Place names (reverse geocoding) | part | - | 21 | iOS: CLGeocoder behind `PlaceNameLookup` |
 | Activities | New-activity notification | part | - | 20 | With the background work |
@@ -52,8 +52,8 @@ iPhone; *build 19* = built, waiting for the next TestFlight build; *-* = missing
 | Logs | Diary, app, transfer log, activity history | yes | build 17 | | Texts tidied (`tidyLogText`) in `CompanionCore` since 0.9.92, as on Android |
 | Logs | Strava API usage screen | part | - | 21 | |
 | App | Feedback | yes | build 17 | | |
-| App | Feedback: pick the watch (from activities and settings reports), "Include my nickname" | part | - | 20 | Shared `mergeKnownWatches()`; iOS sends only `latestWatchName()` |
-| App | Nickname setting (Settings › App), used in notifications | part | - | 20 | Shared `AthleteProfileStore.clean()`; "Delete my data" must clear it (`CompanionCore.deleteAllData`) |
+| App | Feedback: pick the watch (from activities and settings reports), "Include my nickname" | part | build 19 |  | `feedbackWatches()` (shared `mergeKnownWatches`), nickname as `details.nickname` |
+| App | Nickname setting (Settings › App), used in notifications | part | build 19 |  | Settings › App; "Delete my data" clears it; not yet in notifications (iOS has none yet) |
 | App | Languages en, de, fr, it, rm, gsw, nb, fi, sv | part | part | 22 | Generated from Android strings (nb, fi, sv since 0.9.93: generator, `CFBundleLocalizations`, language pick); some iOS labels still English |
 | App | Onboarding guide, about, changelog, settings search | no | - | 22 | Android 0.9.90: the guide starts with "How shall I call you?", then Strava, then the diary |
 | App | Theme (light / dark / system) | no | system | | iOS follows the system |
@@ -61,13 +61,11 @@ iPhone; *build 19* = built, waiting for the next TestFlight build; *-* = missing
 
 ## Builds until parity
 
-- **19:** data fields, interval plans, strength routines. The code is on `main`, but no
-  TestFlight run since build 18 (2026-10-11), so its Swift has not been compiled against the
-  0.9.92 shared module yet; the next run checks that (`CompanionCore` only gained API since).
-- **20:** interaction mode switch, Strava duplicate merger, strength description,
-  background sync with notifications; from the 0.9.90 release: nickname (setting, watch
-  sync, notifications), the watch messages `activityStart` / `activityStop` / `crashReport`
-  with their cards, the settings sync strip, and the feedback watch choice.
+- **19:** data fields, interval plans, strength routines; from build 20 moved forward
+  (2026-10-19): the settings sync line, nickname, recording card, crash reports, resend on
+  reconnect, heart rate sensor section, the review switch and the feedback watch choice.
+- **20:** Strava duplicate merger, strength description, background sync with
+  notifications (with the nickname in them).
 - **21:** place names, Recording Boost, language offer, Strava API usage.
 - **22:** all iOS labels from the text table, onboarding, about, changelog; then the
   release steps (roadmap step 6).

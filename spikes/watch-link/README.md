@@ -74,9 +74,9 @@ Strava and retitled there, as on Android.
     and write once. Switch back to OneDrive with "Make active" afterwards.
 29. **Choosing a file:** paste a folder without a TTB subfolder: one workbook asks
     "Use this workbook?", several show a list to pick from.
-## Build 19 additions (data fields, interval plans, strength routines)
+## Build 19 additions (data fields, plans and routines, and the 0.9.90-0.9.95 watch features)
 
-31. Needs the watch build with data field sync (sideload, 0.9.87-dev). Open Nordic Sports on
+31. Needs a watch app with data field sync (0.9.90 or later, full version). Open Nordic Sports on
     the watch once, then Settings › Watch settings › the watch › "Data fields": Rollski, XC
     Skiing, Running (two screens each) and Training (one screen) show the watch's fields.
     Change one field › "waiting" until the watch confirms; on the watch the technique menu ›
@@ -88,6 +88,29 @@ Strava and retitled there, as on Android.
     after the watch app has been open; on the watch the plan shows the change. The same
     for "Strength routines": add an exercise, change sets, weight, remove one, Save. Clear
     a slot once and check it is empty on the watch.
+33. **Settings sync line:** Settings › Watch settings › the watch: under "Ask the watch again" a
+    line shows the last message ("Sent to the watch · 14:05", "Received from the watch", or
+    "Not sent" with the reason). Change a setting with the watch app closed: "Sent", then
+    "Received … applied your change" once you open the app on the watch.
+34. **Heart rate sensor:** with a chest strap paired to the watch, start an activity on the
+    watch (GPS wait screen) and go back: the watch's page shows "Heart rate sensor" with the
+    strap's status, check time and details (name, model, battery for an ANT+ strap).
+35. **Recording on the watch:** start a recording on the watch, then open Activities on the
+    iPhone: a card "Recording on <watch>" with the activity, start time and running time.
+    Save it on the watch: the card goes and the activity arrives. Start one and discard it:
+    "Discarded on <watch>" for 15 minutes.
+36. **Nickname:** Settings › App › "Your nickname": type a name, press Return. A watch with
+    0.9.90 or later gets it with the next settings exchange and greets you after saving. The
+    feedback form offers "Include my nickname".
+37. **Review new activities:** Settings › App: switch it off. The next watch activity needs
+    no review and goes to the diary at the next sync; switch it on again afterwards.
+38. **Feedback watch:** Settings › My Data › Send feedback with "Watch" or "Both": "Which
+    watch?" lists the watches seen in activities and settings reports.
+39. **Resend on reconnect:** with an activity still queued on the watch (Bluetooth off on
+    the phone while saving), turn Bluetooth on: within seconds the transfer log shows
+    "connected again: asked to send what it still has queued", and the activity arrives.
+40. **Crash card** (only if the watch app ever closes unexpectedly): Activities shows "Your
+    watch app closed unexpectedly"; Review lists exactly what would be sent; Send or Not now.
 
 30. **Delete my data (last, it empties the app):** export first if you want the data,
     then Settings › My Data › Delete my data › confirm. Activities and logs are empty

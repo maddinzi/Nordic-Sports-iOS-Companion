@@ -35,24 +35,42 @@ struct ActivitiesScreen: View {
     var body: some View {
         NavigationStack {
             Group {
-                if companion.activities.isEmpty {
+                if companion.activities.isEmpty && companion.liveActivities.isEmpty && companion.crashReports.isEmpty {
                     ContentUnavailableView {
                         Label(L10n.get("activity_list_empty_no_activities"), systemImage: "applewatch")
                     } description: {
                         Text(L10n.get("activity_list_empty_hint"))
                     }
                 } else {
-                    List(companion.activities, id: \.id) { item in
-                        NavigationLink {
-                            ActivityDetailScreen(item: item)
-                        } label: {
-                            ActivityRow(item: item)
+                    List {
+                        if !companion.liveActivities.isEmpty || !companion.crashReports.isEmpty {
+                            Section {
+                                ForEach(companion.liveActivities, id: \.deviceId) { live in
+                                    WatchLiveCard(live: live)
+                                }
+                                if let report = companion.crashReports.first {
+                                    WatchCrashCard(report: report)
+                                }
+                            }
+                        }
+                        Section {
+                            ForEach(companion.activities, id: \.id) { item in
+                                NavigationLink {
+                                    ActivityDetailScreen(item: item)
+                                } label: {
+                                    ActivityRow(item: item)
+                                }
+                            }
                         }
                     }
                 }
             }
             .navigationTitle("Activities")
-            .refreshable { await companion.sync() }
+            .onAppear { companion.refreshWatchCards() }
+            .refreshable {
+                companion.refreshWatchCards()
+                await companion.sync()
+            }
             .sheet(isPresented: $adding) { AddActivitySheet().environmentObject(companion) }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -73,6 +91,120 @@ struct ActivitiesScreen: View {
                             Image(systemName: "arrow.triangle.2.circlepath")
                         }
                         .accessibilityLabel(L10n.get("activity_list_sync_now_content_description"))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A recording on a watch (its `activityStart`), as Android's card: which watch, activity
+/// and training type, since when and how long, and the start position.
+struct WatchLiveCard: View {
+    let live: LiveActivityView
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            VStack(alignment: .leading, spacing: 4) {
+                Text(String(format: L10n.get(live.discarded ? "watch_live_discarded_title" : "watch_live_title"), live.watchName))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(live.title).font(.headline)
+                let started = Date(timeIntervalSince1970: TimeInterval(live.startEpochSec)).formatted(date: .omitted, time: .shortened)
+                if live.discarded {
+                    Text(String(format: L10n.get("watch_live_discarded_detail"), started)).font(.subheadline)
+                } else {
+                    let running = max(0, Int(context.date.timeIntervalSince1970) - Int(live.startEpochSec))
+                    Text(String(format: L10n.get("watch_live_since"), started, Format.duration(Int32(running)))).font(.subheadline)
+                }
+                if live.hasPosition {
+                    Text(String(format: "%.4f, %.4f", live.lat, live.lon)).font(.footnote).foregroundStyle(.secondary)
+                }
+                if !live.discarded {
+                    Text(L10n.get("watch_live_hint")).font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+        .listRowBackground(live.discarded ? Color.gray.opacity(0.15) : Color.accentColor.opacity(0.15))
+    }
+}
+
+/// "Your watch app closed unexpectedly", with Dismiss and Review; Review shows exactly what
+/// would be sent and sends only on Send (asked each time).
+struct WatchCrashCard: View {
+    @EnvironmentObject var companion: Companion
+    let report: CrashReportView
+    @State private var reviewing = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L10n.get("watch_crash_title")).font(.headline)
+            let at = Date(timeIntervalSince1970: TimeInterval(report.lastSignEpochSec)).formatted(date: .omitted, time: .shortened)
+            Text(report.rebooted
+                 ? String(format: L10n.get("watch_crash_detail_rebooted"), report.watchName, at)
+                 : String(format: L10n.get("watch_crash_detail"), report.watchName, at, report.screen))
+                .font(.footnote)
+            HStack {
+                Spacer()
+                Button(L10n.get("watch_crash_dismiss")) { companion.dismissCrashReport(report.id) }
+                    .buttonStyle(.borderless)
+                Button(L10n.get("watch_crash_review")) { reviewing = true }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(.vertical, 4)
+        .listRowBackground(Color.red.opacity(0.12))
+        .sheet(isPresented: $reviewing) {
+            WatchCrashSheet(report: report).environmentObject(companion)
+        }
+    }
+}
+
+struct WatchCrashSheet: View {
+    @EnvironmentObject var companion: Companion
+    @Environment(\.dismiss) private var dismiss
+    let report: CrashReportView
+    @State private var note = ""
+    @State private var sending = false
+    @State private var error: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section { Text(L10n.get("watch_crash_dialog_body")).font(.footnote) }
+                Section {
+                    Text(report.reportText).font(.system(.footnote, design: .monospaced)).textSelection(.enabled)
+                }
+                Section(L10n.get("watch_crash_note")) {
+                    TextEditor(text: $note).frame(minHeight: 80)
+                }
+                if let error {
+                    Section { Text(error).foregroundStyle(.red) }
+                }
+            }
+            .navigationTitle(L10n.get("watch_crash_dialog_title"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L10n.get("watch_crash_not_now")) { dismiss() }.disabled(sending)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if sending {
+                        ProgressView()
+                    } else {
+                        Button(L10n.get("feedback_send")) {
+                            Task {
+                                sending = true
+                                error = nil
+                                switch await companion.sendCrashReport(report.id, note: String(note.prefix(1000))) {
+                                case "sent": dismiss()
+                                case "tooMany": error = L10n.get("feedback_error_too_many")
+                                default: error = L10n.get("feedback_error_failed")
+                                }
+                                sending = false
+                            }
+                        }
                     }
                 }
             }
@@ -239,6 +371,7 @@ struct SettingsScreen: View {
     @ObservedObject var watch = WatchLinkSpike.shared
     @State private var exportURL: URL?
     @State private var confirmingDeleteAll = false
+    @State private var nicknameDraft = ""
 
     var body: some View {
         NavigationStack {
@@ -250,6 +383,26 @@ struct SettingsScreen: View {
                     Button("Choose watch in Garmin Connect") { watch.chooseWatch() }
                     NavigationLink("Watch settings") { WatchSettingsScreen() }
                 }
+                Section {
+                    TextField(L10n.get("nickname_label"), text: $nicknameDraft)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                        .onSubmit { companion.setNickname(nicknameDraft); nicknameDraft = companion.nickname }
+                    Text(L10n.get("nickname_body")).font(.footnote).foregroundStyle(.secondary)
+                    Toggle(L10n.get("settings_review_new_activities"), isOn: Binding(
+                        get: { companion.reviewNewActivities },
+                        set: { companion.setReviewNewActivities($0) }
+                    ))
+                    Text(L10n.get(companion.reviewNewActivities
+                                  ? "interaction_option_interactive_description"
+                                  : "interaction_option_passive_description"))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text(L10n.get("settings_group_app"))
+                }
+                .onAppear { nicknameDraft = companion.nickname }
+                .onDisappear { if nicknameDraft != companion.nickname { companion.setNickname(nicknameDraft) } }
                 Section("Strava") {
                     if !companion.stravaConfigured {
                         Text("This build has no Strava app settings.").foregroundStyle(.secondary)
