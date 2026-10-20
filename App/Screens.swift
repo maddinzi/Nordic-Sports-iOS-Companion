@@ -10,6 +10,7 @@ struct RootView: View {
     /// The first-start guide is shown once; an app that is already set up skips it.
     @AppStorage("onboardingDone") private var onboardingDone = false
     @State private var showOnboarding = false
+    @State private var tab = 0
 
     var body: some View {
         if companion.outdated {
@@ -20,13 +21,20 @@ struct RootView: View {
     }
 
     private var mainTabs: some View {
-        TabView {
+        TabView(selection: $tab) {
             ActivitiesScreen()
                 .tabItem { Label(L10n.get("ios_tab_activities"), systemImage: "list.bullet") }
+                .tag(0)
             SettingsScreen()
                 .tabItem { Label(L10n.get("status_title"), systemImage: "gearshape") }
+                .tag(1)
             WatchLinkSpikeView()
                 .tabItem { Label(L10n.get("ios_tab_diagnostics"), systemImage: "stethoscope") }
+                .tag(2)
+        }
+        // A tapped notification shows its activity on the first tab.
+        .onChange(of: companion.openActivityId) { _, id in
+            if id != nil { tab = 0 }
         }
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingScreen { showOnboarding = false }
@@ -66,9 +74,29 @@ struct RootView: View {
 
 // MARK: - Activities
 
+/// A request to show one activity, from a tapped notification.
+struct ActivityRoute: Hashable {
+    let id: String
+}
+
+/// The detail of the activity with [id]; a spinner until the list has loaded it.
+struct ActivityRouteView: View {
+    @EnvironmentObject var companion: Companion
+    let id: String
+
+    var body: some View {
+        if let item = companion.activities.first(where: { $0.id == id }) {
+            ActivityDetailScreen(item: item)
+        } else {
+            ProgressView()
+        }
+    }
+}
+
 struct ActivitiesScreen: View {
     @EnvironmentObject var companion: Companion
     @State private var adding = false
+    @State private var route: ActivityRoute?
 
     var body: some View {
         NavigationStack {
@@ -129,6 +157,14 @@ struct ActivitiesScreen: View {
                 }
             }
             .navigationTitle(L10n.get("ios_tab_activities"))
+            .navigationDestination(item: $route) { route in
+                ActivityRouteView(id: route.id)
+            }
+            .onChange(of: companion.openActivityId, initial: true) { _, id in
+                guard let id else { return }
+                route = ActivityRoute(id: id)
+                companion.openActivityId = nil
+            }
             .onAppear { companion.refreshWatchCards() }
             .refreshable {
                 companion.refreshWatchCards()

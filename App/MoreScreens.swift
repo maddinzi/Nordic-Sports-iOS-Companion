@@ -353,16 +353,19 @@ struct ActivityLogScreen: View {
     let activityId: String
     @State private var lines: [LogLine] = []
     @State private var loaded = false
+    @State private var failure: String?
 
     init(activityId: String) {
         self.activityId = activityId
     }
 
     var body: some View {
-        LogList(lines: lines, loaded: loaded, empty: L10n.get("activity_change_log_empty"))
+        LogList(lines: lines, loaded: loaded, empty: L10n.get("activity_change_log_empty"), failure: failure)
             .navigationTitle(L10n.get("activity_change_log_title"))
             .task {
-                lines = await companion.activityLog(activityId)
+                do { lines = try await companion.activityLog(activityId) } catch {
+                    if !error.isCancellation { failure = error.localizedDescription }
+                }
                 loaded = true
             }
     }
@@ -373,6 +376,7 @@ struct StravaApiUsageScreen: View {
     @EnvironmentObject var companion: Companion
     @State private var calls: [StravaApiCallView] = []
     @State private var loaded = false
+    @State private var failure: String?
 
     private struct Day: Identifiable {
         let day: Date
@@ -390,7 +394,8 @@ struct StravaApiUsageScreen: View {
 
     var body: some View {
         List {
-            if loaded && calls.isEmpty {
+            if let failure { LoadFailedRow(reason: failure) }
+            if loaded && calls.isEmpty && failure == nil {
                 Text(L10n.get("strava_api_usage_empty")).foregroundStyle(.secondary)
             }
             ForEach(days) { group in
@@ -435,8 +440,14 @@ struct StravaApiUsageScreen: View {
     }
 
     private func load() async {
-        do { calls = try await companion.core.stravaApiCalls(limit: 500) } catch {
-            if !error.isCancellation { WatchLinkSpike.shared.add("Strava API usage not loaded: \(error.localizedDescription)") }
+        do {
+            calls = try await companion.core.stravaApiCalls(limit: 500)
+            failure = nil
+        } catch {
+            if !error.isCancellation {
+                WatchLinkSpike.shared.add("Strava API usage not loaded: \(error.localizedDescription)")
+                failure = error.localizedDescription
+            }
             calls = []
         }
         loaded = true
@@ -604,6 +615,7 @@ struct RecordingBoostScreen: View {
     @EnvironmentObject var companion: Companion
     @State private var bursts: [RecordingBoostView] = []
     @State private var loaded = false
+    @State private var failure: String?
 
     var body: some View {
         List {
@@ -612,7 +624,8 @@ struct RecordingBoostScreen: View {
                             "On My iPhone \u{203A} Nordic Sports \u{203A} \(Companion.boostFolder)"))
                     .font(.system(.footnote, design: .monospaced))
             }
-            if loaded && bursts.isEmpty {
+            if let failure { LoadFailedRow(reason: failure) }
+            if loaded && bursts.isEmpty && failure == nil {
                 Text(L10n.get("recording_boost_list_empty")).foregroundStyle(.secondary)
             }
             ForEach(bursts, id: \.id) { burst in
@@ -653,11 +666,28 @@ struct RecordingBoostScreen: View {
     }
 
     private func load() async {
-        do { bursts = try await companion.core.recordingBoosts() } catch {
-            if !error.isCancellation { WatchLinkSpike.shared.add("Recording Boost list not loaded: \(error.localizedDescription)") }
+        do {
+            bursts = try await companion.core.recordingBoosts()
+            failure = nil
+        } catch {
+            if !error.isCancellation {
+                WatchLinkSpike.shared.add("Recording Boost list not loaded: \(error.localizedDescription)")
+                failure = error.localizedDescription
+            }
             bursts = []
         }
         loaded = true
+    }
+}
+
+/// A list that could not be loaded says so, instead of looking empty.
+struct LoadFailedRow: View {
+    let reason: String
+
+    var body: some View {
+        Text(String(format: L10n.get("ios_list_load_failed"), reason))
+            .font(.footnote)
+            .foregroundStyle(.red)
     }
 }
 
@@ -665,10 +695,12 @@ private struct LogList: View {
     let lines: [LogLine]
     let loaded: Bool
     var empty = "Nothing logged yet."
+    var failure: String?
 
     var body: some View {
         List {
-            if loaded && lines.isEmpty {
+            if let failure { LoadFailedRow(reason: failure) }
+            if loaded && lines.isEmpty && failure == nil {
                 Text(empty).foregroundStyle(.secondary)
             }
             ForEach(Array(lines.enumerated()), id: \.offset) { _, line in

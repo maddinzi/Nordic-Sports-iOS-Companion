@@ -40,6 +40,9 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var reviewNewActivities = true
     @Published private(set) var syncAutomatically = true
     /// The alert shown now; further messages wait in `queuedMessages` (use `post`).
+    /// The activity a tapped notification asks to show; the Activities tab opens it and clears this.
+    @Published var openActivityId: String?
+
     @Published var message: String? {
         didSet { if message == nil, !queuedMessages.isEmpty { showNextMessageSoon() } }
     }
@@ -785,11 +788,9 @@ final class Companion: NSObject, ObservableObject {
         }
     }
 
-    func activityLog(_ activityId: String) async -> [LogLine] {
-        do { return try await core.activityLog(activityId: activityId) } catch {
-            WatchLinkSpike.shared.add("activity history not loaded: \(error.localizedDescription)")
-            return []
-        }
+    /// Throws when the history cannot be read; the screen says so instead of showing an empty list.
+    func activityLog(_ activityId: String) async throws -> [LogLine] {
+        try await core.activityLog(activityId: activityId)
     }
 
     /// "Export my data": the JSON written to a temporary file, for the share sheet.

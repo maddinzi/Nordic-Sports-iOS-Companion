@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 /// The first iOS Companion (roadmap step 4): watch activities stored by the shared Kotlin
 /// core, linked to Strava and retitled there (App/). The feasibility spikes stay reachable
@@ -11,6 +12,8 @@ struct NordicSportsCompanionApp: App {
     @StateObject private var companion = Companion.shared
 
     init() {
+        // Before launch finishes, so a tap on a notification that started the app is delivered.
+        UNUserNotificationCenter.current().delegate = NotificationRouter.shared
         WatchLinkSpike.shared.start()
         // iOS requires the background task handlers before launch finishes.
         BackgroundSpike.shared.register()
