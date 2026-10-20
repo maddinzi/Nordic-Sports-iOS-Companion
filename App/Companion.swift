@@ -800,6 +800,31 @@ final class Companion: NSObject, ObservableObject {
     func changeWatchSetting(deviceId: Int64, key: String, value: Int32) {
         core.changeWatchSetting(deviceId: deviceId, key: key, value: value)
         refreshWatchSettings()
+        // The language exists on both devices: changing the watch's offers the same for the app.
+        if key == "Language" {
+            let tag = core.languageTagOfWatchValue(value: value)
+            if !tag.isEmpty, tag != AppLanguage.current { companionLanguageOffer = tag }
+        }
+    }
+
+    /// The app's language tag offered after the watch's language changed ("Companion language too?"), or nil.
+    @Published var companionLanguageOffer: String?
+
+    /// The language's own name ("Rumantsch").
+    func languageNativeName(_ tag: String) -> String { core.languageNativeName(languageTag: tag) }
+
+    /// The watches that could take the app language [tag] and do not have it yet.
+    func watchesForLanguage(_ tag: String) -> [WatchLanguageTarget] { core.watchesForLanguage(languageTag: tag) }
+
+    func setWatchLanguage(_ deviceId: Int64, _ tag: String) {
+        core.setWatchLanguage(deviceId: deviceId, languageTag: tag)
+        refreshWatchSettings()
+    }
+
+    /// Takes [tag] as the app language; it applies when the app is opened again.
+    func chooseAppLanguage(_ tag: String) {
+        AppLanguage.chosen = tag
+        post(L10n.get("ios_language_restart"))
     }
 
     func askWatchAgain(deviceId: Int64) {

@@ -50,6 +50,19 @@ struct RootView: View {
         ) {
             Button(L10n.get("common_ok"), role: .cancel) {}
         }
+        // "Companion language too?" after the watch's language changed.
+        .background {
+            Color.clear.alert(
+                L10n.get("language_offer_companion_title"),
+                isPresented: Binding(get: { companion.companionLanguageOffer != nil }, set: { if !$0 { companion.companionLanguageOffer = nil } }),
+                presenting: companion.companionLanguageOffer
+            ) { tag in
+                Button(L10n.get("language_offer_both")) { companion.chooseAppLanguage(tag) }
+                Button(L10n.get("language_offer_only_watch"), role: .cancel) {}
+            } message: { tag in
+                Text(String(format: L10n.get("language_offer_companion_body"), companion.languageNativeName(tag)))
+            }
+        }
         // A second alert needs its own view: the Strava deletion and withdrawal confirmations.
         .background {
             Color.clear.alert(
@@ -706,6 +719,8 @@ struct SettingsAppPage: View {
     @EnvironmentObject var companion: Companion
     @State private var nicknameDraft = ""
     @State private var languageChoice = AppLanguage.chosen
+    /// A language picked while a watch could switch too: waits for "Both" / "Only the Companion".
+    @State private var pendingLanguage: String?
 
     var body: some View {
         Form {
@@ -725,7 +740,37 @@ struct SettingsAppPage: View {
                 } header: {
                     Text(L10n.get("language_section_title"))
                 }
-                .onChange(of: languageChoice) { _, code in AppLanguage.chosen = code }
+                .onChange(of: languageChoice) { _, code in
+                    guard code != AppLanguage.chosen else { return }
+                    let effective = code.isEmpty ? AppLanguage.system : code
+                    if companion.watchesForLanguage(effective).isEmpty {
+                        AppLanguage.chosen = code
+                    } else {
+                        pendingLanguage = code
+                    }
+                }
+                .alert(
+                    L10n.get("language_offer_watch_title"),
+                    isPresented: Binding(get: { pendingLanguage != nil }, set: { if !$0 { cancelLanguage() } }),
+                    presenting: pendingLanguage
+                ) { code in
+                    Button(L10n.get("language_offer_both")) {
+                        let effective = code.isEmpty ? AppLanguage.system : code
+                        for watch in companion.watchesForLanguage(effective) { companion.setWatchLanguage(watch.deviceId, effective) }
+                        AppLanguage.chosen = code
+                        pendingLanguage = nil
+                    }
+                    Button(L10n.get("language_offer_only_companion")) {
+                        AppLanguage.chosen = code
+                        pendingLanguage = nil
+                    }
+                    Button(L10n.get("common_cancel"), role: .cancel) {}
+                } message: { code in
+                    let effective = code.isEmpty ? AppLanguage.system : code
+                    Text(String(format: L10n.get("language_offer_watch_body"),
+                                companion.watchesForLanguage(effective).map { $0.watchName }.joined(separator: ", "),
+                                companion.languageNativeName(effective)))
+                }
                 Section {
                     TextField(L10n.get("nickname_label"), text: $nicknameDraft)
                         .textInputAutocapitalization(.words)
@@ -753,6 +798,12 @@ struct SettingsAppPage: View {
                 .onDisappear { if nicknameDraft != companion.nickname { companion.setNickname(nicknameDraft) } }
         }
         .navigationTitle(L10n.get("settings_group_app"))
+    }
+
+    /// The offer was closed without a choice: the picker goes back to the language in use.
+    private func cancelLanguage() {
+        pendingLanguage = nil
+        languageChoice = AppLanguage.chosen
     }
 }
 
