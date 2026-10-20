@@ -211,7 +211,7 @@ final class Companion: NSObject, ObservableObject {
     /// Asks the server for the oldest supported build (kept when it cannot be reached).
     private func checkOutdated() async {
         let build = Int32(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "") ?? Int32.max
-        outdated = (try? await core.buildOutdated(build: build)) ?? outdated
+        if let answer = try? await core.buildOutdated(build: build) { outdated = answer.boolValue }
     }
 
     /// Like Android's onResume: a quiet sync whenever the app comes to the foreground
