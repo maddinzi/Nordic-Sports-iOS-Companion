@@ -1,4 +1,5 @@
 import AuthenticationServices
+import CoreLocation
 import Foundation
 import NordicSportsShared
 import SwiftUI
@@ -31,6 +32,7 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var liveActivities: [LiveActivityView] = []
     @Published private(set) var crashReports: [CrashReportView] = []
     @Published private(set) var nickname = ""
+    @Published private(set) var placeNamesEnabled = true
     @Published private(set) var reviewNewActivities = true
     @Published private(set) var syncAutomatically = true
     @Published var message: String?
@@ -66,6 +68,7 @@ final class Companion: NSObject, ObservableObject {
         refreshWatchSettings()
         refreshWatchCards()
         nickname = core.nickname()
+        placeNamesEnabled = core.placeNamesEnabled()
         reviewNewActivities = core.reviewNewActivities()
         syncAutomatically = core.syncAutomatically()
     }
@@ -79,6 +82,51 @@ final class Companion: NSObject, ObservableObject {
             message = error.localizedDescription
         }
         showStravaWithdrawalNotice()
+        lookupPlaceNames()
+    }
+
+    // MARK: - Place names
+
+    private var lookingUpPlaces = false
+    private let geocoder = CLGeocoder()
+    /// Activities already asked about in this app run, so one without an address is not asked again.
+    private var askedPlaceIds = Set<String>()
+
+    /// As Android's LocationDetectionWorker: names the newest activities that have start
+    /// coordinates but no place yet, with Apple's geocoder (the shared core lists them and stores
+    /// the answer; nothing runs while the switch is off). One at a time, because the geocoder
+    /// throttles; the first failure ends the pass, the next refresh tries again.
+    private func lookupPlaceNames() {
+        guard !lookingUpPlaces, core.placeNamesEnabled() else { return }
+        lookingUpPlaces = true
+        Task {
+            defer { lookingUpPlaces = false }
+            guard let candidates = try? await core.placeNameCandidates(limit: 10), !candidates.isEmpty else { return }
+            var stored = false
+            for candidate in candidates where !askedPlaceIds.contains(candidate.id) {
+                let location = CLLocation(latitude: candidate.startLat, longitude: candidate.startLon)
+                guard let marks = try? await geocoder.reverseGeocodeLocation(location) else { break }
+                askedPlaceIds.insert(candidate.id)
+                guard let mark = marks.first else { continue }
+                guard let name = PlaceNameLookupKt.formatPlaceName(
+                    locality: mark.locality, subAdminArea: mark.subAdministrativeArea,
+                    adminArea: mark.administrativeArea, country: mark.country
+                ) else { continue }
+                try? await core.storePlaceName(activityId: candidate.id, name: name)
+                stored = true
+            }
+            if stored { await refreshAfterPlaceNames() }
+        }
+    }
+
+    private func refreshAfterPlaceNames() async {
+        if let list = try? await core.activities(limit: 300) { activities = list }
+    }
+
+    func setPlaceNamesEnabled(_ on: Bool) {
+        core.setPlaceNamesEnabled(on: on)
+        placeNamesEnabled = core.placeNamesEnabled()
+        if on { lookupPlaceNames() }
     }
 
     /// Strava access withdrawn on strava.com or by Strava, noticed by the shared code at a token

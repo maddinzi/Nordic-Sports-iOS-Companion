@@ -35,7 +35,7 @@ Build 20 also carries every build 19 row (build 19 was never tested on its own).
 | Activities | Edit, review window | yes | build 18 | | |
 | Activities | Interaction mode (interactive / automatic) setting | yes | build 19 |  | `reviewNewActivities()` / `setReviewNewActivities()`, Settings › App |
 | Activities | Add by hand, delete with tombstone | yes | build 17 | | Strava link/create for manual: build 18 |
-| Activities | Place names (reverse geocoding) | part | - | 21 | iOS: CLGeocoder behind `PlaceNameLookup` |
+| Activities | Place names (reverse geocoding), "Look up place names" switch (Settings › App) | part | build 22 (untested) | | Shared `CompanionCore.placeNameCandidates` / `storePlaceName` / `placeNamesEnabled`; iOS geocodes with `CLGeocoder` (newest 10 without a place, one pass per refresh, each asked once per app run) and `formatPlaceName`. Foreground only, no background job yet |
 | Activities | New-activity notification (nickname, review or not) | yes | build 20 | | Texts from `WatchMessageResult` (shared); iOS shows it while the app is not on screen; a tap opens the app, not yet the activity |
 | Strava | Connect / disconnect, link, title and sport type | yes | MVP | | Universal Link callback |
 | Strava | Backfill, webhook events, self-echo | yes | MVP | | Pulled on app open and Sync now only |
@@ -58,7 +58,7 @@ Build 20 also carries every build 19 row (build 19 was never tested on its own).
 | Data | Export my data (JSON), delete my data | yes | build 17 / 18 | | |
 | Data | Activity JSON files, folder choice | no | - | later | Optional on iOS |
 | Logs | Diary, app, transfer log, activity history | yes | build 17 | | Texts tidied (`tidyLogText`) in `CompanionCore` since 0.9.92, as on Android |
-| Logs | Strava API usage screen | part | - | 21 | |
+| Logs | Strava API usage screen | yes | build 22 (untested) | | Shared core now records every Strava REST call (`recordCall` wired to `strava_api_calls`) and lists them (`stravaApiCalls`); iOS screen groups per day, Settings › Data logs |
 | App | Feedback | yes | build 17 | | |
 | App | Minimum supported version from the server (`api/client-config.php`): below it nothing syncs, only export and delete | part | - | 22 | Android 0.9.96 (`ClientStatus`, `ui/BuildExpiryScreen.kt`); shared `core/BuildExpiry` and `ClientConfigApi` are ready, iOS needs the check at app start and the blocking screen. Sideload expiry is Android-only: TestFlight builds expire after 90 days on their own |
 | App | Feedback: pick the watch (from activities and settings reports), "Include my nickname" | part | build 19 |  | `feedbackWatches()` (shared `mergeKnownWatches`), nickname as `details.nickname` |
@@ -79,7 +79,7 @@ Build 20 also carries every build 19 row (build 19 was never tested on its own).
   `kmp-shared-module`, so it also needs the database upgrade to version 30.
 - **21 (first part built 2026-10-20 with Companion `ios-build-21` = `kmp-shared-module` +
   `strava-brand-compliance`):** Strava branding and data retention (stages 1-5b). Still open for 21: place
-  names, Recording Boost, language offer, Strava API usage. Strava brand
+  Recording Boost and the language offer (place names and Strava API usage moved to 22). Strava brand
   compliance (decided 2026-10-20: "Powered by Strava"; Reconnect Strava also uses the official
   Connect with Strava button; no Strava logo on About).
 - **22:** all iOS labels from the text table, onboarding, about, changelog; then the

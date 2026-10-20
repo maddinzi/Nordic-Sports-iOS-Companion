@@ -423,6 +423,11 @@ struct SettingsScreen: View {
                                   : "interaction_option_passive_description"))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                    Toggle(L10n.get("status_place_names_switch"), isOn: Binding(
+                        get: { companion.placeNamesEnabled },
+                        set: { companion.setPlaceNamesEnabled($0) }
+                    ))
+                    Text(L10n.get("status_place_names_body")).font(.footnote).foregroundStyle(.secondary)
                     Picker(L10n.get("sync_mode_section_title"), selection: Binding(
                         get: { companion.syncAutomatically },
                         set: { companion.setSyncAutomatically($0) }
@@ -529,6 +534,7 @@ struct SettingsScreen: View {
                     NavigationLink("Watch transfer log") {
                         LogScreen(title: "Watch transfer log", kind: .transfer)
                     }
+                    NavigationLink(L10n.get("status_view_strava_api_usage")) { StravaApiUsageScreen() }
                 }
                 Section(L10n.get("status_my_data_heading")) {
                     if let exportURL {

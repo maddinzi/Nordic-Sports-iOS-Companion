@@ -362,6 +362,76 @@ struct ActivityLogScreen: View {
     }
 }
 
+/// Every Strava API call the app made (Android: Strava API usage), grouped per day.
+struct StravaApiUsageScreen: View {
+    @EnvironmentObject var companion: Companion
+    @State private var calls: [StravaApiCallView] = []
+    @State private var loaded = false
+
+    private struct Day: Identifiable {
+        let day: Date
+        let calls: [StravaApiCallView]
+        var id: Date { day }
+    }
+
+    private var days: [Day] {
+        let calendar = Calendar.current
+        let grouped = Dictionary(grouping: calls) {
+            calendar.startOfDay(for: Date(timeIntervalSince1970: TimeInterval($0.epochMillis) / 1000))
+        }
+        return grouped.keys.sorted(by: >).map { Day(day: $0, calls: grouped[$0] ?? []) }
+    }
+
+    var body: some View {
+        List {
+            if loaded && calls.isEmpty {
+                Text(L10n.get("strava_api_usage_empty")).foregroundStyle(.secondary)
+            }
+            ForEach(days) { group in
+                Section {
+                    ForEach(group.calls, id: \.id) { call in
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text("\(call.method) \(call.endpoint)").font(.system(.subheadline, design: .monospaced))
+                                Spacer()
+                                Text(Date(timeIntervalSince1970: TimeInterval(call.epochMillis) / 1000)
+                                    .formatted(date: .omitted, time: .standard))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(call.purpose).font(.footnote)
+                            HStack(spacing: 8) {
+                                Text(L10n.get(call.success ? "strava_api_call_success" : "strava_api_call_failed"))
+                                    .foregroundStyle(call.success ? Color.green : Color.red)
+                                if !call.httpStatus.isEmpty {
+                                    Text(String(format: L10n.get("strava_api_call_http_status"), call.httpStatus))
+                                }
+                            }
+                            .font(.caption)
+                            if !call.detail.isEmpty {
+                                Text(call.detail).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                } header: {
+                    let failed = group.calls.filter { !$0.success }.count
+                    let count = L10n.plural("strava_api_usage_call_count", group.calls.count)
+                    Text("\(group.day.formatted(date: .complete, time: .omitted)) \u{00B7} "
+                         + (failed > 0 ? String(format: L10n.get("strava_api_usage_with_failures"), count, failed) : count))
+                }
+            }
+        }
+        .navigationTitle(L10n.get("strava_api_usage_title"))
+        .task { await load() }
+        .refreshable { await load() }
+    }
+
+    private func load() async {
+        calls = (try? await companion.core.stravaApiCalls(limit: 500)) ?? []
+        loaded = true
+    }
+}
+
 private struct LogList: View {
     let lines: [LogLine]
     let loaded: Bool
