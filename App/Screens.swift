@@ -84,6 +84,9 @@ struct ActivitiesScreen: View {
                     }
                 } else {
                     List {
+                        if let status = companion.syncStatus {
+                            Section { SyncStatusCard(status: status) }
+                        }
                         if !companion.liveActivities.isEmpty || !companion.crashReports.isEmpty {
                             Section {
                                 ForEach(companion.liveActivities, id: \.deviceId) { live in
@@ -697,6 +700,58 @@ struct ViewOnStravaLink: View {
                     .bold()
                     .underline()
                     .foregroundStyle(Color(red: 252 / 255, green: 82 / 255, blue: 0))
+            }
+        }
+    }
+}
+
+/// Android's status banner: "All caught up" when nothing waits, else one line per open category.
+struct SyncStatusCard: View {
+    @EnvironmentObject var companion: Companion
+    let status: SyncStatusView
+
+    private var lines: [String] {
+        var parts: [String] = []
+        if status.pendingStrava > 0 { parts.append(String(format: L10n.get("sync_status_pending_strava"), status.pendingStrava)) }
+        if status.pendingDiary > 0 { parts.append(String(format: L10n.get("sync_status_pending_diary"), status.pendingDiary)) }
+        if status.pendingDocs > 0 { parts.append(String(format: L10n.get("sync_status_pending_docs"), status.pendingDocs)) }
+        if status.stravaConflicts > 0 { parts.append(String(format: L10n.get("sync_status_pending_strava_conflicts"), status.stravaConflicts)) }
+        if status.stravaUnavailable > 0 { parts.append(String(format: L10n.get("sync_status_strava_unavailable"), status.stravaUnavailable)) }
+        if !status.stravaIssue.isEmpty {
+            parts.append(status.stravaIssueStandalone
+                         ? status.stravaIssue
+                         : String(format: L10n.get("sync_status_strava_issue"), status.stravaIssue))
+        }
+        if !status.diaryIssue.isEmpty { parts.append(String(format: L10n.get("sync_status_diary_issue"), status.diaryIssue)) }
+        return parts
+    }
+
+    private var detail: String {
+        let checked = (companion.lastSync ?? Date()).formatted(date: .omitted, time: .shortened)
+        switch (status.stravaConnected, status.diaryConnected) {
+        case (true, true): return String(format: L10n.get("activity_list_up_to_date_detail_both"), checked)
+        case (true, false): return String(format: L10n.get("activity_list_up_to_date_detail_strava"), checked)
+        case (false, true): return String(format: L10n.get("activity_list_up_to_date_detail_diary"), checked)
+        case (false, false): return L10n.get("activity_list_up_to_date_detail_none")
+        }
+    }
+
+    var body: some View {
+        if status.total == 0 {
+            VStack(alignment: .leading, spacing: 4) {
+                Label(companion.nickname.isEmpty
+                      ? L10n.get("activity_list_up_to_date")
+                      : String(format: L10n.get("activity_list_up_to_date_named"), companion.nickname),
+                      systemImage: "checkmark.circle.fill")
+                    .font(.headline)
+                    .foregroundStyle(.green)
+                Text(detail).font(.footnote).foregroundStyle(.secondary)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(lines, id: \.self) { line in
+                    Label(line, systemImage: "exclamationmark.circle").font(.subheadline).foregroundStyle(.orange)
+                }
             }
         }
     }

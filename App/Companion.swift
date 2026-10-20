@@ -20,6 +20,8 @@ final class Companion: NSObject, ObservableObject {
 
     @Published private(set) var activities: [ActivityItem] = []
     @Published private(set) var syncing = false
+    /// What still waits in the last 7 days (shared `syncStatus`); drives the card on top of the list.
+    @Published private(set) var syncStatus: SyncStatusView?
     @Published private(set) var syncLines: [String] = []
     @Published private(set) var lastSync: Date?
     @Published private(set) var stravaConnected = false
@@ -80,6 +82,7 @@ final class Companion: NSObject, ObservableObject {
     func refresh() async {
         do {
             activities = try await core.activities(limit: 300)
+            syncStatus = try await core.syncStatus(nowEpochMillis: Int64(Date().timeIntervalSince1970 * 1000))
         } catch {
             message = error.localizedDescription
         }
