@@ -432,6 +432,122 @@ struct StravaApiUsageScreen: View {
     }
 }
 
+/// Android's first-start guide: three steps (nickname, online repository, diary), each skippable;
+/// shown once (also left out when the app is already set up).
+struct OnboardingScreen: View {
+    @EnvironmentObject var companion: Companion
+    let finish: () -> Void
+    @State private var step = 0
+    @State private var nickname = ""
+    @State private var diaryShown = false
+
+    private let steps = 3
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(String(format: L10n.get("onboarding_guide_step"), step + 1, steps))
+                    .font(.footnote).foregroundStyle(.secondary)
+                switch step {
+                case 0:
+                    Text(L10n.get("onboarding_guide_nickname_title")).font(.title2.bold())
+                    Text(L10n.get("onboarding_guide_nickname_body"))
+                    TextField("", text: $nickname)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: nickname) { _, value in nickname = String(value.prefix(20)) }
+                    Text(L10n.get("onboarding_guide_nickname_later")).font(.footnote).foregroundStyle(.secondary)
+                    Button(L10n.get("onboarding_guide_nickname_save")) {
+                        companion.setNickname(nickname)
+                        step += 1
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(nickname.trimmingCharacters(in: .whitespaces).isEmpty)
+                case 1:
+                    Text(L10n.get("onboarding_guide_strava_title")).font(.title2.bold())
+                    Text(L10n.get("onboarding_guide_strava_body"))
+                    Text(L10n.get("onboarding_guide_strava_how")).font(.footnote).foregroundStyle(.secondary)
+                    StravaConnectButton { companion.connectStrava() }
+                    Text(L10n.get("onboarding_guide_place_names_notice")).font(.footnote).foregroundStyle(.secondary)
+                default:
+                    Text(L10n.get("onboarding_guide_diary_title")).font(.title2.bold())
+                    Text(L10n.get("onboarding_guide_diary_body"))
+                    Text(L10n.get("onboarding_guide_diary_how")).font(.footnote).foregroundStyle(.secondary)
+                    Button(L10n.get("onboarding_guide_choose_diary")) { diaryShown = true }
+                        .buttonStyle(.borderedProminent)
+                }
+                Text(L10n.get("onboarding_guide_later")).font(.footnote).foregroundStyle(.secondary)
+                Spacer()
+                Button(L10n.get(step == steps - 1 ? "common_ok" : "onboarding_guide_not_now")) {
+                    if step == steps - 1 { finish() } else { step += 1 }
+                }
+            }
+            .padding()
+            .navigationDestination(isPresented: $diaryShown) { DiaryLocationsScreen() }
+        }
+    }
+}
+
+/// Android's About: version, what's new, help with the translations, privacy policy, imprint,
+/// the description and the trademark note.
+struct AboutScreen: View {
+    private static let site = "https://nordicsports.maddin.me"
+
+    var body: some View {
+        List {
+            Section {
+                Text("Nordic Sports Companion").font(.title3.bold())
+                Text(Format.appVersion).foregroundStyle(.secondary)
+            }
+            Section {
+                NavigationLink(L10n.get("about_view_changelog")) { ChangelogScreen() }
+                NavigationLink(L10n.get("about_help_translate")) { FeedbackScreen(startCategory: "wording") }
+                if let privacy = URL(string: Self.site + "/privacy.html") {
+                    Link(L10n.get("about_privacy_policy"), destination: privacy)
+                }
+                if let imprint = URL(string: Self.site + "/impressum.html") {
+                    Link(L10n.get("about_imprint"), destination: imprint)
+                }
+            }
+            Section {
+                Text(L10n.get("about_body"))
+                Text(L10n.get("about_trademark_disclaimer")).font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .navigationTitle(L10n.get("about_title"))
+    }
+}
+
+/// What changed, for the athlete: starts with the first iOS version (Android's older entries do
+/// not apply here). Each release adds its lines on top.
+struct ChangelogScreen: View {
+    private struct Entry: Identifiable {
+        let version: String
+        let date: String
+        let keys: [String]
+        var id: String { version }
+    }
+
+    private let entries = [
+        Entry(version: "0.9.96", date: "2026-10-20", keys: [
+            "changelog_0996_retention", "changelog_0996_deleted_on_strava", "changelog_0996_disconnect",
+            "changelog_0996_log", "changelog_0996_withdrawn", "changelog_0996_wording",
+        ]),
+    ]
+
+    var body: some View {
+        List {
+            ForEach(entries) { entry in
+                Section("\(entry.version) · \(entry.date)") {
+                    ForEach(entry.keys, id: \.self) { key in
+                        Text(L10n.get(key))
+                    }
+                }
+            }
+        }
+        .navigationTitle(L10n.get("changelog_title"))
+    }
+}
+
 /// Every Recording Boost burst received from the watch, newest capture first (Android: Recording
 /// Boost activities): when, how much, which activity, and where its CSV file is.
 struct RecordingBoostScreen: View {
@@ -523,7 +639,13 @@ private struct LogList: View {
 struct FeedbackScreen: View {
     @EnvironmentObject var companion: Companion
     @Environment(\.dismiss) private var dismiss
-    @State private var category = "error_report"
+    @State private var category: String
+
+    /// [startCategory] "wording" opens the form on "Wording / translation" (About > Help improve the translations).
+    init(startCategory: String = "error_report") {
+        _category = State(initialValue: startCategory)
+    }
+
     @State private var app = "companion"
     @State private var text = ""
     @State private var email = ""
@@ -715,7 +837,7 @@ struct AddActivitySheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(L10n.get("common_cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L10n.get("add_activity_save_button")) {
@@ -834,7 +956,7 @@ struct EditActivitySheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(L10n.get("common_cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {

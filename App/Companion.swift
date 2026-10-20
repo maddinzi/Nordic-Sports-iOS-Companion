@@ -492,6 +492,23 @@ final class Companion: NSObject, ObservableObject {
         await refresh()
     }
 
+    /// TEMPORARY (remove a few versions after 0.9.93): rewrites the entries written in the last
+    /// [days] days by the current rules; the sync log shows what happened.
+    func compactDiary(days: Int32) async {
+        guard !syncing else { return }
+        syncing = true
+        defer { syncing = false }
+        do {
+            let report = try await core.compactDiary(days: days)
+            syncLines = report.lines
+            lastSync = Date()
+        } catch {
+            message = error.localizedDescription
+        }
+        refreshDiary()
+        await refresh()
+    }
+
     /// "Push to diary" for one activity; the sync log shows what was written.
     func pushToDiary(_ activityId: String) async {
         guard !syncing else { return }

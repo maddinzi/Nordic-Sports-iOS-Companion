@@ -7,6 +7,9 @@ import UniformTypeIdentifiers
 /// matching one exists; the rest is English until the screens settle.
 struct RootView: View {
     @EnvironmentObject var companion: Companion
+    /// The first-start guide is shown once; an app that is already set up skips it.
+    @AppStorage("onboardingDone") private var onboardingDone = false
+    @State private var showOnboarding = false
 
     var body: some View {
         TabView {
@@ -17,11 +20,22 @@ struct RootView: View {
             WatchLinkSpikeView()
                 .tabItem { Label("Diagnostics", systemImage: "stethoscope") }
         }
+        .fullScreenCover(isPresented: $showOnboarding) {
+            OnboardingScreen { showOnboarding = false }
+                .environmentObject(companion)
+        }
+        .task {
+            // Decided once at start, so connecting Strava inside the guide does not close it.
+            if !onboardingDone && !companion.stravaConnected && !companion.diaryConnected && companion.activities.isEmpty {
+                showOnboarding = true
+            }
+            onboardingDone = true
+        }
         .alert(
             companion.message ?? "",
             isPresented: Binding(get: { companion.message != nil }, set: { if !$0 { companion.message = nil } })
         ) {
-            Button("OK", role: .cancel) {}
+            Button(L10n.get("common_ok"), role: .cancel) {}
         }
         // A second alert needs its own view: the Strava deletion and withdrawal confirmations.
         .background {
@@ -34,7 +48,7 @@ struct RootView: View {
                     }
                 })
             ) {
-                Button("OK", role: .cancel) {}
+                Button(L10n.get("common_ok"), role: .cancel) {}
             } message: {
                 Text(companion.notice?.text ?? "")
             }
@@ -53,7 +67,10 @@ struct ActivitiesScreen: View {
             Group {
                 if companion.activities.isEmpty && companion.liveActivities.isEmpty && companion.crashReports.isEmpty {
                     ContentUnavailableView {
-                        Label(L10n.get("activity_list_empty_no_activities"), systemImage: "applewatch")
+                        Label(companion.nickname.isEmpty
+                              ? L10n.get("activity_list_empty_no_activities")
+                              : String(format: L10n.get("activity_list_empty_no_activities_named"), companion.nickname),
+                              systemImage: "applewatch")
                     } description: {
                         Text(L10n.get("activity_list_empty_hint"))
                     }
@@ -69,8 +86,27 @@ struct ActivitiesScreen: View {
                                 }
                             }
                         }
-                        Section {
-                            ForEach(companion.activities, id: \.id) { item in
+                        // As Android: activities still to review on top, oldest first (the order the
+                        // diary fills a day's slots in), then the rest under "Done".
+                        let now = Int64(Date().timeIntervalSince1970 * 1000)
+                        let open = companion.activities
+                            .filter { $0.reviewPending && now < $0.reviewDeadlineEpochMillis }
+                            .sorted { $0.startEpochSec < $1.startEpochSec }
+                        let openIds = Set(open.map { $0.id })
+                        let rest = companion.activities.filter { !openIds.contains($0.id) }
+                        if !open.isEmpty {
+                            Section(L10n.get("activity_list_section_open")) {
+                                ForEach(open, id: \.id) { item in
+                                    NavigationLink {
+                                        ActivityDetailScreen(item: item)
+                                    } label: {
+                                        ActivityRow(item: item)
+                                    }
+                                }
+                            }
+                        }
+                        Section(open.isEmpty ? "" : L10n.get("activity_list_section_done")) {
+                            ForEach(rest, id: \.id) { item in
                                 NavigationLink {
                                     ActivityDetailScreen(item: item)
                                 } label: {
@@ -401,7 +437,7 @@ struct SettingsScreen: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Watch") {
+                Section(L10n.get("settings_tile_watch")) {
                     ForEach(watch.devices, id: \.uuid) { device in
                         LabeledContent(device.friendlyName ?? "?", value: watch.statuses[device.uuid] ?? "")
                     }
@@ -490,7 +526,7 @@ struct SettingsScreen: View {
                             get: { companion.diarySettings.autoUpdate },
                             set: { companion.setDiaryAutoUpdate($0) }
                         ))
-                        Toggle("Round durations up", isOn: Binding(
+                        Toggle(L10n.get("status_ttb_round_switch"), isOn: Binding(
                             get: { companion.diarySettings.roundDurationUp },
                             set: { companion.setDiaryRoundDurationUp($0) }
                         ))
@@ -499,6 +535,10 @@ struct SettingsScreen: View {
                             set: { companion.setDiaryCompact($0) }
                         ))
                         Button("Write the last 7 days to the diary") { Task { await companion.writeDiary(days: 7) } }
+                            .disabled(companion.syncing)
+                        // TEMPORARY, as on Android: remove a few versions after 0.9.93.
+                        Text(L10n.get("settings_intro_compact_diary")).font(.footnote).foregroundStyle(.secondary)
+                        Button(L10n.get("status_compact_diary_heading")) { Task { await companion.compactDiary(days: 7) } }
                             .disabled(companion.syncing)
                     } else {
                         Text("Connect your TTB diary: OneDrive, Dropbox, Google Drive, or a workbook in the Files app.")
@@ -560,6 +600,7 @@ struct SettingsScreen: View {
                     Text(L10n.get("status_delete_confirm_body"))
                 }
                 Section {
+                    NavigationLink(L10n.get("status_about_button")) { AboutScreen() }
                     LabeledContent("Version", value: Format.appVersion)
                 }
             }
