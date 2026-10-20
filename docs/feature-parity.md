@@ -26,8 +26,8 @@ Build 20 also carries every build 19 row (build 19 was never tested on its own).
 | Watch | Watch crash reports (`crashReport`), sent as feedback on Send | yes | build 19 |  | `crashReports()`, `sendCrashReport()`, `dismissCrashReport()`; "Delete my data" clears them |
 | Watch | Ask the watch to resend its queue when it connects again (`{"type": "resend"}`) | part | build 19 |  | `watchConnected()` returns the app id (once a minute per watch), `resendRequested()` logs it |
 | Watch | Heart rate sensor section from the watch's `HrStrapInfo` / `HrStrapName` / `HrStrapBleName` (shared `WatchHrStrapInfo`: state, check time, strap name, Bluetooth name, model name, ANT+ ID, serial, battery); no "HR Chest Strap" switch | part | build 19 |  | `WatchSettingsView.hrStrap` built in `CompanionCore` as Android's `HrStrapDetails` |
-| Watch | Language offer watch <-> app | part | - | 21 | |
-| Watch | Recording Boost bursts (reassembly, CSV files, list) | part | - | 21 | File export: Files app |
+| Watch | Language offer watch <-> app | n/a | - | | The offer follows an in-app language switch; iOS uses the system's per-app language, so there is nothing to offer. Revisit if an in-app switch is added |
+| Watch | Recording Boost bursts (reassembly, CSV files, list) | yes | build 22 (untested) | | Shared `RecordingBoostIntake` (chunks, store, link to the activity either way round, CSV text); iOS writes the CSV to Documents/recording-boost (Files app) and lists the bursts under Settings > Data logs |
 | Activities | Local database, list with sync badges, detail | yes | MVP | | Android 0.9.91: the detail header repeats the list tile with the name, the top bar says "Activity" |
 | Activities | Home screen by nickname ("All caught up, Anna!") | no | - | 22 | Android UI (0.9.91); the `_named` strings are in the generated text table |
 | Activities | Open items first, oldest on top; "To review" / "Done" headings; green frame for one just finished | part | - | 22 | `ReviewState.openItemsFirst` shared; the list UI and the just-finished frame per platform (Android 0.9.93) |
@@ -78,8 +78,8 @@ Build 20 also carries every build 19 row (build 19 was never tested on its own).
   notifications (with the nickname in them); built 2026-10-19 with Companion
   `kmp-shared-module`, so it also needs the database upgrade to version 30.
 - **21 (first part built 2026-10-20 with Companion `ios-build-21` = `kmp-shared-module` +
-  `strava-brand-compliance`):** Strava branding and data retention (stages 1-5b). Still open for 21: place
-  Recording Boost and the language offer (place names and Strava API usage moved to 22). Strava brand
+  `strava-brand-compliance`):** Strava branding and data retention (stages 1-5b).
+  Recording Boost, place names and Strava API usage moved to 22; the language offer is n/a on iOS. Strava brand
   compliance (decided 2026-10-20: "Powered by Strava"; Reconnect Strava also uses the official
   Connect with Strava button; no Strava logo on About).
 - **22:** all iOS labels from the text table, onboarding, about, changelog; then the

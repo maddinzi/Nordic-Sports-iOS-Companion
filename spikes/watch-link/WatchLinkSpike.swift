@@ -158,13 +158,13 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         let type = dict?["type"] as? String ?? (dict?["startTime"] != nil ? "activity" : "?")
         add("received \(type) from \(label(app)) in \(Self.name(of: state)): \(Self.describe(message))")
 
-        // Activities go to the shared core, which stores them; only then does a payload with
+        // Activities (and the chunks of a Recording Boost burst) go to the shared core, which stores them; only then does a payload with
         // `"rx": 1` get `{"type": "receipt", "startTime": <Int>}` back, as on Android, so
         // the watch keeps anything that could not be stored and sends it again. The start
         // time goes out as a 32-bit Int like Android's (`receiptMessage`): the watch drops a
         // receipt whose startTime is not a Monkey C Number/Long, and an Int64 NSNumber from
         // iOS was never accepted (log3: every receipt "success", the watch resent them all).
-        if let dict, type == "activity" {
+        if let dict, type == "activity" || type == "recordingBoostBurst" {
             let variant = variantName(app)
             Task { @MainActor in
                 let startTime = await Companion.shared.receive(message: dict, variant: variant)
@@ -183,7 +183,7 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         // Everything else goes to the shared core too: the settings snapshot (sent at every
         // watch app start; WatchSettingsSync stores it and resends changes still waiting), a
         // recording that started or was discarded, and a crash report.
-        if let dict, type != "activity", JSONSerialization.isValidJSONObject(dict),
+        if let dict, type != "activity", type != "recordingBoostBurst", JSONSerialization.isValidJSONObject(dict),
            let data = try? JSONSerialization.data(withJSONObject: dict),
            let json = String(data: data, encoding: .utf8) {
             let deviceId = Self.deviceId(app.device)

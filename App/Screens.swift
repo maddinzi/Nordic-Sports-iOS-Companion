@@ -535,6 +535,7 @@ struct SettingsScreen: View {
                         LogScreen(title: "Watch transfer log", kind: .transfer)
                     }
                     NavigationLink(L10n.get("status_view_strava_api_usage")) { StravaApiUsageScreen() }
+                    NavigationLink(L10n.get("status_view_recording_boosts")) { RecordingBoostScreen() }
                 }
                 Section(L10n.get("status_my_data_heading")) {
                     if let exportURL {

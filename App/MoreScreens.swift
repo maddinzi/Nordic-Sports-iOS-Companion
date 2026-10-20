@@ -432,6 +432,66 @@ struct StravaApiUsageScreen: View {
     }
 }
 
+/// Every Recording Boost burst received from the watch, newest capture first (Android: Recording
+/// Boost activities): when, how much, which activity, and where its CSV file is.
+struct RecordingBoostScreen: View {
+    @EnvironmentObject var companion: Companion
+    @State private var bursts: [RecordingBoostView] = []
+    @State private var loaded = false
+
+    var body: some View {
+        List {
+            Section {
+                Text(String(format: L10n.get("recording_boost_list_default_folder"),
+                            "On My iPhone \u{203A} Nordic Sports \u{203A} \(Companion.boostFolder)"))
+                    .font(.system(.footnote, design: .monospaced))
+            }
+            if loaded && bursts.isEmpty {
+                Text(L10n.get("recording_boost_list_empty")).foregroundStyle(.secondary)
+            }
+            ForEach(bursts, id: \.id) { burst in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(Date(timeIntervalSince1970: TimeInterval(burst.burstId)).formatted(date: .abbreviated, time: .standard))
+                        .font(.headline)
+                    let seconds = burst.sampleRateHz > 0 ? Int(burst.sampleCount) / Int(burst.sampleRateHz) : 0
+                    Text(String(format: L10n.get("recording_boost_list_samples"), Int(burst.sampleCount), seconds, Int(burst.sampleRateHz)))
+                    Text(String(format: L10n.get("recording_boost_list_received"),
+                                Date(timeIntervalSince1970: TimeInterval(burst.receivedAtEpochMillis) / 1000)
+                                    .formatted(date: .abbreviated, time: .standard)))
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text(burst.activityTitle.isEmpty
+                         ? L10n.get("recording_boost_list_not_linked")
+                         : String(format: L10n.get("recording_boost_list_linked"), burst.activityTitle))
+                        .font(.caption)
+                    if !burst.fileName.isEmpty {
+                        Text(L10n.get("recording_boost_list_file_saved")).font(.subheadline.bold())
+                        Text(String(format: L10n.get("recording_boost_list_file_name"), burst.fileName))
+                            .font(.system(.caption, design: .monospaced))
+                        Text(String(format: L10n.get("recording_boost_list_file_size"), Int(burst.sizeBytes)))
+                            .font(.caption)
+                    } else {
+                        Text(L10n.get("recording_boost_list_file_missing")).font(.subheadline.bold()).foregroundStyle(.red)
+                        if burst.error.isEmpty {
+                            Text(L10n.get("recording_boost_list_file_pending")).font(.caption)
+                        } else {
+                            Text(String(format: L10n.get("recording_boost_list_file_error"), burst.error))
+                                .font(.caption).foregroundStyle(.red)
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle(L10n.get("recording_boost_list_title"))
+        .task { await load() }
+        .refreshable { await load() }
+    }
+
+    private func load() async {
+        bursts = (try? await companion.core.recordingBoosts()) ?? []
+        loaded = true
+    }
+}
+
 private struct LogList: View {
     let lines: [LogLine]
     let loaded: Bool

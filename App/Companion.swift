@@ -83,6 +83,40 @@ final class Companion: NSObject, ObservableObject {
         }
         showStravaWithdrawalNotice()
         lookupPlaceNames()
+        await exportBoostFiles()
+    }
+
+    // MARK: - Recording Boost
+
+    static let boostFolder = "recording-boost"
+
+    /// Android's RecordingBoostFileExporter: one CSV per burst in the Documents folder (visible in
+    /// Files under On My iPhone > Nordic Sports > recording-boost). The shared core stores and
+    /// links the bursts and lists those without a file (also after a late link to an activity,
+    /// which rewrites the file with the activity id); this writes them and reports the outcome.
+    private func exportBoostFiles() async {
+        guard let pending = try? await core.recordingBoostsToExport(), !pending.isEmpty else { return }
+        let stamp = DateFormatter()
+        stamp.locale = Locale(identifier: "en_US_POSIX")
+        stamp.dateFormat = "yyyyMMdd_HHmm"
+        for burst in pending {
+            do {
+                let csv = try await core.recordingBoostCsv(id: burst.id)
+                guard !csv.isEmpty, let data = csv.data(using: .utf8) else { throw CocoaError(.fileWriteUnknown) }
+                let folder = try FileManager.default
+                    .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+                    .appendingPathComponent(Self.boostFolder, isDirectory: true)
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                let name = "\(stamp.string(from: Date(timeIntervalSince1970: TimeInterval(burst.burstId))))_recording-boost-\(burst.burstId).csv"
+                try data.write(to: folder.appendingPathComponent(name), options: .atomic)
+                try await core.recordingBoostFileWritten(
+                    id: burst.id, burstId: burst.burstId, fileName: name,
+                    location: "On My iPhone \u{203A} Nordic Sports \u{203A} \(Self.boostFolder)", sizeBytes: Int64(data.count)
+                )
+            } catch {
+                try? await core.recordingBoostFileFailed(id: burst.id, burstId: burst.burstId, message: error.localizedDescription)
+            }
+        }
     }
 
     // MARK: - Place names
@@ -151,6 +185,8 @@ final class Companion: NSObject, ObservableObject {
             let now = Int64(Date().timeIntervalSince1970 * 1000)
             let result = try await core.receiveWatchMessage(json: json, variant: variant, nowEpochMillis: now)
             WatchLinkSpike.shared.add("activity from \(variant): \(result.summary)")
+            // A burst arrives in dozens of chunks: only the last one (stored) changes anything.
+            if result.summary == "Recording Boost chunk" { return 0 }
             await refresh()
             if !result.activityId.isEmpty {
                 notifyNewActivity(result)
