@@ -6,6 +6,8 @@ training diary, the same way the Android Companion (`../Nordic Sports Companion`
 
 ## Status
 
+**Release plan (2026-10-20):** no version 1 for now. The watch app is a beta listing in the Connect IQ Store, the Android Companion a test version in Google Play and the iOS Companion a TestFlight build. All stay 0.9.x while they are stabilised with testers. See `Nordic Sports Watch/testing/release-gate.md`.
+
 Planning only. This folder holds the iOS app container, the design notes and the
 feasibility spikes. No Xcode project exists yet.
 
