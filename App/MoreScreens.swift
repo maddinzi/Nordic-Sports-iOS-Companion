@@ -1045,9 +1045,10 @@ struct DiaryLocationsScreen: View {
         .fileImporter(isPresented: $pickingFile, allowedContentTypes: [Self.xlsx]) { result in
             switch result {
             case .success(let url): Task { await companion.connectDiary(url) }
-            case .failure(let error): companion.message = error.localizedDescription
+            case .failure(let error): companion.post(error.localizedDescription)
             }
         }
+        .onChange(of: pickingFile) { _, open in companion.filePickerOpen = open }
         .confirmationDialog(
             L10n.get("connect_diary_file_selection_title"), isPresented: $choosing, titleVisibility: .visible, presenting: choice
         ) { found in
@@ -1122,12 +1123,12 @@ struct DiaryLocationsScreen: View {
         guard let result else { return }
         switch result.status {
         case "connected":
-            companion.message = String(format: L10n.get("connect_diary_connected_to"), result.workbookName)
+            companion.post(String(format: L10n.get("connect_diary_connected_to"), result.workbookName))
         case "confirm", "choose":
             choice = result
             choosing = !result.candidates.isEmpty
             if result.candidates.isEmpty {
-                companion.message = "'\(result.folderName)' has no files in it - nothing to pick from."
+                companion.post("'\(result.folderName)' has no files in it - nothing to pick from.")
             }
         default:
             companion.message = result.message

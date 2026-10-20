@@ -91,9 +91,19 @@ jobs:
             echo "DROPBOX_APP_KEY = $DROPBOX_APP_KEY"
             echo "GOOGLE_IOS_CLIENT_ID = $GOOGLE_IOS_CLIENT_ID"
           } > Secrets.xcconfig
-          for name in STRAVA_CLIENT_ID STRAVA_CLIENT_SECRET WEBHOOK_API_KEY ONEDRIVE_CLIENT_ID DROPBOX_APP_KEY GOOGLE_IOS_CLIENT_ID; do
-            if [ -n "${!name}" ]; then echo "$name: set"; else echo "$name: MISSING"; fi
+          # Required: without them the app ships unable to talk to Strava or the server.
+          missing=0
+          for name in STRAVA_CLIENT_ID STRAVA_CLIENT_SECRET WEBHOOK_API_KEY; do
+            if [ -n "${!name}" ]; then echo "$name: set"; else echo "$name: MISSING (required)"; missing=1; fi
           done
+          # Optional: a missing cloud app id only hides that cloud in the app.
+          for name in ONEDRIVE_CLIENT_ID DROPBOX_APP_KEY GOOGLE_IOS_CLIENT_ID; do
+            if [ -n "${!name}" ]; then echo "$name: set"; else echo "$name: not set (optional, the app hides that cloud)"; fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "A required secret is missing; stopping before a build without it ships."
+            exit 1
+          fi
 
       - name: Generate the Xcode project
         run: |
@@ -154,9 +164,9 @@ jobs:
           KEYCHAIN_PASSWORD="$(uuidgen)"
           echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
           printf '%s' "$DIST_CERT_P12" | base64 --decode > "$RUNNER_TEMP/dist.p12"
-          # Fingerprints only, to compare with the files the secrets came from - never the values.
-          echo "password length: ${#DIST_CERT_PASSWORD}, sha256 prefix: $(printf '%s' "$DIST_CERT_PASSWORD" | shasum -a 256 | cut -c1-8)"
-          echo "p12 base64 length: ${#DIST_CERT_P12}, decoded p12 sha256 prefix: $(shasum -a 256 "$RUNNER_TEMP/dist.p12" | cut -c1-16)"
+          # Lengths only, to compare with the files the secrets came from - never the values or hashes of them.
+          echo "password length: ${#DIST_CERT_PASSWORD}"
+          echo "p12 base64 length: ${#DIST_CERT_P12}"
           if openssl pkcs12 -in "$RUNNER_TEMP/dist.p12" -passin env:DIST_CERT_PASSWORD -noout > /dev/null 2>&1; then
             echo "openssl: the password opens the p12"
           else

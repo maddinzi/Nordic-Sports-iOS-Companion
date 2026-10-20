@@ -25,7 +25,21 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
     @Published private(set) var statuses: [UUID: String] = [:]
     @Published private(set) var log: [String] = []
 
-    private var apps: [IQApp] = []
+    /// Read from the shared code's threads (`sendToWatch`), reassigned on the main thread.
+    private var appsStorage: [IQApp] = []
+    private let appsLock = NSLock()
+    private var apps: [IQApp] {
+        get {
+            appsLock.lock()
+            defer { appsLock.unlock() }
+            return appsStorage
+        }
+        set {
+            appsLock.lock()
+            defer { appsLock.unlock() }
+            appsStorage = newValue
+        }
+    }
     private let defaults = UserDefaults.standard
     private let timeFormat: DateFormatter = {
         let f = DateFormatter()
@@ -65,7 +79,11 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
     /// Garmin Connect Mobile returns the athlete's selection through our URL scheme.
     func handle(url: URL) {
         guard url.scheme == Self.urlScheme else { return }
-        let parsed = ConnectIQ.sharedInstance().parseDeviceSelectionResponse(from: url) as? [IQDevice] ?? []
+        // No device in the answer (the athlete backed out, or an unrelated call): keep the saved watches.
+        guard let parsed = ConnectIQ.sharedInstance().parseDeviceSelectionResponse(from: url) as? [IQDevice], !parsed.isEmpty else {
+            add("device selection: no device in the response, the saved watches are kept")
+            return
+        }
         add("device selection: \(parsed.count) device(s): \(parsed.map { $0.friendlyName ?? "?" }.joined(separator: ", "))")
         ConnectIQ.sharedInstance().unregister(forAllDeviceEvents: self)
         ConnectIQ.sharedInstance().unregister(forAllAppMessages: self)
@@ -75,7 +93,7 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
     }
 
     private func registerAll() {
-        apps = []
+        var registered: [IQApp] = []
         for device in devices {
             ConnectIQ.sharedInstance().register(forDeviceEvents: device, delegate: self)
             let status = ConnectIQ.sharedInstance().getDeviceStatus(device)
@@ -85,10 +103,11 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
                 guard let uuid = UUID(uuidString: watchApp.id) else { continue }
                 let made: IQApp? = IQApp(uuid: uuid, store: uuid, device: device)
                 guard let app = made else { continue }
-                apps.append(app)
+                registered.append(app)
                 ConnectIQ.sharedInstance().register(forAppMessages: app, delegate: self)
             }
         }
+        apps = registered
         if !devices.isEmpty {
             add("listening on \(devices.count) device(s) x \(Self.watchApps.count) app ids")
         }
@@ -124,19 +143,17 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
     @objc(deviceStatusChanged:status:)
     func deviceStatusChanged(_ device: IQDevice!, status: IQDeviceStatus) {
         let name = Self.name(of: status)
-        let update = { () -> Bool in
-            let changed = self.statuses[device.uuid] != name
-            self.statuses[device.uuid] = name
-            return changed
-        }
-        let changed = Thread.isMainThread ? update() : DispatchQueue.main.sync(execute: update)
-        add("device \(device.friendlyName ?? "?"): \(name)")
-        // As Android: a watch that connects again keeps its name, and is asked to resend what
-        // it still has queued (an activity sent while the link was down), at most once a minute.
-        guard status == .connected, changed else { return }
+        let deviceUuid = device.uuid
         let deviceId = Self.deviceId(device)
         let watchName = device.friendlyName
+        add("device \(watchName ?? "?"): \(name)")
+        // Asynchronous on the main queue (no blocking wait on the SDK's thread).
         Task { @MainActor in
+            let changed = self.statuses[deviceUuid] != name
+            self.statuses[deviceUuid] = name
+            // As Android: a watch that connects again keeps its name, and is asked to resend what
+            // it still has queued (an activity sent while the link was down), at most once a minute.
+            guard status == .connected, changed else { return }
             let appId = Companion.shared.core.watchConnected(deviceId: deviceId, watchName: watchName)
             guard !appId.isEmpty,
                   let app = self.apps.first(where: { Self.deviceId($0.device) == deviceId && $0.uuid.uuidString.lowercased() == appId.lowercased() })
@@ -151,12 +168,18 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
 
     @objc(receivedMessage:fromApp:)
     func receivedMessage(_ message: Any!, from app: IQApp!) {
-        let state = Thread.isMainThread
-            ? UIApplication.shared.applicationState
-            : DispatchQueue.main.sync { UIApplication.shared.applicationState }
         let dict = message as? [String: Any]
         let type = dict?["type"] as? String ?? (dict?["startTime"] != nil ? "activity" : "?")
-        add("received \(type) from \(label(app)) in \(Self.name(of: state)): \(Self.describe(message))")
+        // Type and size only: the payload (coordinates, heart rate) stays out of the log.
+        let source = label(app)
+        let size = Self.describe(message)
+        Task { @MainActor in
+            let state = UIApplication.shared.applicationState
+            self.add("received \(type) from \(source) in \(Self.name(of: state)): \(size)")
+            if state != .active {
+                self.add("\(type) arrived in the \(Self.name(of: state))")
+            }
+        }
 
         // Activities (and the chunks of a Recording Boost burst) go to the shared core, which stores them; only then does a payload with
         // `"rx": 1` get `{"type": "receipt", "startTime": <Int>}` back, as on Android, so
@@ -196,9 +219,6 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
                 Companion.shared.refreshWatchSettings()
                 Companion.shared.refreshWatchCards()
             }
-        }
-        if state != .active {
-            add("\(type) arrived in the \(Self.name(of: state))")
         }
     }
 
@@ -287,14 +307,13 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         return (try? NSKeyedUnarchiver.unarchivedArrayOfObjects(ofClass: IQDevice.self, from: data)) ?? []
     }
 
+    /// The size of a watch message, never its content.
     private static func describe(_ message: Any?) -> String {
-        guard let message else { return "nil" }
-        if JSONSerialization.isValidJSONObject(message),
-           let data = try? JSONSerialization.data(withJSONObject: message, options: [.sortedKeys]),
-           let text = String(data: data, encoding: .utf8) {
-            return text.count > 600 ? String(text.prefix(600)) + "... (\(text.count) chars)" : text
+        guard let message else { return "no payload" }
+        if JSONSerialization.isValidJSONObject(message), let data = try? JSONSerialization.data(withJSONObject: message) {
+            return "\(data.count) bytes"
         }
-        return String(describing: message)
+        return "payload of an unreadable kind"
     }
 
     // The SDK's enums by raw value, so the log does not depend on how Swift imports their names.

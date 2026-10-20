@@ -39,13 +39,24 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var placeNamesEnabled = true
     @Published private(set) var reviewNewActivities = true
     @Published private(set) var syncAutomatically = true
-    @Published var message: String?
+    /// The alert shown now; further messages wait in `queuedMessages` (use `post`).
+    @Published var message: String? {
+        didSet { if message == nil, !queuedMessages.isEmpty { showNextMessageSoon() } }
+    }
     /// A confirmation with a title and a longer text (the Strava deletion confirmation).
     @Published var notice: Notice?
 
     let core: CompanionCore
     let language: String
     private var authSession: ASWebAuthenticationSession?
+    /// Identifies the running sign-in, so a cancelled earlier session's completion cannot clear the new one.
+    private var authToken = UUID()
+    /// A file picker is open (set by the screens): no sync on open while it is.
+    var filePickerOpen = false
+    private var lastOpenSync: Date?
+    private var queuedMessages: [String] = []
+    private var storeFailures = 0
+    private var exportingBoosts = false
 
     private override init() {
         let language = Self.preferredLanguage()
@@ -64,7 +75,11 @@ final class Companion: NSObject, ObservableObject {
             googleClientId: setting("GoogleClientId"),
             diaryFile: FilesDiaryAccess.shared,
             watchMessenger: WatchLinkSpike.shared,
-            debug: { line in NSLog("[core] %@", line) }
+            debug: { line in
+                #if DEBUG
+                NSLog("[core] %@", line)
+                #endif
+            }
         )
         super.init()
         stravaConnected = core.stravaConnected()
@@ -77,6 +92,56 @@ final class Companion: NSObject, ObservableObject {
         syncAutomatically = core.syncAutomatically()
     }
 
+    // MARK: - Messages
+
+    /// Shows [text] now, or after the alert on screen is closed; an identical waiting text is dropped.
+    func post(_ text: String) {
+        if message == nil {
+            message = text
+        } else if message != text, !queuedMessages.contains(text) {
+            queuedMessages.append(text)
+        }
+    }
+
+    /// A failed call's text, unless the call was only cancelled (pull to refresh, background expiry).
+    private func report(_ error: Error) {
+        guard !error.isCancellation else { return }
+        post(error.localizedDescription)
+    }
+
+    private func showNextMessageSoon() {
+        // A moment after the alert closed, because SwiftUI drops an alert shown in the same instant.
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            if message == nil, !queuedMessages.isEmpty { message = queuedMessages.removeFirst() }
+        }
+    }
+
+    // MARK: - Diary write time
+
+    /// Runs [body] (a diary write) with a few more seconds from iOS if the app goes to the
+    /// background meanwhile; when that time ends, the diary access is told to stop before it
+    /// starts the next write. A background run sets its own stop flag (`backgroundSync`).
+    private func withDiaryTime(_ body: () async -> Void) async {
+        let access = FilesDiaryAccess.shared
+        if access.inBackgroundRun {
+            await body()
+            return
+        }
+        access.resetStop()
+        let token = BackgroundTaskToken()
+        token.id = UIApplication.shared.beginBackgroundTask(withName: "diary-write") {
+            access.requestStop()
+            UIApplication.shared.endBackgroundTask(token.id)
+            token.id = .invalid
+        }
+        await body()
+        if token.id != .invalid {
+            UIApplication.shared.endBackgroundTask(token.id)
+            token.id = .invalid
+        }
+    }
+
     // MARK: - Activities
 
     func refresh() async {
@@ -84,7 +149,7 @@ final class Companion: NSObject, ObservableObject {
             activities = try await core.activities(limit: 300)
             syncStatus = try await core.syncStatus(nowEpochMillis: Int64(Date().timeIntervalSince1970 * 1000))
         } catch {
-            message = error.localizedDescription
+            report(error)
         }
         showStravaWithdrawalNotice()
         lookupPlaceNames()
@@ -100,6 +165,9 @@ final class Companion: NSObject, ObservableObject {
     /// links the bursts and lists those without a file (also after a late link to an activity,
     /// which rewrites the file with the activity id); this writes them and reports the outcome.
     private func exportBoostFiles() async {
+        guard !exportingBoosts else { return }
+        exportingBoosts = true
+        defer { exportingBoosts = false }
         guard let pending = try? await core.recordingBoostsToExport(), !pending.isEmpty else { return }
         let stamp = DateFormatter()
         stamp.locale = Locale(identifier: "en_US_POSIX")
@@ -119,7 +187,11 @@ final class Companion: NSObject, ObservableObject {
                     location: "On My iPhone \u{203A} Nordic Sports \u{203A} \(Self.boostFolder)", sizeBytes: Int64(data.count)
                 )
             } catch {
-                try? await core.recordingBoostFileFailed(id: burst.id, burstId: burst.burstId, message: error.localizedDescription)
+                do {
+                    try await core.recordingBoostFileFailed(id: burst.id, burstId: burst.burstId, message: error.localizedDescription)
+                } catch {
+                    WatchLinkSpike.shared.add("recording boost file failure could not be reported: \(error.localizedDescription)")
+                }
             }
         }
     }
@@ -190,6 +262,7 @@ final class Companion: NSObject, ObservableObject {
         do {
             let now = Int64(Date().timeIntervalSince1970 * 1000)
             let result = try await core.receiveWatchMessage(json: json, variant: variant, nowEpochMillis: now)
+            storeFailures = 0
             WatchLinkSpike.shared.add("activity from \(variant): \(result.summary)")
             // A burst arrives in dozens of chunks: only the last one (stored) changes anything.
             if result.summary == "Recording Boost chunk" { return 0 }
@@ -204,7 +277,17 @@ final class Companion: NSObject, ObservableObject {
             }
             return result.receiptStartTime
         } catch {
-            WatchLinkSpike.shared.add("activity could not be stored: \(error.localizedDescription)")
+            if error.isCancellation { return 0 }
+            storeFailures += 1
+            let started = (dict["startTime"] as? NSNumber)?.int64Value ?? 0
+            WatchLinkSpike.shared.add(
+                "activity (start time \(started)) could not be stored, \(storeFailures) in a row: \(error.localizedDescription)"
+            )
+            // The watch keeps what is not confirmed and sends it again; after three failures in a
+            // row the athlete is told (and again after every third one).
+            if storeFailures % 3 == 0 {
+                post("Activities from the watch could not be saved on this iPhone (\(storeFailures) failures in a row). The watch keeps them and sends them again. Last error: \(error.localizedDescription)")
+            }
             return 0
         }
     }
@@ -220,6 +303,10 @@ final class Companion: NSObject, ObservableObject {
     /// Like Android's onResume: a quiet sync whenever the app comes to the foreground
     /// (automated sync mode only).
     func syncOnOpen() async {
+        // Not in the middle of a sign-in or the file picker, and at most once a minute.
+        guard authSession == nil, !filePickerOpen else { return }
+        if let last = lastOpenSync, Date().timeIntervalSince(last) < 60 { return }
+        lastOpenSync = Date()
         await checkOutdated()
         guard !outdated else { return }
         await purgeExpiredStravaData()
@@ -230,15 +317,32 @@ final class Companion: NSObject, ObservableObject {
 
     /// A background run (BGTaskScheduler; Android: the daily ActivitySyncWorker): the same
     /// sync as on opening, in automated mode only. Returns a line for the Diagnostics log.
-    func backgroundSync() async -> String {
-        guard !outdated else { return "this build is no longer supported, nothing run" }
+    func backgroundSync() async -> BackgroundOutcome {
+        let access = FilesDiaryAccess.shared
+        access.beginBackgroundRun()
+        defer { access.endBackgroundRun() }
+        guard !outdated else { return BackgroundOutcome(text: "this build is no longer supported, nothing run", success: true) }
+        let stopped = BackgroundOutcome(text: "stopped before the diary was written (background time over)", success: false)
         let purged = await purgeExpiredStravaData()
         if purged > 0 { WatchLinkSpike.shared.add("bg: Strava data removed from \(purged) activities") }
-        guard core.syncAutomatically() else { return "manual sync mode, nothing run" }
-        guard stravaConnected || core.diaryConnected() else { return "neither Strava nor a diary connected" }
-        guard !syncing else { return "a sync is already running" }
-        await sync()
-        return "synced (\(syncLines.count) lines)"
+        guard core.syncAutomatically() else { return BackgroundOutcome(text: "manual sync mode, nothing run", success: true) }
+        guard stravaConnected || core.diaryConnected() else {
+            return BackgroundOutcome(text: "neither Strava nor a diary connected", success: true)
+        }
+        guard !syncing else { return BackgroundOutcome(text: "a sync is already running", success: true) }
+        // No diary write is started once the stop flag is set (expiry handler, cancellation).
+        if Task.isCancelled || access.stopRequested { return stopped }
+        let outcome = await withTaskCancellationHandler {
+            await sync()
+        } onCancel: {
+            access.requestStop()
+        }
+        switch outcome {
+        case .ok(let lines): return BackgroundOutcome(text: "synced (\(lines) lines)", success: true)
+        case .failed(let text): return BackgroundOutcome(text: "sync failed: \(text)", success: false)
+        case .cancelled: return stopped
+        case .skipped: return BackgroundOutcome(text: "a sync is already running", success: true)
+        }
     }
 
     /// Android's new-activity notification (title with the nickname, review or not); iOS
@@ -254,78 +358,111 @@ final class Companion: NSObject, ObservableObject {
         )
     }
 
-    func sync() async {
-        guard !syncing, !outdated else { return }
+    /// Runs the shared sync; the result tells a background run whether it really worked.
+    @discardableResult
+    func sync() async -> SyncOutcome {
+        guard !syncing, !outdated else { return .skipped }
         syncing = true
         defer { syncing = false }
-        do {
-            let report = try await core.syncNow()
-            syncLines = report.lines
-            lastSync = Date()
-        } catch {
-            message = error.localizedDescription
+        var outcome = SyncOutcome.ok(lines: 0)
+        await withDiaryTime {
+            do {
+                let report = try await core.syncNow()
+                syncLines = report.lines
+                lastSync = Date()
+                outcome = .ok(lines: report.lines.count)
+            } catch {
+                if error.isCancellation {
+                    outcome = .cancelled
+                } else {
+                    outcome = .failed(error.localizedDescription)
+                    post(error.localizedDescription)
+                }
+            }
+            refreshDiary()
+            await refresh()
         }
-        refreshDiary()
-        await refresh()
+        return outcome
     }
 
     func backfill(days: Int32) async {
         guard !syncing else { return }
         syncing = true
         defer { syncing = false }
-        do {
-            let report = try await core.backfill(days: days)
-            syncLines = report.lines
-            lastSync = Date()
-        } catch {
-            message = error.localizedDescription
+        await withDiaryTime {
+            do {
+                let report = try await core.backfill(days: days)
+                syncLines = report.lines
+                lastSync = Date()
+            } catch {
+                report(error)
+            }
+            refreshDiary()
+            await refresh()
         }
-        refreshDiary()
-        await refresh()
     }
 
     // MARK: - Strava
 
     var stravaConfigured: Bool { core.stravaConfigured }
 
+    /// Cancels a sign-in sheet that is still open and returns the token of the next one.
+    private func beginAuth() -> UUID {
+        authSession?.cancel()
+        authSession = nil
+        authToken = UUID()
+        return authToken
+    }
+
+    /// Releases the session, unless a newer sign-in has replaced it in the meantime.
+    private func endAuth(_ token: UUID) {
+        if authToken == token { authSession = nil }
+    }
+
     func connectStrava() {
         guard let url = URL(string: core.stravaAuthorizeUrl()) else { return }
         guard #available(iOS 17.4, *) else {
-            message = "Strava sign-in needs iOS 17.4 or later."
+            // The reason is English only; the surrounding "connecting failed" text is localised.
+            post(String(format: L10n.get("main_toast_strava_connect_failed"), "iOS 17.4 or later is required."))
             return
         }
+        let token = beginAuth()
         let session = ASWebAuthenticationSession(
             url: url,
             callback: .https(host: Self.stravaCallbackHost, path: Self.stravaCallbackPath)
         ) { callbackURL, error in
-            Task { @MainActor in await self.finishStravaSignIn(callbackURL, error) }
+            Task { @MainActor in await self.finishStravaSignIn(callbackURL, error, token) }
         }
         session.presentationContextProvider = self
         authSession = session
         if !session.start() {
-            message = "Strava sign-in could not start."
+            endAuth(token)
+            post(String(format: L10n.get("main_toast_strava_connect_failed"), "the sign-in could not start."))
         }
     }
 
-    private func finishStravaSignIn(_ callbackURL: URL?, _ error: Error?) async {
-        authSession = nil
+    private func finishStravaSignIn(_ callbackURL: URL?, _ error: Error?, _ token: UUID) async {
+        endAuth(token)
         if let error {
             if (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin { return }
-            message = String(format: L10n.get("main_toast_strava_connect_failed"), error.localizedDescription)
+            post(String(format: L10n.get("main_toast_strava_connect_failed"), error.localizedDescription))
             return
         }
         guard let callbackURL else { return }
         do {
             let reason = try await core.completeStravaSignIn(callbackUrl: callbackURL.absoluteString)
             if reason.isEmpty {
+                // An empty reason also means "cancelled": only a stored sign-in counts as connected.
                 stravaConnected = core.stravaConnected()
-                message = L10n.get("main_toast_strava_connected")
+                guard stravaConnected else { return }
+                post(L10n.get("main_toast_strava_connected"))
                 await sync()
             } else {
-                message = String(format: L10n.get("main_toast_strava_connect_failed"), reason)
+                post(String(format: L10n.get("main_toast_strava_connect_failed"), reason))
             }
         } catch {
-            message = String(format: L10n.get("main_toast_strava_connect_failed"), error.localizedDescription)
+            if error.isCancellation { return }
+            post(String(format: L10n.get("main_toast_strava_connect_failed"), error.localizedDescription))
         }
     }
 
@@ -336,7 +473,7 @@ final class Companion: NSObject, ObservableObject {
             let result = try await core.disconnectStrava()
             notice = Notice(title: result.title, text: result.text)
         } catch {
-            message = error.localizedDescription
+            report(error)
         }
         stravaConnected = core.stravaConnected()
         await refresh()
@@ -380,7 +517,7 @@ final class Companion: NSObject, ObservableObject {
     /// as a TTB diary.
     func connectDiary(_ url: URL) async {
         if let problem = FilesDiaryAccess.shared.remember(url) {
-            message = problem
+            post(problem)
             return
         }
         diaryBusy = true
@@ -388,14 +525,17 @@ final class Companion: NSObject, ObservableObject {
         do {
             let problem = try await core.connectDiary(fileName: url.lastPathComponent)
             if problem.isEmpty {
+                FilesDiaryAccess.shared.confirmPick()
                 refreshDiary()
-                message = String(format: L10n.get("connect_diary_connected_to"), url.lastPathComponent)
+                post(String(format: L10n.get("connect_diary_connected_to"), url.lastPathComponent))
             } else {
                 FilesDiaryAccess.shared.restorePrevious()
-                message = problem
+                post(problem)
             }
         } catch {
-            message = error.localizedDescription
+            // A thrown error must not leave the unchecked file as the diary.
+            FilesDiaryAccess.shared.restorePrevious()
+            report(error)
         }
         refreshDiary()
     }
@@ -418,39 +558,41 @@ final class Companion: NSObject, ObservableObject {
     func signInCloud(_ source: String) {
         let scheme = core.cloudCallbackScheme(provider: source)
         guard let url = URL(string: core.cloudSignInUrl(provider: source)), !scheme.isEmpty else {
-            message = "This build has no app id for that service."
+            post("This build has no app id for that service.")
             return
         }
+        let token = beginAuth()
         let session: ASWebAuthenticationSession
         if #available(iOS 17.4, *) {
             session = ASWebAuthenticationSession(url: url, callback: .customScheme(scheme)) { callbackURL, error in
-                Task { @MainActor in await self.finishCloudSignIn(callbackURL, error) }
+                Task { @MainActor in await self.finishCloudSignIn(callbackURL, error, token) }
             }
         } else {
             session = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme) { callbackURL, error in
-                Task { @MainActor in await self.finishCloudSignIn(callbackURL, error) }
+                Task { @MainActor in await self.finishCloudSignIn(callbackURL, error, token) }
             }
         }
         session.presentationContextProvider = self
         authSession = session
         if !session.start() {
-            message = "The sign-in could not start."
+            endAuth(token)
+            post("The sign-in could not start.")
         }
     }
 
-    private func finishCloudSignIn(_ callbackURL: URL?, _ error: Error?) async {
-        authSession = nil
+    private func finishCloudSignIn(_ callbackURL: URL?, _ error: Error?, _ token: UUID) async {
+        endAuth(token)
         if let error {
             if (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin { return }
-            message = error.localizedDescription
+            post(error.localizedDescription)
             return
         }
         guard let callbackURL else { return }
         do {
             let reason = try await core.completeCloudSignIn(callbackUrl: callbackURL.absoluteString)
-            if !reason.isEmpty { message = reason }
+            if !reason.isEmpty { post(reason) }
         } catch {
-            message = error.localizedDescription
+            report(error)
         }
         refreshDiary()
     }
@@ -469,7 +611,7 @@ final class Companion: NSObject, ObservableObject {
             refreshDiary()
             return result
         } catch {
-            message = error.localizedDescription
+            report(error)
             return nil
         }
     }
@@ -482,7 +624,7 @@ final class Companion: NSObject, ObservableObject {
             refreshDiary()
             return result
         } catch {
-            message = error.localizedDescription
+            report(error)
             return nil
         }
     }
@@ -496,15 +638,17 @@ final class Companion: NSObject, ObservableObject {
         guard !syncing else { return }
         syncing = true
         defer { syncing = false }
-        do {
-            let report = try await core.writeDiary(days: days)
-            syncLines = report.lines
-            lastSync = Date()
-        } catch {
-            message = error.localizedDescription
+        await withDiaryTime {
+            do {
+                let report = try await core.writeDiary(days: days)
+                syncLines = report.lines
+                lastSync = Date()
+            } catch {
+                report(error)
+            }
+            refreshDiary()
+            await refresh()
         }
-        refreshDiary()
-        await refresh()
     }
 
     /// TEMPORARY (remove a few versions after 0.9.93): rewrites the entries written in the last
@@ -513,15 +657,17 @@ final class Companion: NSObject, ObservableObject {
         guard !syncing else { return }
         syncing = true
         defer { syncing = false }
-        do {
-            let report = try await core.compactDiary(days: days)
-            syncLines = report.lines
-            lastSync = Date()
-        } catch {
-            message = error.localizedDescription
+        await withDiaryTime {
+            do {
+                let report = try await core.compactDiary(days: days)
+                syncLines = report.lines
+                lastSync = Date()
+            } catch {
+                report(error)
+            }
+            refreshDiary()
+            await refresh()
         }
-        refreshDiary()
-        await refresh()
     }
 
     /// "Push to diary" for one activity; the sync log shows what was written.
@@ -529,14 +675,16 @@ final class Companion: NSObject, ObservableObject {
         guard !syncing else { return }
         syncing = true
         defer { syncing = false }
-        do {
-            let problem = try await core.pushToDiary(activityId: activityId)
-            if !problem.isEmpty { message = problem }
-        } catch {
-            message = error.localizedDescription
+        await withDiaryTime {
+            do {
+                let problem = try await core.pushToDiary(activityId: activityId)
+                if !problem.isEmpty { post(problem) }
+            } catch {
+                report(error)
+            }
+            refreshDiary()
+            await refresh()
         }
-        refreshDiary()
-        await refresh()
     }
 
     // MARK: - Watch settings
@@ -639,7 +787,7 @@ final class Companion: NSObject, ObservableObject {
             case .transfer: return try await core.transferLogLines(limit: 500)
             }
         } catch {
-            message = error.localizedDescription
+            report(error)
             return []
         }
     }
@@ -656,7 +804,7 @@ final class Companion: NSObject, ObservableObject {
             try json.write(to: url, atomically: true, encoding: .utf8)
             return url
         } catch {
-            message = String(format: L10n.get("main_toast_export_failed"), error.localizedDescription)
+            post(String(format: L10n.get("main_toast_export_failed"), error.localizedDescription))
             return nil
         }
     }
@@ -699,9 +847,9 @@ final class Companion: NSObject, ObservableObject {
         syncAutomatically = core.syncAutomatically()
         syncLines = []
         await refresh()
-        message = failed.isEmpty
+        post(failed.isEmpty
             ? "All data on this iPhone deleted; Strava and the diary disconnected."
-            : String(format: L10n.get("main_toast_data_delete_partly"), failed.joined(separator: ", "))
+            : String(format: L10n.get("main_toast_data_delete_partly"), failed.joined(separator: ", ")))
     }
 
     /// Minutes typed by the athlete as seconds for the core, capped so a huge entry cannot overflow.
@@ -761,11 +909,11 @@ final class Companion: NSObject, ObservableObject {
                 overrideElapsedSec: Self.seconds(minutes), overrideDistanceM: Float(max(0, kilometers) * 1000)
             )
             guard saved.boolValue else { return false }
-            message = L10n.get("main_toast_activity_updated")
+            post(L10n.get("main_toast_activity_updated"))
             await afterEdit()
             return true
         } catch {
-            message = error.localizedDescription
+            report(error)
             return false
         }
     }
@@ -774,7 +922,7 @@ final class Companion: NSObject, ObservableObject {
         do {
             try await core.skipReview(activityId: activityId)
         } catch {
-            message = error.localizedDescription
+            report(error)
         }
         await afterEdit()
     }
@@ -799,12 +947,12 @@ final class Companion: NSObject, ObservableObject {
                 startEpochSec: Int64(start.timeIntervalSince1970),
                 elapsedSec: Self.seconds(minutes)
             )
-            message = L10n.get("main_toast_activity_saved")
+            post(L10n.get("main_toast_activity_saved"))
             await refresh()
             Task { await syncNewActivity(id) }
             return id
         } catch {
-            message = error.localizedDescription
+            report(error)
             return nil
         }
     }
@@ -815,38 +963,40 @@ final class Companion: NSObject, ObservableObject {
         guard !syncing else { return }
         syncing = true
         defer { syncing = false }
-        do {
-            let report = try await core.syncNewActivity(activityId: id)
-            if !report.lines.isEmpty {
-                syncLines = report.lines
-                lastSync = Date()
+        await withDiaryTime {
+            do {
+                let result = try await core.syncNewActivity(activityId: id)
+                if !result.lines.isEmpty {
+                    syncLines = result.lines
+                    lastSync = Date()
+                }
+            } catch {
+                report(error)
             }
-        } catch {
-            message = error.localizedDescription
+            refreshDiary()
+            await refresh()
         }
-        refreshDiary()
-        await refresh()
     }
 
     /// Deletes an activity (the Strava activity stays); returns what to tell the athlete.
     func deleteActivity(_ activityId: String) async -> Bool {
         do {
             guard let result = try await core.deleteActivity(activityId: activityId) else {
-                message = L10n.get("main_toast_activity_delete_failed")
+                post(L10n.get("main_toast_activity_delete_failed"))
                 return false
             }
             if let failure = result.diaryRemovalMessage, result.diaryRemovalAttempted, !result.diaryEntryRemoved {
-                message = String(format: L10n.get("main_toast_activity_deleted_diary_removal_failed"), failure)
+                post(String(format: L10n.get("main_toast_activity_deleted_diary_removal_failed"), failure))
             } else if result.diaryEntryRemoved {
-                message = L10n.get(result.stillOnStrava
-                    ? "main_toast_activity_deleted_diary_removed_still_on_strava" : "main_toast_activity_deleted_diary_removed")
+                post(L10n.get(result.stillOnStrava
+                    ? "main_toast_activity_deleted_diary_removed_still_on_strava" : "main_toast_activity_deleted_diary_removed"))
             } else {
-                message = L10n.get(result.stillOnStrava ? "main_toast_activity_deleted_still_on_strava" : "main_toast_activity_deleted")
+                post(L10n.get(result.stillOnStrava ? "main_toast_activity_deleted_still_on_strava" : "main_toast_activity_deleted"))
             }
             await refresh()
             return true
         } catch {
-            message = L10n.get("main_toast_activity_delete_failed")
+            post(L10n.get("main_toast_activity_delete_failed"))
             return false
         }
     }
@@ -902,4 +1052,38 @@ struct Notice {
     let text: String
     /// Runs when the athlete closes the alert.
     var onDismiss: (() -> Void)? = nil
+}
+
+/// What one sync run came to, for the background task and its Diagnostics line.
+enum SyncOutcome {
+    case ok(lines: Int)
+    case failed(String)
+    case cancelled
+    /// Not started: another run is active or the build is outdated.
+    case skipped
+}
+
+/// The Diagnostics line of a background run and whether it counts as success for iOS.
+struct BackgroundOutcome {
+    let text: String
+    let success: Bool
+}
+
+/// Holds the identifier of a UIKit background task so its expiry handler can end it.
+final class BackgroundTaskToken: @unchecked Sendable {
+    var id = UIBackgroundTaskIdentifier.invalid
+}
+
+extension Error {
+    /// A cancelled Swift task, a cancelled request, or the shared Kotlin code's
+    /// CancellationException (it arrives as an NSError carrying the Kotlin exception).
+    var isCancellation: Bool {
+        if self is CancellationError { return true }
+        let ns = self as NSError
+        if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled { return true }
+        if let kotlin = ns.userInfo["KotlinException"] {
+            return String(describing: type(of: kotlin)).contains("Cancellation")
+        }
+        return false
+    }
 }

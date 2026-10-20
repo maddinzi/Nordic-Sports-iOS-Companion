@@ -134,6 +134,7 @@ struct DiaryFileSpikeSection: View {
                 WatchLinkSpike.shared.add("diary: re-written copy saved")
             }
         }
+        .onChange(of: picking) { _, open in Companion.shared.filePickerOpen = open }
     }
 }
 

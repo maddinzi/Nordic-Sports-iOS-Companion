@@ -16,19 +16,72 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
     static let backupFolder = "diary-backups"
     static let keepBackups = 30
     private let bookmarkKey = "diary.bookmark"
-    private var lastFailure = ""
-    private var lastFailurePermanent = false
-    private var lastConflict = false
-    private var lastBackupFailed = false
 
-    var hasWorkbook: Bool { UserDefaults.standard.data(forKey: bookmarkKey) != nil }
+    // The state below is touched from the main thread (picker, forget, restore) and from the
+    // shared code's IO threads (reads and writes), so every access goes through a lock.
+    private let lastFailureBox = Locked("")
+    private let lastFailurePermanentBox = Locked(false)
+    private let lastConflictBox = Locked(false)
+    private let lastBackupFailedBox = Locked(false)
+    private let timedOutBox = Locked(false)
+    private let stoppedBox = Locked(false)
+    private let backgroundRunBox = Locked(false)
+    private let pickedURLBox = Locked<URL?>(nil)
+    private let pendingPickBox = Locked<PendingPick?>(nil)
 
-    /// The workbook remembered before [remember], until the new one is confirmed.
-    private var previousBookmark: Data?
+    private var lastFailure: String {
+        get { lastFailureBox.get() }
+        set { lastFailureBox.set(newValue) }
+    }
+    private var lastFailurePermanent: Bool {
+        get { lastFailurePermanentBox.get() }
+        set { lastFailurePermanentBox.set(newValue) }
+    }
+    private var lastConflict: Bool {
+        get { lastConflictBox.get() }
+        set { lastConflictBox.set(newValue) }
+    }
+    private var lastBackupFailed: Bool {
+        get { lastBackupFailedBox.get() }
+        set { lastBackupFailedBox.set(newValue) }
+    }
 
     /// The URL the picker returned in this app session; tried before the bookmark, so the log
     /// shows whether a failure comes from the bookmark round trip or from the provider.
-    private var pickedURL: URL?
+    private var pickedURL: URL? {
+        get { pickedURLBox.get() }
+        set { pickedURLBox.set(newValue) }
+    }
+
+    /// The workbook remembered before the first unconfirmed pick (nil inside: there was none).
+    private struct PendingPick {
+        let previousBookmark: Data?
+    }
+
+    var hasWorkbook: Bool { UserDefaults.standard.data(forKey: bookmarkKey) != nil }
+
+    // MARK: - Stop and deadline
+
+    /// Asks a running or coming diary read or write to end: a write that has not begun is not
+    /// started. Set when iOS ends a background task and when the background sync is cancelled.
+    func requestStop() { stoppedBox.set(true) }
+
+    func resetStop() { stoppedBox.set(false) }
+
+    var stopRequested: Bool { stoppedBox.get() }
+
+    /// A run in a background task has little time: reads give up sooner.
+    func beginBackgroundRun() {
+        backgroundRunBox.set(true)
+        stoppedBox.set(false)
+    }
+
+    func endBackgroundRun() {
+        backgroundRunBox.set(false)
+        stoppedBox.set(false)
+    }
+
+    var inBackgroundRun: Bool { backgroundRunBox.get() }
 
     private func log(_ line: String) { WatchLinkSpike.shared.add("diary: \(line)") }
 
@@ -39,7 +92,11 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
         log("picked \(url.lastPathComponent), scoped access \(scoped), \(Self.describe(url))")
         do {
             let bookmark = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
-            previousBookmark = UserDefaults.standard.data(forKey: bookmarkKey)
+            let current = UserDefaults.standard.data(forKey: bookmarkKey)
+            // Picking twice before the first pick is confirmed keeps the confirmed workbook.
+            pendingPickBox.withValue { pending in
+                if pending == nil { pending = PendingPick(previousBookmark: current) }
+            }
             UserDefaults.standard.set(bookmark, forKey: bookmarkKey)
             pickedURL = url
             return nil
@@ -49,15 +106,32 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
         }
     }
 
-    /// The picked file is no diary: back to the workbook remembered before, if any.
+    /// The picked file is a diary: the pick is final.
+    func confirmPick() {
+        pendingPickBox.set(nil)
+    }
+
+    /// The picked file is no diary (or connecting failed): back to the workbook remembered
+    /// before, if any.
     func restorePrevious() {
-        UserDefaults.standard.set(previousBookmark, forKey: bookmarkKey)
-        previousBookmark = nil
+        let pending = pendingPickBox.withValue { pending -> PendingPick? in
+            let taken = pending
+            pending = nil
+            return taken
+        }
+        if let pending {
+            if let previous = pending.previousBookmark {
+                UserDefaults.standard.set(previous, forKey: bookmarkKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: bookmarkKey)
+            }
+        }
         pickedURL = nil
     }
 
     func forget() {
         UserDefaults.standard.removeObject(forKey: bookmarkKey)
+        pendingPickBox.set(nil)
         pickedURL = nil
     }
 
@@ -66,27 +140,38 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
     /// A coordinated read; a provider (OneDrive, iCloud) may first have to download the file.
     /// When that read fails, the file is asked to download, then read again every 3 s (five
     /// times), and finally as a coordinated copy (`.forUploading`). Each attempt is logged.
+    /// The whole ladder ends at a deadline (shorter in a background run) or when a stop is
+    /// requested; either counts as a timeout, after which the bookmark is not tried again.
     func readWorkbook() -> Data? {
-        withWorkbook { url in
+        let deadline = Date().addingTimeInterval(inBackgroundRun ? 20 : 90)
+        return withWorkbook { url in
             do {
                 return try Self.coordinatedRead(url, options: [])
             } catch {
                 log("read failed: \(Self.describe(error)); \(Self.describe(url))")
-                if Self.waitForDownload(url) {
+                timedOutBox.set(true)
+                if Self.waitForDownload(url, deadline: deadline, stopped: stoppedBox) {
                     log("downloaded: \(Self.describe(url))")
-                    if let data = try? Self.coordinatedRead(url, options: []) { return data }
+                    if let data = try? Self.coordinatedRead(url, options: []) {
+                        timedOutBox.set(false)
+                        return data
+                    }
                 }
                 // OneDrive's provider may need a while for a file it has not downloaded yet
                 // (build 16: the third pick worked), without reporting a download state.
                 for attempt in 1...5 {
+                    if Date() >= deadline || stoppedBox.get() { throw error }
                     Thread.sleep(forTimeInterval: 3)
                     if let data = try? Self.coordinatedRead(url, options: []) {
                         log("read worked on retry \(attempt)")
+                        timedOutBox.set(false)
                         return data
                     }
                 }
+                if Date() >= deadline || stoppedBox.get() { throw error }
                 let data = try Self.coordinatedRead(url, options: .forUploading)
                 log("read as a coordinated copy worked")
+                timedOutBox.set(false)
                 return data
             }
         }
@@ -102,9 +187,9 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
         return try result.get()
     }
 
-    /// Asks the provider to download [url] and waits up to a minute; false when it isn't a
-    /// cloud file or did not arrive.
-    private static func waitForDownload(_ url: URL) -> Bool {
+    /// Asks the provider to download [url] and waits up to a minute (or until [deadline], or a
+    /// requested stop); false when it isn't a cloud file or did not arrive.
+    private static func waitForDownload(_ url: URL, deadline: Date, stopped: Locked<Bool>) -> Bool {
         guard (try? url.resourceValues(forKeys: [.isUbiquitousItemKey]))?.isUbiquitousItem == true else { return false }
         do {
             try FileManager.default.startDownloadingUbiquitousItem(at: url)
@@ -115,6 +200,7 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
         for _ in 0..<60 {
             let status = (try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]))?.ubiquitousItemDownloadingStatus
             if status == .current { return true }
+            if Date() >= deadline || stopped.get() { return false }
             Thread.sleep(forTimeInterval: 1)
         }
         return false
@@ -147,6 +233,13 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
     /// written at all (`failureIsConflict`).
     func writeWorkbook(data: Data, expectedRevision: String) -> Bool {
         lastConflict = false
+        // iOS ended the background time (or the sync was cancelled): never start the write.
+        if stoppedBox.get() {
+            log("write not started: background time ran out")
+            lastFailure = "The diary was not updated because the background time ran out."
+            lastFailurePermanent = false
+            return false
+        }
         let written: Bool? = withWorkbook { url in
             var conflict = false
             do {
@@ -155,20 +248,25 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
                         conflict = true
                         return
                     }
+                    if stoppedBox.get() { throw StopError() }
                     do {
                         try Self.replaceAtomically(writeURL, with: data)
                     } catch {
+                        if stoppedBox.get() { throw StopError() }
                         log("atomic replace failed: \(Self.describe(error)); writing in place")
                         try Self.writeInPlace(writeURL, data) { try data.write(to: writeURL) }
                     }
                 }
             } catch {
+                if error is StopError { throw error }
                 log("write failed: \(Self.describe(error)); \(Self.writeState(url))")
+                if stoppedBox.get() { throw StopError() }
                 try Self.coordinatedWrite(url, options: []) { writeURL in
                     if Self.hasChanged(writeURL, since: expectedRevision) {
                         conflict = true
                         return
                     }
+                    if stoppedBox.get() { throw StopError() }
                     try Self.writeInPlace(writeURL, data) {
                         let handle = try FileHandle(forWritingTo: writeURL)
                         defer { try? handle.close() }
@@ -285,12 +383,19 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
     private func withWorkbook<T>(_ body: (URL) throws -> T) -> T? {
         lastFailure = ""
         lastFailurePermanent = false
+        timedOutBox.set(false)
         if let picked = pickedURL {
             let scoped = picked.startAccessingSecurityScopedResource()
             defer { if scoped { picked.stopAccessingSecurityScopedResource() } }
             do {
                 return try body(picked)
             } catch {
+                if error is StopError { return fail(error.localizedDescription, permanent: false) }
+                // A read that already waited out its deadline would only wait again with the bookmark.
+                if timedOutBox.get() || stoppedBox.get() {
+                    log("with the picked URL: \(Self.describe(error)); timed out, the bookmark is not tried")
+                    return fail(error.localizedDescription, permanent: Self.isPermanent(error))
+                }
                 log("with the picked URL: \(Self.describe(error)); trying the bookmark")
             }
         }
@@ -298,18 +403,25 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
             return fail("No diary workbook chosen.", permanent: true)
         }
         let url: URL
+        var stale = false
         do {
-            var stale = false
             url = try URL(resolvingBookmarkData: bookmark, bookmarkDataIsStale: &stale)
-            if stale, let renewed = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {
-                UserDefaults.standard.set(renewed, forKey: bookmarkKey)
-            }
         } catch {
             log("bookmark no longer resolves: \(Self.describe(error))")
             return fail(error.localizedDescription, permanent: true)
         }
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        if stale {
+            // Renewed inside the security scope, otherwise iOS refuses the new bookmark.
+            do {
+                let renewed = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+                UserDefaults.standard.set(renewed, forKey: bookmarkKey)
+                log("stale bookmark renewed")
+            } catch {
+                log("stale bookmark could not be renewed (it may stop resolving): \(Self.describe(error))")
+            }
+        }
         do {
             return try body(url)
         } catch {
@@ -332,7 +444,7 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
         let cloud = values?.isUbiquitousItem.map { $0 ? "cloud" : "local" } ?? "?"
         let status = values?.ubiquitousItemDownloadingStatus?.rawValue ?? "-"
         let size = values?.fileSize.map { "\($0 / 1024) KB" } ?? "?"
-        return "exists \(exists), \(cloud), download \(status), \(size), \(url.path)"
+        return "exists \(exists), \(cloud), download \(status), \(size), \(url.lastPathComponent)"
     }
 
     private func fail<T>(_ message: String, permanent: Bool) -> T? {
@@ -347,4 +459,37 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
         let lasting: [CocoaError.Code] = [.fileNoSuchFile, .fileReadNoSuchFile, .fileReadNoPermission, .fileWriteNoPermission]
         return lasting.contains(cocoa.code)
     }
+}
+
+/// A value guarded by a lock, for state read and written from several threads.
+final class Locked<Value>: @unchecked Sendable {
+    private var value: Value
+    private let lock = NSLock()
+
+    init(_ value: Value) { self.value = value }
+
+    func get() -> Value {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func set(_ newValue: Value) {
+        lock.lock()
+        defer { lock.unlock() }
+        value = newValue
+    }
+
+    /// Reads and changes the value in one locked step.
+    @discardableResult
+    func withValue<R>(_ body: (inout Value) -> R) -> R {
+        lock.lock()
+        defer { lock.unlock() }
+        return body(&value)
+    }
+}
+
+/// Thrown inside a diary write that was stopped (background time over, sync cancelled).
+struct StopError: LocalizedError {
+    var errorDescription: String? { "The diary was not updated because the background time ran out." }
 }

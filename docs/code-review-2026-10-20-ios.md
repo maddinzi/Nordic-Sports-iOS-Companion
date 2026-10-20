@@ -290,3 +290,29 @@ Fix: log type and size only (or gate payload logging behind a debug switch); kee
   rate is guarded (`MoreScreens.swift:607`); `URL(string:)` results are unwrapped with `guard`/`if let` everywhere.
 - Closures: no retain cycle of consequence (all long-lived objects are singletons; the auth-session completion
   releases the session).
+
+---
+
+## Fixed 2026-10-20 (part 2)
+
+Nothing was compiled (no Mac); every change was re-read for syntax and types.
+
+| # | Status | What |
+|---|---|---|
+| 4 | Fixed on the Swift side (Kotlin unchanged) | `FilesDiaryAccess` has a thread-safe stop flag (`requestStop`, `stopRequested`). `BGTask.expirationHandler` and the cancellation of `backgroundSync` set it. `writeWorkbook` starts no write when it is set, and checks it before the replace, before the in-place fallback and before the file-handle fallback. Reads end at the flag too. Foreground diary operations run inside `beginBackgroundTask`/`endBackgroundTask` (`withDiaryTime`), whose expiry handler sets the flag. Not done: backup-must-exist check, byte compare of the atomic path, `NSFileCoordinator` changes (need Kotlin or more design). |
+| 5 | Fixed | A nil or empty device selection is logged and ignored; saved watches and listeners stay. |
+| 6 | Fixed | `restorePrevious()` also runs in the `catch`. The pre-pick bookmark is stored only for the first unconfirmed pick (a pending-pick record, so "no previous workbook" is also kept), cleared by `confirmPick()` on success. |
+| 7 | Fixed | The stale bookmark is renewed after `startAccessingSecurityScopedResource()`, with success and failure logged. |
+| 8 | Fixed | `sync()` returns `SyncOutcome`; `backgroundSync()` returns `BackgroundOutcome` (text, success) and `BackgroundSpike` completes the task with the real success. Cancellation (`CancellationError`, `NSURLErrorCancelled`, an NSError carrying a Kotlin `...Cancellation...` exception) is ignored by `report(_:)` and the sync paths. `message` keeps one alert; further texts wait in a queue (`post`). Not covered: `try?` call sites and the screens' own `message` writes. |
+| 9 | Minimum fixed | After an empty reason `core.stravaConnected()` decides whether the toast and sync happen. The iOS 17.0-17.3 and start-failure texts now go through `main_toast_strava_connect_failed` with an English reason. No `state` parameter and no deployment-target change. |
+| 11 | Fixed | Consecutive store failures counted; every third one posts a message (English text, no Android string fits). The log line has the error and the start time. |
+| 12 | Fixed | Failure and pick state sits behind `Locked` (NSLock). A read ladder has a deadline (90 s foreground, 20 s background run) and a stop check, and a timeout skips the second attempt through the bookmark. |
+| 13 | Fixed | The watch message log has type and size only. Diary logs use the file name, not the path. The core's `NSLog` line is compiled in debug builds only. |
+| 14 | Fixed | `exportingBoosts` guard; a failed report is logged. |
+| 16 | Fixed | `syncOnOpen` skips while a sign-in session or file picker is open and runs at most once a minute. |
+| 17 | Fixed | The running sign-in is cancelled first; a token keeps the cancelled session's completion from clearing the new one. |
+| 22 | Fixed | `apps` is behind a lock. |
+| 23 | Fixed | `DispatchQueue.main.sync` replaced by a main-actor `Task`. |
+| 26 | Fixed | The workflow exits 1 when the Strava id/secret or the webhook key is missing; the three cloud ids stay optional. |
+| 28 | Fixed | The password hash and p12 hash prefix lines are gone; lengths remain. |
+| 10, 27, 29, others | Not touched | As agreed. |

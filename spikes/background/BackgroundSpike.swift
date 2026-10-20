@@ -56,10 +56,12 @@ final class BackgroundSpike {
         let finish = Finish(task)
         let work = Task { @MainActor in
             let outcome = await Companion.shared.backgroundSync()
-            self.log("bg: \(kind) sync: \(outcome)")
-            finish.complete(success: true)
+            self.log("bg: \(kind) sync: \(outcome.text)")
+            finish.complete(success: outcome.success)
         }
         task.expirationHandler = {
+            // No diary write starts after this; the cancel reaches the sync through the task.
+            FilesDiaryAccess.shared.requestStop()
             work.cancel()
             self.log("bg: \(kind) task expired before it finished")
             finish.complete(success: false)
