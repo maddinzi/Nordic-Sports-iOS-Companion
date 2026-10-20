@@ -865,7 +865,7 @@ struct AddActivitySheet: View {
                         Text(L10n.get("add_activity_starts_now")).tag(false)
                     }
                     .pickerStyle(.segmented)
-                    DatePicker("Start", selection: $start)
+                    DatePicker(L10n.get("activity_detail_started_label"), selection: $start)
                 }
             }
             .navigationTitle(L10n.get("add_activity_title"))
@@ -1088,7 +1088,7 @@ struct DiaryLocationsScreen: View {
                 }
                 Button(source.connected ? "Choose another workbook" : "Choose diary workbook") { pickingFile = true }
             } else if !source.signedIn {
-                Button("Sign in to \(source.name)") { companion.signInCloud(source.key) }
+                Button("\(L10n.get("destination_sign_in")) · \(source.name)") { companion.signInCloud(source.key) }
             } else {
                 TextField(locationLabel(source.key), text: Binding(
                     get: { links[source.key] ?? source.location },
@@ -1102,7 +1102,7 @@ struct DiaryLocationsScreen: View {
                     Task { show(await companion.connectCloud(source.key, location: link)) }
                 }
                 .disabled((links[source.key] ?? source.location).trimmingCharacters(in: .whitespaces).isEmpty)
-                Button("Sign out of \(source.name)", role: .destructive) { companion.signOutCloud(source.key) }
+                Button("\(L10n.get("cloud_account_sign_out_button")) · \(source.name)", role: .destructive) { companion.signOutCloud(source.key) }
             }
             if source.connected {
                 Button(L10n.get("connect_diary_disconnect_button"), role: .destructive) { companion.disconnectDiary(source.key) }
