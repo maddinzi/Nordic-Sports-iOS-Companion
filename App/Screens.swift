@@ -437,17 +437,115 @@ struct ActivityDetailScreen: View {
 
 // MARK: - Settings
 
+/// The overview, as Android's: the connections first (watch, Strava, diary, add), then the other
+/// settings, each on a page of its own.
 struct SettingsScreen: View {
     @EnvironmentObject var companion: Companion
     @ObservedObject var watch = WatchLinkSpike.shared
-    @State private var exportURL: URL?
-    @State private var confirmingDeleteAll = false
-    @State private var confirmingStravaDisconnect = false
-    @State private var nicknameDraft = ""
+    @State private var query = ""
+
+    private var diaryTitle: String {
+        String(format: L10n.get("settings_tile_diary_named"), L10n.get("settings_diary_short_name"))
+    }
+
+    /// One page of the overview, with the texts on it for the search (a hit on any of them lists the page).
+    private struct Page: Identifiable {
+        let id: String
+        let title: String
+        let words: [String]
+        let destination: AnyView
+    }
+
+    private var pages: [Page] {
+        [
+            Page(id: "watch", title: L10n.get("settings_tile_watch"),
+                 words: ["ios_choose_watch", "settings_tile_watch"].map(L10n.get), destination: AnyView(SettingsWatchPage())),
+            Page(id: "strava", title: String(format: L10n.get("settings_tile_repository_named"), "Strava"),
+                 words: ["Strava", L10n.get("status_backfill_sync_now"), L10n.get("ios_pull_strava_7"), L10n.get("ios_disconnect_strava")],
+                 destination: AnyView(SettingsStravaPage())),
+            Page(id: "diary", title: diaryTitle,
+                 words: ["ios_diary_auto", "status_ttb_round_switch", "status_ttb_compact_switch", "ios_diary_write_7", "connect_diary_title"].map(L10n.get),
+                 destination: AnyView(SettingsDiaryPage())),
+            Page(id: "sync", title: L10n.get("sync_mode_section_title"),
+                 words: ["sync_mode_option_automated", "sync_mode_option_manual", "ios_last_sync"].map(L10n.get),
+                 destination: AnyView(SettingsSyncPage())),
+            Page(id: "app", title: L10n.get("settings_group_app"),
+                 words: ["nickname_label", "settings_review_new_activities", "status_place_names_switch"].map(L10n.get),
+                 destination: AnyView(SettingsAppPage())),
+            Page(id: "privacy", title: L10n.get("settings_page_privacy"),
+                 words: ["status_download_my_data", "status_delete_my_data", "feedback_title"].map(L10n.get),
+                 destination: AnyView(SettingsPrivacyPage())),
+            Page(id: "logs", title: L10n.get("status_data_logs_heading"),
+                 words: ["status_view_diary_log", "status_view_app_log", "ios_transfer_log", "status_view_strava_api_usage", "status_view_recording_boosts"].map(L10n.get),
+                 destination: AnyView(SettingsLogsPage())),
+            Page(id: "about", title: L10n.get("status_about_button"),
+                 words: [], destination: AnyView(AboutScreen())),
+        ]
+    }
+
+    private var hits: [Page] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        return pages.filter { page in
+            page.title.localizedCaseInsensitiveContains(q) || page.words.contains { $0.localizedCaseInsensitiveContains(q) }
+        }
+    }
 
     var body: some View {
         NavigationStack {
-            Form {
+            List {
+                if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    if hits.isEmpty {
+                        Text(L10n.get("settings_search_no_results")).foregroundStyle(.secondary)
+                    }
+                    ForEach(hits) { page in
+                        NavigationLink(page.title) { page.destination }
+                    }
+                } else {
+                    Section(L10n.get("status_connections_heading")) {
+                        NavigationLink {
+                            SettingsWatchPage()
+                        } label: {
+                            LabeledContent(L10n.get("settings_tile_watch"),
+                                           value: watch.devices.first?.friendlyName ?? L10n.get("settings_value_none"))
+                        }
+                        NavigationLink {
+                            SettingsStravaPage()
+                        } label: {
+                            LabeledContent(String(format: L10n.get("settings_tile_repository_named"), "Strava"),
+                                           value: L10n.get(companion.stravaConnected ? "settings_value_connected" : "settings_value_not_connected"))
+                        }
+                        NavigationLink {
+                            SettingsDiaryPage()
+                        } label: {
+                            LabeledContent(diaryTitle,
+                                           value: companion.diaryConnected ? companion.diaryName : L10n.get("settings_value_not_connected"))
+                        }
+                        NavigationLink(L10n.get("settings_add_connection")) { DiaryLocationsScreen() }
+                    }
+                    Section(L10n.get("settings_group_general")) {
+                        NavigationLink(L10n.get("sync_mode_section_title")) { SettingsSyncPage() }
+                        NavigationLink(L10n.get("settings_group_app")) { SettingsAppPage() }
+                        NavigationLink(L10n.get("settings_page_privacy")) { SettingsPrivacyPage() }
+                        NavigationLink(L10n.get("status_data_logs_heading")) { SettingsLogsPage() }
+                    }
+                    Section {
+                        NavigationLink(L10n.get("status_about_button")) { AboutScreen() }
+                        LabeledContent(L10n.get("ios_version"), value: Format.appVersion)
+                    }
+                }
+            }
+            .searchable(text: $query, prompt: L10n.get("settings_search_hint"))
+            .navigationTitle(L10n.get("status_title"))
+        }
+    }
+}
+
+struct SettingsWatchPage: View {
+    @EnvironmentObject var companion: Companion
+    @ObservedObject var watch = WatchLinkSpike.shared
+
+    var body: some View {
+        Form {
                 Section(L10n.get("settings_tile_watch")) {
                     ForEach(watch.devices, id: \.uuid) { device in
                         LabeledContent(device.friendlyName ?? "?", value: watch.statuses[device.uuid] ?? "")
@@ -455,6 +553,17 @@ struct SettingsScreen: View {
                     Button(L10n.get("ios_choose_watch")) { watch.chooseWatch() }
                     NavigationLink(L10n.get("settings_tile_watch")) { WatchSettingsScreen() }
                 }
+        }
+        .navigationTitle(L10n.get("settings_tile_watch"))
+    }
+}
+
+struct SettingsAppPage: View {
+    @EnvironmentObject var companion: Companion
+    @State private var nicknameDraft = ""
+
+    var body: some View {
+        Form {
                 Section {
                     TextField(L10n.get("nickname_label"), text: $nicknameDraft)
                         .textInputAutocapitalization(.words)
@@ -475,6 +584,22 @@ struct SettingsScreen: View {
                         set: { companion.setPlaceNamesEnabled($0) }
                     ))
                     Text(L10n.get("status_place_names_body")).font(.footnote).foregroundStyle(.secondary)
+                } header: {
+                    Text(L10n.get("settings_group_app"))
+                }
+                .onAppear { nicknameDraft = companion.nickname }
+                .onDisappear { if nicknameDraft != companion.nickname { companion.setNickname(nicknameDraft) } }
+        }
+        .navigationTitle(L10n.get("settings_group_app"))
+    }
+}
+
+struct SettingsSyncPage: View {
+    @EnvironmentObject var companion: Companion
+
+    var body: some View {
+        Form {
+                Section {
                     Picker(L10n.get("sync_mode_section_title"), selection: Binding(
                         get: { companion.syncAutomatically },
                         set: { companion.setSyncAutomatically($0) }
@@ -487,11 +612,32 @@ struct SettingsScreen: View {
                                   : "sync_mode_option_manual_description"))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                } header: {
-                    Text(L10n.get("settings_group_app"))
                 }
-                .onAppear { nicknameDraft = companion.nickname }
-                .onDisappear { if nicknameDraft != companion.nickname { companion.setNickname(nicknameDraft) } }
+                if companion.syncing || !companion.syncLines.isEmpty || companion.lastSync != nil {
+                    Section(L10n.get("ios_last_sync")) {
+                        if companion.syncing { ProgressView() }
+                        if let last = companion.lastSync {
+                            Text(last.formatted(date: .abbreviated, time: .shortened)).foregroundStyle(.secondary)
+                        }
+                        if companion.syncLines.isEmpty, !companion.syncing {
+                            Text(L10n.get("ios_nothing_to_do")).foregroundStyle(.secondary)
+                        }
+                        ForEach(Array(companion.syncLines.enumerated()), id: \.offset) { _, line in
+                            Text(line).font(.footnote)
+                        }
+                    }
+                }
+        }
+        .navigationTitle(L10n.get("sync_mode_section_title"))
+    }
+}
+
+struct SettingsStravaPage: View {
+    @EnvironmentObject var companion: Companion
+    @State private var confirmingStravaDisconnect = false
+
+    var body: some View {
+        Form {
                 Section("Strava") {
                     if !companion.stravaConfigured {
                         Text(L10n.get("ios_no_strava_config")).foregroundStyle(.secondary)
@@ -520,6 +666,16 @@ struct SettingsScreen: View {
                     }
                     if companion.stravaConfigured { PoweredByStrava() }
                 }
+        }
+        .navigationTitle("Strava")
+    }
+}
+
+struct SettingsDiaryPage: View {
+    @EnvironmentObject var companion: Companion
+
+    var body: some View {
+        Form {
                 Section(L10n.get("status_diary_label")) {
                     if companion.diaryConnected {
                         Label(String(format: L10n.get("connect_diary_connected_to"), companion.diaryName), systemImage: "book.closed")
@@ -561,20 +717,16 @@ struct SettingsScreen: View {
                     }
                 }
                 .disabled(companion.diaryBusy)
-                if companion.syncing || !companion.syncLines.isEmpty || companion.lastSync != nil {
-                    Section(L10n.get("ios_last_sync")) {
-                        if companion.syncing { ProgressView() }
-                        if let last = companion.lastSync {
-                            Text(last.formatted(date: .abbreviated, time: .shortened)).foregroundStyle(.secondary)
-                        }
-                        if companion.syncLines.isEmpty, !companion.syncing {
-                            Text(L10n.get("ios_nothing_to_do")).foregroundStyle(.secondary)
-                        }
-                        ForEach(Array(companion.syncLines.enumerated()), id: \.offset) { _, line in
-                            Text(line).font(.footnote)
-                        }
-                    }
-                }
+        }
+        .navigationTitle(L10n.get("status_diary_label"))
+    }
+}
+
+struct SettingsLogsPage: View {
+    @EnvironmentObject var companion: Companion
+
+    var body: some View {
+        Form {
                 Section(L10n.get("status_data_logs_heading")) {
                     NavigationLink(L10n.get("status_view_diary_log")) {
                         LogScreen(title: L10n.get("diary_work_log_title"), kind: .diary)
@@ -588,6 +740,18 @@ struct SettingsScreen: View {
                     NavigationLink(L10n.get("status_view_strava_api_usage")) { StravaApiUsageScreen() }
                     NavigationLink(L10n.get("status_view_recording_boosts")) { RecordingBoostScreen() }
                 }
+        }
+        .navigationTitle(L10n.get("status_data_logs_heading"))
+    }
+}
+
+struct SettingsPrivacyPage: View {
+    @EnvironmentObject var companion: Companion
+    @State private var exportURL: URL?
+    @State private var confirmingDeleteAll = false
+
+    var body: some View {
+        Form {
                 Section(L10n.get("status_my_data_heading")) {
                     if let exportURL {
                         ShareLink(item: exportURL) { Label(exportURL.lastPathComponent, systemImage: "square.and.arrow.up") }
@@ -610,13 +774,8 @@ struct SettingsScreen: View {
                 } message: {
                     Text(L10n.get("status_delete_confirm_body"))
                 }
-                Section {
-                    NavigationLink(L10n.get("status_about_button")) { AboutScreen() }
-                    LabeledContent(L10n.get("ios_version"), value: Format.appVersion)
-                }
-            }
-            .navigationTitle(L10n.get("status_title"))
         }
+        .navigationTitle(L10n.get("settings_page_privacy"))
     }
 }
 
