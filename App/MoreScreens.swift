@@ -984,7 +984,7 @@ struct EditActivitySheet: View {
                         Text("km").foregroundStyle(.secondary)
                     }
                 } footer: {
-                    Text("Leave empty to keep the watch's values.")
+                    Text(L10n.get("ios_leave_empty_watch"))
                 }
             }
             .navigationTitle(L10n.get("activity_detail_review_heading"))
@@ -1056,11 +1056,11 @@ struct DiaryLocationsScreen: View {
             }
         } message: { found in
             if found.status == "confirm" {
-                Text("No TTB folder there. Use this workbook as the diary?")
+                Text(L10n.get("ios_diary_confirm_workbook"))
             } else if found.candidates.isEmpty {
-                Text("'\(found.folderName)' has no files in it - nothing to pick from.")
+                Text(String(format: L10n.get("ios_diary_no_files"), found.folderName))
             } else {
-                Text("Couldn't find exactly one .xlsx file in '\(found.folderName)'. Pick the diary workbook:")
+                Text(String(format: L10n.get("ios_diary_pick_workbook"), found.folderName))
             }
         }
     }
@@ -1068,7 +1068,7 @@ struct DiaryLocationsScreen: View {
     @ViewBuilder
     private func rows(_ source: DiarySourceView) -> some View {
         if !source.available {
-            Text(source.key == "LOCAL" ? "Not available." : "Not available in this build.").foregroundStyle(.secondary)
+            Text(source.key == "LOCAL" ? L10n.get("ios_not_available") : L10n.get("ios_not_available_build")).foregroundStyle(.secondary)
         } else {
             if source.connected {
                 Label(String(format: L10n.get("connect_diary_connected_to"), source.workbookName), systemImage: "book.closed")
@@ -1076,17 +1076,17 @@ struct DiaryLocationsScreen: View {
                     Text(L10n.get("connect_diary_active")).font(.footnote).foregroundStyle(.green)
                 } else {
                     Text(L10n.get("connect_diary_not_active")).font(.footnote).foregroundStyle(.secondary)
-                    Button("Make active") {
+                    Button(L10n.get("ios_make_active")) {
                         companion.setActiveDiary(source.key)
                     }
                 }
             }
             if source.key == "LOCAL" {
                 if !source.connected {
-                    Text("A workbook in iCloud Drive or On My iPhone. OneDrive files open read-only here; connect OneDrive below instead.")
+                    Text(L10n.get("ios_local_workbook_hint"))
                         .font(.footnote).foregroundStyle(.secondary)
                 }
-                Button(source.connected ? "Choose another workbook" : "Choose diary workbook") { pickingFile = true }
+                Button(source.connected ? L10n.get("ios_choose_other_workbook") : L10n.get("ios_choose_workbook")) { pickingFile = true }
             } else if !source.signedIn {
                 Button("\(L10n.get("destination_sign_in")) · \(source.name)") { companion.signInCloud(source.key) }
             } else {

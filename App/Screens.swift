@@ -491,7 +491,7 @@ struct SettingsScreen: View {
                 .onDisappear { if nicknameDraft != companion.nickname { companion.setNickname(nicknameDraft) } }
                 Section("Strava") {
                     if !companion.stravaConfigured {
-                        Text("This build has no Strava app settings.").foregroundStyle(.secondary)
+                        Text(L10n.get("ios_no_strava_config")).foregroundStyle(.secondary)
                     } else if companion.stravaConnected {
                         Label(L10n.get("status_strava_connected_status"), systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green)
@@ -523,7 +523,7 @@ struct SettingsScreen: View {
                         if !companion.activeDiarySource.isEmpty {
                             Text(companion.activeDiarySource).font(.footnote).foregroundStyle(.secondary)
                         }
-                        Text("New activities are written at each sync: when the app opens, or pull down on Activities.")
+                        Text(L10n.get("ios_diary_auto_hint"))
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                         if !companion.diaryIssue.isEmpty {
@@ -549,7 +549,7 @@ struct SettingsScreen: View {
                         Button(L10n.get("status_compact_diary_heading")) { Task { await companion.compactDiary(days: 7) } }
                             .disabled(companion.syncing)
                     } else {
-                        Text("Connect your TTB diary: OneDrive, Dropbox, Google Drive, or a workbook in the Files app.")
+                        Text(L10n.get("ios_diary_connect_hint"))
                             .foregroundStyle(.secondary)
                     }
                     NavigationLink(L10n.get("connect_diary_title")) { DiaryLocationsScreen() }
