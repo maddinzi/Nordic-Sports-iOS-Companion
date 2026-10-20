@@ -2,10 +2,9 @@ import SwiftUI
 import UserNotifications
 
 /// The first iOS Companion (roadmap step 4): watch activities stored by the shared Kotlin
-/// core, linked to Strava and retitled there (App/). The feasibility spikes stay reachable
-/// on the Diagnostics tab: the watch link (`spikes/watch-link/`, which also carries the real
-/// watch connection for now), background runs (`spikes/background/`) and the diary workbook
-/// from the Files app (`spikes/diary-file/`).
+/// core, linked to Strava and retitled there (App/). Two spikes still do real work: the watch
+/// link (`spikes/watch-link/`, the watch connection for now) and background runs (`spikes/background/`).
+/// Their log is under Settings > Data logs > Developer log.
 @main
 struct NordicSportsCompanionApp: App {
     @Environment(\.scenePhase) private var scenePhase

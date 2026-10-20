@@ -32,11 +32,10 @@ targets:
     platform: iOS
     sources:
       - path: App
-      # Spikes 1, 2 and 4 (throw-away), on the Diagnostics tab; the watch link spike also
-      # carries the real watch connection until it gets its own adapter.
+      # The watch link spike carries the real watch connection until it gets its own adapter;
+      # the background spike registers the BGTaskScheduler tasks.
       - path: spikes/watch-link
       - path: spikes/background
-      - path: spikes/diary-file
     # Strava app credentials and the webhook server key, written by CI from the repo's secrets
     # (gitignored; never committed). Read by the app from Info.plist (Companion.swift).
     configFiles:

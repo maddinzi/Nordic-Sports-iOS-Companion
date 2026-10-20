@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// The first iOS Companion (roadmap step 4): activities from the watch, linked to Strava and
-/// retitled there, plus the spike screen for diagnostics. The Android texts are used where a
+/// retitled there. The Android texts are used where a
 /// matching one exists; the rest is English until the screens settle.
 struct RootView: View {
     @EnvironmentObject var companion: Companion
@@ -28,9 +28,6 @@ struct RootView: View {
             SettingsScreen()
                 .tabItem { Label(L10n.get("status_title"), systemImage: "gearshape") }
                 .tag(1)
-            WatchLinkSpikeView()
-                .tabItem { Label(L10n.get("ios_tab_diagnostics"), systemImage: "stethoscope") }
-                .tag(2)
         }
         // A tapped notification shows its activity on the first tab.
         .onChange(of: companion.openActivityId) { _, id in
@@ -858,6 +855,7 @@ struct SettingsLogsPage: View {
                     }
                     NavigationLink(L10n.get("status_view_strava_api_usage")) { StravaApiUsageScreen() }
                     NavigationLink(L10n.get("status_view_recording_boosts")) { RecordingBoostScreen() }
+                    NavigationLink(L10n.get("ios_developer_log")) { DeveloperLogScreen() }
                 }
         }
         .navigationTitle(L10n.get("status_data_logs_heading"))
