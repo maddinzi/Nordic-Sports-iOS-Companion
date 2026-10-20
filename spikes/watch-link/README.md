@@ -138,6 +138,27 @@ Build 20 also brings everything from build 19 (steps 31-40), so test both on bui
     by `bg: refresh sync: synced (n lines)`; iOS decides when (often only at night or
     while charging).
 
+## Build 21 additions (Strava branding and Strava data retention)
+
+Build 21 carries everything of builds 19 and 20 too.
+
+47. **Update:** install over the previous build; the database moves to version 34, nothing is lost.
+48. **Branding:** Settings › Strava shows the orange "Connect with Strava" button (when not
+    connected) and the "Powered by Strava" logo. An activity linked to Strava shows its
+    Strava title, an orange bold underlined "View on Strava" (English in every language; it
+    opens the Strava app, else Safari) and the logo.
+49. **Deleted on Strava:** delete a linked test activity on Strava, pull Sync on Activities a
+    few times over the next 1-2 days (the check runs at most every 8 h and waits 24 h): a
+    Strava-only row disappears, a watch row loses its link and shows "Strava data removed on
+    …"; its activity log and the app log say why. The diary entry stays.
+50. **7-day rule:** a Strava-linked activity nobody touched for more than 7 days loses its link
+    the next time the app opens (same note and log lines); a rollerski import that came only
+    from Strava disappears. Watch data and diary entries stay.
+51. **Disconnect Strava (near the end, before 30):** Settings › Strava › Disconnect Strava: the
+    question says the Strava data is deleted. Confirm: an alert lists what was deleted and that
+    the access was revoked at Strava. All Strava links are gone; reconnect with the orange button
+    and pull the last 7 days to get them back.
+
 30. **Delete my data (last, it empties the app):** export first if you want the data,
     then Settings › My Data › Delete my data › confirm. Activities and logs are empty
     (the app log starts with "data deleted"), Strava and the diary show "not connected",

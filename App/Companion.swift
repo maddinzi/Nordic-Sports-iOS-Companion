@@ -34,6 +34,8 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var reviewNewActivities = true
     @Published private(set) var syncAutomatically = true
     @Published var message: String?
+    /// A confirmation with a title and a longer text (the Strava deletion confirmation).
+    @Published var notice: Notice?
 
     let core: CompanionCore
     let language: String
@@ -112,6 +114,7 @@ final class Companion: NSObject, ObservableObject {
     /// Like Android's onResume: a quiet sync whenever the app comes to the foreground
     /// (automated sync mode only).
     func syncOnOpen() async {
+        await purgeExpiredStravaData()
         await refresh()
         guard core.syncAutomatically(), stravaConnected || core.diaryConnected(), !syncing else { return }
         await sync()
@@ -120,6 +123,8 @@ final class Companion: NSObject, ObservableObject {
     /// A background run (BGTaskScheduler; Android: the daily ActivitySyncWorker): the same
     /// sync as on opening, in automated mode only. Returns a line for the Diagnostics log.
     func backgroundSync() async -> String {
+        let purged = await purgeExpiredStravaData()
+        if purged > 0 { WatchLinkSpike.shared.add("bg: Strava data removed from \(purged) activities") }
         guard core.syncAutomatically() else { return "manual sync mode, nothing run" }
         guard stravaConnected || core.diaryConnected() else { return "neither Strava nor a diary connected" }
         guard !syncing else { return "a sync is already running" }
@@ -215,14 +220,37 @@ final class Companion: NSObject, ObservableObject {
         }
     }
 
+    /// As Android: revokes the access at Strava, deletes every Strava data the app holds, then
+    /// shows the deletion confirmation (the same text is in the app log).
     func disconnectStrava() async {
         do {
-            try await core.disconnectStrava()
+            let result = try await core.disconnectStrava()
+            notice = Notice(title: result.title, text: result.text)
         } catch {
             message = error.localizedDescription
         }
         stravaConnected = core.stravaConnected()
-        message = L10n.get("main_toast_strava_disconnected")
+        await refresh()
+    }
+
+    /// Strava's 7-day rule (Companion design/strava-retention.md): at every foreground and
+    /// background run, in either sync mode. The shared code writes the activity and app log
+    /// lines. Returns how many activities lost their Strava data.
+    @discardableResult
+    func purgeExpiredStravaData() async -> Int {
+        do {
+            let count = try await core.purgeExpiredStravaData().intValue
+            if count > 0 { await refresh() }
+            return count
+        } catch {
+            WatchLinkSpike.shared.add("Strava data purge failed: \(error.localizedDescription)")
+            return 0
+        }
+    }
+
+    /// When Strava data was last removed from the activity (epoch millis), or 0.
+    func stravaDataRemovedAt(_ activityId: String) async -> Int64 {
+        (try? await core.stravaDataRemovedAt(activityId: activityId))?.int64Value ?? 0
     }
 
     // MARK: - Diary
@@ -724,4 +752,10 @@ enum L10n {
     static func plural(_ name: String, _ count: Int) -> String {
         String.localizedStringWithFormat(NSLocalizedString(name, comment: ""), count)
     }
+}
+
+/// A title and a text to confirm something that happened (an alert with OK).
+struct Notice {
+    let title: String
+    let text: String
 }

@@ -247,6 +247,7 @@ struct ActivityDetailScreen: View {
     let item: ActivityItem
     @State private var confirmingDelete = false
     @State private var editing = false
+    @State private var stravaRemovedAt: Int64 = 0
 
     /// The row as the list has it now, so a push shows its result here too.
     private var current: ActivityItem { companion.activities.first { $0.id == item.id } ?? item }
@@ -296,13 +297,19 @@ struct ActivityDetailScreen: View {
                 }
             }
             Section(L10n.get("activity_detail_synced_to")) {
-                if item.stravaActivityId.isEmpty {
+                if current.stravaActivityId.isEmpty {
                     Text("Not linked to Strava yet")
-                } else {
-                    Link(destination: URL(string: "https://www.strava.com/activities/\(item.stravaActivityId)")!) {
-                        LabeledContent("Strava", value: item.stravaTitle.isEmpty ? item.stravaActivityId : item.stravaTitle)
+                    if stravaRemovedAt > 0 {
+                        Label(String(format: L10n.get("activity_detail_strava_removed_note"), Format.date(stravaRemovedAt / 1000)),
+                              systemImage: "info.circle")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
-                    if item.stravaConflict {
+                } else {
+                    if !current.stravaTitle.isEmpty { LabeledContent("Strava", value: current.stravaTitle) }
+                    ViewOnStravaLink(stravaActivityId: current.stravaActivityId)
+                    PoweredByStrava()
+                    if current.stravaConflict {
                         Text("Changed on Strava since the Companion last saw it; the title was left alone.")
                             .foregroundStyle(.red)
                     }
@@ -361,6 +368,7 @@ struct ActivityDetailScreen: View {
             }
         }
         .sheet(isPresented: $editing) { EditActivitySheet(item: current).environmentObject(companion) }
+        .task(id: current.stravaActivityId) { stravaRemovedAt = await companion.stravaDataRemovedAt(item.id) }
     }
 }
 
@@ -371,6 +379,7 @@ struct SettingsScreen: View {
     @ObservedObject var watch = WatchLinkSpike.shared
     @State private var exportURL: URL?
     @State private var confirmingDeleteAll = false
+    @State private var confirmingStravaDisconnect = false
     @State private var nicknameDraft = ""
 
     var body: some View {
@@ -425,10 +434,23 @@ struct SettingsScreen: View {
                             .disabled(companion.syncing)
                         Button("Pull the last 7 days from Strava") { Task { await companion.backfill(days: 7) } }
                             .disabled(companion.syncing)
-                        Button("Disconnect Strava", role: .destructive) { Task { await companion.disconnectStrava() } }
+                        Button("Disconnect Strava", role: .destructive) { confirmingStravaDisconnect = true }
+                            .confirmationDialog(
+                                String(format: L10n.get("status_disconnect_confirm_title"), "Strava"),
+                                isPresented: $confirmingStravaDisconnect,
+                                titleVisibility: .visible
+                            ) {
+                                Button(L10n.get("status_disconnect_button"), role: .destructive) {
+                                    Task { await companion.disconnectStrava() }
+                                }
+                            } message: {
+                                // Strava API Policy 7.4: the disconnect deletes the Strava data held.
+                                Text(L10n.get("status_disconnect_confirm_body_strava"))
+                            }
                     } else {
-                        Button("Connect Strava") { companion.connectStrava() }
+                        StravaConnectButton { companion.connectStrava() }
                     }
+                    if companion.stravaConfigured { PoweredByStrava() }
                 }
                 Section(L10n.get("status_diary_label")) {
                     if companion.diaryConnected {
@@ -519,6 +541,14 @@ struct SettingsScreen: View {
                 }
             }
             .navigationTitle(L10n.get("status_title"))
+            .alert(
+                companion.notice?.title ?? "",
+                isPresented: Binding(get: { companion.notice != nil }, set: { if !$0 { companion.notice = nil } })
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(companion.notice?.text ?? "")
+            }
         }
     }
 }
@@ -564,5 +594,46 @@ enum Format {
     static var appVersion: String {
         let info = Bundle.main.infoDictionary ?? [:]
         return "\(info["CFBundleShortVersionString"] as? String ?? "?") (\(info["CFBundleVersion"] as? String ?? "?"))"
+    }
+}
+
+// MARK: - Strava branding (Strava's guidelines; Companion design/strava-brand-compliance.md)
+
+/// Strava's own "Connect with Strava" button, unmodified, 48 pt high, wherever the sign-in
+/// starts (also to reconnect).
+struct StravaConnectButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image("StravaConnectButton").resizable().scaledToFit().frame(height: 48)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(L10n.get("strava_connect_button_description")))
+    }
+}
+
+/// Strava's "Powered by Strava" logo (orange, horizontal), about 18 pt high.
+struct PoweredByStrava: View {
+    var body: some View {
+        Image("StravaPoweredBy").resizable().scaledToFit().frame(height: 18)
+            .accessibilityLabel(Text(L10n.get("strava_powered_by_description")))
+    }
+}
+
+/// "View on Strava": these exact words in every language, bold, underlined, Strava orange
+/// (#FC5200). Opens the Strava app when installed (universal link), else Safari.
+struct ViewOnStravaLink: View {
+    let stravaActivityId: String
+
+    var body: some View {
+        if let url = URL(string: "https://www.strava.com/activities/\(stravaActivityId)") {
+            Link(destination: url) {
+                Text(L10n.get("strava_view_on_strava"))
+                    .bold()
+                    .underline()
+                    .foregroundStyle(Color(red: 252 / 255, green: 82 / 255, blue: 0))
+            }
+        }
     }
 }
