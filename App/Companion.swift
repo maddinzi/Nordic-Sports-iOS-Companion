@@ -810,9 +810,10 @@ final class Companion: NSObject, ObservableObject {
     /// otherwise stay in the temporary folder until the system clears it.
     func discardExport(_ url: URL?) {
         guard let url else { return }
-        do { try FileManager.default.removeItem(at: url) } catch let error as NSError
-            where !(error.domain == NSCocoaErrorDomain && error.code == NSFileNoSuchFileError) {
-            WatchLinkSpike.shared.add("export file could not be removed: \(error.localizedDescription)")
+        do { try FileManager.default.removeItem(at: url) } catch {
+            let missing = (error as NSError).domain == NSCocoaErrorDomain
+                && (error as NSError).code == NSFileNoSuchFileError
+            if !missing { WatchLinkSpike.shared.add("export file could not be removed: \(error.localizedDescription)") }
         }
     }
 

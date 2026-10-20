@@ -425,6 +425,8 @@ struct ActivityDetailScreen: View {
             Text(L10n.get("activity_detail_delete_confirm_body") + (item.stravaActivityId.isEmpty
                 ? "" : "\n\n" + L10n.get("activity_detail_delete_confirm_strava_note")))
         }
+        // Long-press copies a value (SPM, DPS, ...), as on Android.
+        .textSelection(.enabled)
         .navigationTitle(current.title.isEmpty ? L10n.get("activity_detail_title_fallback") : current.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
