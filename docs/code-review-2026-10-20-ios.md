@@ -168,6 +168,10 @@ authorises writes at the server. (Android has the same design, so this is a know
 conscious decision.) Fix: move the code exchange and token refresh behind the webhook server so the secret
 stays server-side, or at least make the webhook key per-install (registered on first use) and rotatable.
 
+**Decision (2026-10-20, athlete): accept for now (option A).** Both values stay in the bundle during the
+TestFlight phase, as on Android. Revisit before any public release: move the Strava code exchange and token
+refresh behind the webhook server (keeps the secret off the phones), on Android and iOS together.
+
 ### 11. A watch activity that fails to store is only logged
 `Companion.swift:182-210`.
 On an exception the only trace is a line in the Diagnostics spike log (line 207) and the watch is not
