@@ -1037,6 +1037,7 @@ struct EditActivitySheet: View {
                 } footer: {
                     Text(L10n.get("ios_leave_empty_watch"))
                 }
+                sendSection
             }
             .navigationTitle(L10n.get("activity_detail_review_heading"))
             .navigationBarTitleDisplayMode(.inline)
@@ -1045,17 +1046,49 @@ struct EditActivitySheet: View {
                     Button(L10n.get("common_cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(L10n.get("watch_intervals_save")) {
-                        Task {
-                            saving = true
-                            let km = Double(kilometers.replacingOccurrences(of: ",", with: ".")) ?? 0
-                            let saved = await companion.saveActivity(
-                                item.id, title: title, trainingType: trainingType, rpe: rpe, feeling: feeling,
-                                comment: comment, minutes: Int(minutes) ?? 0, kilometers: km
-                            )
-                            saving = false
-                            if saved { dismiss() }
-                        }
+                    // Automatic mode sends on its own: there the form's "Save & send" replaces "Save".
+                    if !(companion.automaticSync && companion.sendsSomewhere) {
+                        Button(L10n.get("activity_detail_save_button")) { Task { await save(send: false) } }
+                            .disabled(saving)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Every button saves the screen's values first, so nothing sent is older than what is shown.
+    private func save(send: Bool, createOnStrava: Bool = false) async {
+        saving = true
+        let km = Double(kilometers.replacingOccurrences(of: ",", with: ".")) ?? 0
+        let saved = await companion.saveActivity(
+            item.id, title: title, trainingType: trainingType, rpe: rpe, feeling: feeling,
+            comment: comment, minutes: Int(minutes) ?? 0, kilometers: km
+        )
+        if saved {
+            if createOnStrava { await companion.createOnStrava(item.id) }
+            if send { await companion.sendNow(item.id) }
+        }
+        saving = false
+        if saved { dismiss() }
+    }
+
+    /// "Save & send" (automatic mode) or "Send now" (manual mode), and "Create on Strava" while
+    /// the activity has no Strava link.
+    @ViewBuilder
+    private var sendSection: some View {
+        let sends = companion.sendsSomewhere
+        let canCreate = companion.stravaConnected && item.stravaActivityId.isEmpty
+        if sends || canCreate {
+            Section {
+                if sends {
+                    Button(L10n.get(companion.automaticSync ? "activity_detail_save_and_send" : "activity_detail_send_now")) {
+                        Task { await save(send: true) }
+                    }
+                    .disabled(saving)
+                }
+                if canCreate {
+                    Button(L10n.get("activity_detail_strava_create")) {
+                        Task { await save(send: false, createOnStrava: true) }
                     }
                     .disabled(saving)
                 }

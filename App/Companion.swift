@@ -927,6 +927,38 @@ final class Companion: NSObject, ObservableObject {
         }
     }
 
+    /// Whether new activities are sent on their own (the sync mode); the detail then offers
+    /// "Save & send" instead of "Save" + "Send now".
+    var automaticSync: Bool { core.syncAutomatically() }
+
+    /// Whether anything can receive an activity: Strava or a diary.
+    var sendsSomewhere: Bool { stravaConnected || diaryConnected }
+
+    /// "Send now": the sync links the activity to Strava and sets its title, then the diary
+    /// entry is written unless the sync already did.
+    func sendNow(_ activityId: String) async {
+        if stravaConnected { await sync() }
+        await refresh()
+        if diaryConnected, let item = activities.first(where: { $0.id == activityId }),
+           !item.diaryWritten || item.diaryOutdated {
+            await pushToDiary(activityId)
+        }
+    }
+
+    /// "Create on Strava": links to the same session there, or creates it.
+    func createOnStrava(_ activityId: String) async {
+        guard !syncing else { return }
+        syncing = true
+        defer { syncing = false }
+        do {
+            let report = try await core.createOnStrava(activityId: activityId)
+            syncLines = report.lines
+        } catch {
+            self.report(error)
+        }
+        await refresh()
+    }
+
     func skipReview(_ activityId: String) async {
         do {
             try await core.skipReview(activityId: activityId)
