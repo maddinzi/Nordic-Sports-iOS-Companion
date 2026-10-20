@@ -42,7 +42,7 @@ struct RootView: View {
         }
         .task {
             // Decided once at start, so connecting Strava inside the guide does not close it.
-            if !onboardingDone && !companion.stravaConnected && !companion.diaryConnected && companion.activities.isEmpty {
+            if !onboardingDone && !companion.stravaConnected && !companion.diaryReceives && companion.activities.isEmpty {
                 showOnboarding = true
             }
             onboardingDone = true
@@ -628,6 +628,16 @@ struct SettingsScreen: View {
                         } label: {
                             LabeledContent(diaryTitle,
                                            value: companion.diaryConnected ? companion.diaryName : L10n.get("settings_value_not_connected"))
+                        }
+                        ForEach(companion.folderDestinations, id: \.id) { destination in
+                            NavigationLink {
+                                FolderDestinationPage(id: destination.id)
+                            } label: {
+                                LabeledContent(
+                                    L10n.get(destination.format == "CSV_MONTHLY" ? "destination_format_csv" : "destination_format_json"),
+                                    value: destination.name
+                                )
+                            }
                         }
                         NavigationLink(L10n.get("settings_add_connection")) { DiaryLocationsScreen() }
                     }

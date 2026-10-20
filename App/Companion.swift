@@ -32,6 +32,8 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var diarySettings = DiarySettings(autoUpdate: true, roundDurationUp: true, compactDiary: true)
     @Published private(set) var diaryBusy = false
     @Published private(set) var diarySources: [DiarySourceView] = []
+    /// The JSON and CSV destinations (the TTB diary is `diaryName` and friends).
+    @Published private(set) var folderDestinations: [DestinationView] = []
     @Published private(set) var watchSettings: [WatchSettingsView] = []
     @Published private(set) var liveActivities: [LiveActivityView] = []
     @Published private(set) var crashReports: [CrashReportView] = []
@@ -77,6 +79,7 @@ final class Companion: NSObject, ObservableObject {
             dropboxAppKey: setting("DropboxAppKey"),
             googleClientId: setting("GoogleClientId"),
             diaryFile: FilesDiaryAccess.shared,
+            folderFiles: FolderFiles.shared,
             watchMessenger: WatchLinkSpike.shared,
             debug: { line in
                 #if DEBUG
@@ -148,6 +151,7 @@ final class Companion: NSObject, ObservableObject {
     // MARK: - Activities
 
     func refresh() async {
+        await refreshFolderDestinations()
         do {
             activities = try await core.activities(limit: 300)
             syncStatus = try await core.syncStatus(nowEpochMillis: Int64(Date().timeIntervalSince1970 * 1000))
@@ -274,7 +278,7 @@ final class Companion: NSObject, ObservableObject {
                 notifyNewActivity(result)
                 // As Android in automated mode: forward on arrival (the diary now; Strava's
                 // copy follows by webhook at the next sync).
-                if core.syncAutomatically(), stravaConnected || core.diaryConnected() {
+                if core.syncAutomatically(), stravaConnected || diaryReceives {
                     Task { await sync() }
                 }
             }
@@ -314,7 +318,7 @@ final class Companion: NSObject, ObservableObject {
         guard !outdated else { return }
         await purgeExpiredStravaData()
         await refresh()
-        guard core.syncAutomatically(), stravaConnected || core.diaryConnected(), !syncing else { return }
+        guard core.syncAutomatically(), stravaConnected || diaryReceives, !syncing else { return }
         await sync()
     }
 
@@ -329,7 +333,8 @@ final class Companion: NSObject, ObservableObject {
         let purged = await purgeExpiredStravaData()
         if purged > 0 { WatchLinkSpike.shared.add("bg: Strava data removed from \(purged) activities") }
         guard core.syncAutomatically() else { return BackgroundOutcome(text: "manual sync mode, nothing run", success: true) }
-        guard stravaConnected || core.diaryConnected() else {
+        await refreshFolderDestinations()
+        guard stravaConnected || diaryReceives else {
             return BackgroundOutcome(text: "neither Strava nor a diary connected", success: true)
         }
         guard !syncing else { return BackgroundOutcome(text: "a sync is already running", success: true) }
@@ -502,6 +507,9 @@ final class Companion: NSObject, ObservableObject {
     // MARK: - Diary
 
     var diaryConnected: Bool { !diaryName.isEmpty }
+
+    /// Something receives activities: the TTB diary or a JSON/CSV destination that is not paused.
+    var diaryReceives: Bool { diaryConnected || folderDestinations.contains { $0.enabled } }
 
     private func refreshDiary() {
         diaryName = core.diaryConnected() ? core.diaryWorkbookName() : ""
@@ -678,6 +686,108 @@ final class Companion: NSObject, ObservableObject {
             refreshDiary()
             await refresh()
         }
+    }
+
+    // MARK: - JSON and CSV destinations
+
+    func refreshFolderDestinations() async {
+        do {
+            folderDestinations = try await core.folderDestinations()
+        } catch {
+            report(error)
+        }
+    }
+
+    /// A folder in a signed-in cloud: [link] is a sharing link (a Dropbox path works too).
+    func pickCloudFolder(provider: String, link: String) async -> FolderPickView {
+        diaryBusy = true
+        defer { diaryBusy = false }
+        do {
+            return try await core.pickCloudFolder(provider: provider, location: link)
+        } catch {
+            return FolderPickView(ok: false, message: error.localizedDescription, folderName: "")
+        }
+    }
+
+    /// A folder picked in the Files app.
+    func pickDeviceFolder(_ url: URL) async -> FolderPickView {
+        diaryBusy = true
+        defer { diaryBusy = false }
+        guard let bookmark = FolderFiles.shared.bookmark(for: url) else {
+            return FolderPickView(ok: false, message: FolderFiles.shared.failure(), folderName: url.lastPathComponent)
+        }
+        do {
+            return try await core.pickDeviceFolder(bookmark: bookmark, name: url.lastPathComponent)
+        } catch {
+            return FolderPickView(ok: false, message: error.localizedDescription, folderName: url.lastPathComponent)
+        }
+    }
+
+    /// Saves the folder picked last as a destination and writes to it at once.
+    func addFolderDestination(format: String, scope: String, backfill: String, position: Bool, monthFolders: Bool, dialect: String) async -> Bool {
+        diaryBusy = true
+        defer { diaryBusy = false }
+        do {
+            let problem = try await core.addFolderDestination(
+                format: format, scope: scope, backfill: backfill, includeStartPosition: position,
+                subfolderPerMonth: monthFolders, dialect: dialect
+            )
+            if !problem.isEmpty {
+                post(problem)
+                return false
+            }
+            post(L10n.get(format == "CSV_MONTHLY" ? "main_toast_csv_added" : "main_toast_json_added"))
+            refreshDiary()
+            await refresh()
+            return true
+        } catch {
+            report(error)
+            return false
+        }
+    }
+
+    func updateFolderDestination(
+        _ id: String, autoWrite: Bool, scope: String, position: Bool, monthFolders: Bool, removeOnDelete: Bool, dialect: String
+    ) async {
+        do {
+            try await core.updateFolderDestination(
+                id: id, autoWrite: autoWrite, scope: scope, includeStartPosition: position,
+                subfolderPerMonth: monthFolders, removeOnDelete: removeOnDelete, dialect: dialect
+            )
+        } catch {
+            report(error)
+        }
+        await refreshFolderDestinations()
+    }
+
+    func setFolderDestinationEnabled(_ id: String, enabled: Bool) async {
+        do { try await core.setFolderDestinationEnabled(id: id, enabled: enabled) } catch { report(error) }
+        await refreshFolderDestinations()
+    }
+
+    func removeFolderDestination(_ id: String) async {
+        do {
+            try await core.removeFolderDestination(id: id)
+            post(L10n.get("main_toast_destination_removed"))
+        } catch {
+            report(error)
+        }
+        await refreshFolderDestinations()
+    }
+
+    /// "Write now" on one destination.
+    func writeFolderDestinationNow(_ id: String) async {
+        guard !syncing else { return }
+        syncing = true
+        defer { syncing = false }
+        do {
+            let report = try await core.writeFolderDestinationNow(id: id)
+            syncLines = report.lines
+        } catch {
+            self.report(error)
+        }
+        refreshDiary()
+        await refresh()
     }
 
     // MARK: - Watch settings
@@ -932,15 +1042,18 @@ final class Companion: NSObject, ObservableObject {
     var automaticSync: Bool { core.syncAutomatically() }
 
     /// Whether anything can receive an activity: Strava or a diary.
-    var sendsSomewhere: Bool { stravaConnected || diaryConnected }
+    var sendsSomewhere: Bool { stravaConnected || diaryReceives }
 
     /// "Send now": the sync links the activity to Strava and sets its title, then the diary
     /// entry is written unless the sync already did.
     func sendNow(_ activityId: String) async {
         if stravaConnected { await sync() }
         await refresh()
-        if diaryConnected, let item = activities.first(where: { $0.id == activityId }),
-           !item.diaryWritten || item.diaryOutdated {
+        if diaryReceives {
+            if diaryConnected, folderDestinations.allSatisfy({ !$0.enabled }),
+               let item = activities.first(where: { $0.id == activityId }), item.diaryWritten, !item.diaryOutdated {
+                return
+            }
             await pushToDiary(activityId)
         }
     }

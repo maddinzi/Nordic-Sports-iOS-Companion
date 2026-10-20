@@ -1116,6 +1116,24 @@ struct DiaryLocationsScreen: View {
             Section {
                 Text(L10n.get("connect_diary_intro")).font(.footnote).foregroundStyle(.secondary)
             }
+            Section {
+                NavigationLink {
+                    AddFolderDestinationScreen(format: "JSON_PER_ACTIVITY")
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(L10n.get("settings_add_connection_json"))
+                        Text(L10n.get("settings_add_connection_json_help")).font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                NavigationLink {
+                    AddFolderDestinationScreen(format: "CSV_MONTHLY")
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(L10n.get("settings_add_connection_csv"))
+                        Text(L10n.get("settings_add_connection_csv_help")).font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+            }
             ForEach(companion.diarySources, id: \.key) { source in
                 Section(source.name) { rows(source) }
             }
