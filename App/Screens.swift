@@ -178,7 +178,7 @@ struct WatchLiveCard: View {
                     Text(String(format: L10n.get("watch_live_discarded_detail"), started)).font(.subheadline)
                 } else {
                     let running = max(0, Int(context.date.timeIntervalSince1970) - Int(live.startEpochSec))
-                    Text(String(format: L10n.get("watch_live_since"), started, Format.duration(Int32(running)))).font(.subheadline)
+                    Text(String(format: L10n.get("watch_live_since"), started, Format.duration(Int32(clamping: running)))).font(.subheadline)
                 }
                 if live.hasPosition {
                     Text(String(format: "%.4f, %.4f", live.lat, live.lon)).font(.footnote).foregroundStyle(.secondary)

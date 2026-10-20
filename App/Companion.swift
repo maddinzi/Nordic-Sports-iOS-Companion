@@ -667,18 +667,26 @@ final class Companion: NSObject, ObservableObject {
     /// PRIVACY-SYNC: what "Delete my data" removes on iOS. Changing this? Re-check the
     /// Companion's design/privacy-notice-sync.md.
     func deleteAllData() async {
+        var failed: [String] = []
         do {
-            try await core.deleteAllData()
+            failed = try await core.deleteAllData().map { "\($0)" }
         } catch {
-            message = error.localizedDescription
+            failed = [error.localizedDescription]
         }
         FilesDiaryAccess.shared.forget()
         let files = FileManager.default
         if let documents = files.urls(for: .documentDirectory, in: .userDomainMask).first {
-            try? files.removeItem(at: documents.appendingPathComponent(FilesDiaryAccess.backupFolder, isDirectory: true))
+            let backups = documents.appendingPathComponent(FilesDiaryAccess.backupFolder, isDirectory: true)
+            if files.fileExists(atPath: backups.path) {
+                do { try files.removeItem(at: backups) } catch { failed.append("diary backups") }
+            }
         }
-        for name in (try? files.contentsOfDirectory(atPath: files.temporaryDirectory.path)) ?? [] where name.hasSuffix(".json") {
-            try? files.removeItem(at: files.temporaryDirectory.appendingPathComponent(name))
+        do {
+            for name in try files.contentsOfDirectory(atPath: files.temporaryDirectory.path) where name.hasSuffix(".json") {
+                try files.removeItem(at: files.temporaryDirectory.appendingPathComponent(name))
+            }
+        } catch {
+            failed.append("exports")
         }
         WatchLinkSpike.shared.clearLog()
         WatchLinkSpike.shared.add("all data deleted")
@@ -691,7 +699,14 @@ final class Companion: NSObject, ObservableObject {
         syncAutomatically = core.syncAutomatically()
         syncLines = []
         await refresh()
-        message = "All data on this iPhone deleted; Strava and the diary disconnected."
+        message = failed.isEmpty
+            ? "All data on this iPhone deleted; Strava and the diary disconnected."
+            : String(format: L10n.get("main_toast_data_delete_partly"), failed.joined(separator: ", "))
+    }
+
+    /// Minutes typed by the athlete as seconds for the core, capped so a huge entry cannot overflow.
+    private static func seconds(_ minutes: Int) -> Int32 {
+        Int32(clamping: min(max(0, minutes), 100_000) * 60)
     }
 
     /// "sent", "tooMany" or "failed". [watch]: the watch the athlete picked (its details are added with the phone's), or nil.
@@ -743,7 +758,7 @@ final class Companion: NSObject, ObservableObject {
             let saved = try await core.saveActivity(
                 activityId: activityId, title: title, trainingType: trainingType,
                 rpe: Int32(rpe), feeling: Int32(feeling), diaryComment: comment,
-                overrideElapsedSec: Int32(max(0, minutes) * 60), overrideDistanceM: Float(max(0, kilometers) * 1000)
+                overrideElapsedSec: Self.seconds(minutes), overrideDistanceM: Float(max(0, kilometers) * 1000)
             )
             guard saved.boolValue else { return false }
             message = L10n.get("main_toast_activity_updated")
@@ -782,7 +797,7 @@ final class Companion: NSObject, ObservableObject {
             let id = try await core.addActivity(
                 typeKey: typeKey,
                 startEpochSec: Int64(start.timeIntervalSince1970),
-                elapsedSec: Int32(minutes * 60)
+                elapsedSec: Self.seconds(minutes)
             )
             message = L10n.get("main_toast_activity_saved")
             await refresh()
