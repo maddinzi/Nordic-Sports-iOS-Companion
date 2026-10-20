@@ -604,7 +604,7 @@ struct SettingsScreen: View {
                  words: ["sync_mode_option_automated", "sync_mode_option_manual", "ios_last_sync"].map(L10n.get),
                  destination: AnyView(SettingsSyncPage())),
             Page(id: "app", title: L10n.get("settings_group_app"),
-                 words: ["nickname_label", "settings_review_new_activities", "status_place_names_switch"].map(L10n.get),
+                 words: ["nickname_label", "settings_review_new_activities", "status_place_names_switch", "language_section_title"].map(L10n.get),
                  destination: AnyView(SettingsAppPage())),
             Page(id: "privacy", title: L10n.get("settings_page_privacy"),
                  words: ["status_download_my_data", "status_delete_my_data", "feedback_title"].map(L10n.get),
@@ -705,9 +705,27 @@ struct SettingsWatchPage: View {
 struct SettingsAppPage: View {
     @EnvironmentObject var companion: Companion
     @State private var nicknameDraft = ""
+    @State private var languageChoice = AppLanguage.chosen
 
     var body: some View {
         Form {
+                Section {
+                    Picker(L10n.get("language_section_title"), selection: $languageChoice) {
+                        Text(String(format: L10n.get("language_option_system_with_language"),
+                                    L10n.get("language_name_\(AppLanguage.system)"))).tag("")
+                        ForEach(AppLanguage.supported, id: \.self) { code in
+                            Text(L10n.get("language_name_\(code)")).tag(code)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                    if languageChoice != AppLanguage.atLaunch {
+                        Text(L10n.get("ios_language_restart")).font(.footnote).foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text(L10n.get("language_section_title"))
+                }
+                .onChange(of: languageChoice) { _, code in AppLanguage.chosen = code }
                 Section {
                     TextField(L10n.get("nickname_label"), text: $nicknameDraft)
                         .textInputAutocapitalization(.words)

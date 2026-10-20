@@ -1159,15 +1159,7 @@ final class Companion: NSObject, ObservableObject {
 
     /// The phone's language among the Companion's nine, English otherwise ("no", older
     /// iOS's Norwegian, counts as Bokmål).
-    private static func preferredLanguage() -> String {
-        let supported = ["en", "de", "fr", "it", "rm", "gsw", "nb", "fi", "sv"]
-        for tag in Locale.preferredLanguages {
-            var code = tag.split(separator: "-").first.map(String.init)?.lowercased() ?? ""
-            if code == "no" { code = "nb" }
-            if supported.contains(code) { return code }
-        }
-        return "en"
-    }
+    private static func preferredLanguage() -> String { AppLanguage.current }
 
     /// The generated `texts-<language>.json` (tools/generate_strings.py), for the shared code.
     private static func textTable(_ language: String) -> String {
@@ -1189,14 +1181,50 @@ extension Companion: ASWebAuthenticationPresentationContextProviding {
 }
 
 /// The Android texts by name, from App/Localizable.xcstrings (generated from strings.xml).
+/// The language of the app: the one chosen in Settings (Romansh and Swiss German are not iOS
+/// system languages, so the system cannot offer them), else the first system language the app has.
+/// Read once at launch: a change applies after the app is opened again.
+enum AppLanguage {
+    static let supported = ["en", "de", "fr", "it", "rm", "gsw", "nb", "fi", "sv"]
+    private static let key = "appLanguage"
+
+    /// The language chosen in the app, "" for the system's.
+    static var chosen: String {
+        get { UserDefaults.standard.string(forKey: key) ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: key) }
+    }
+
+    /// The first of the iPhone's languages the app has, else English.
+    static var system: String {
+        for tag in Locale.preferredLanguages {
+            var code = tag.split(separator: "-").first.map(String.init)?.lowercased() ?? ""
+            if code == "no" { code = "nb" }
+            if supported.contains(code) { return code }
+        }
+        return "en"
+    }
+
+    static var current: String { supported.contains(chosen) ? chosen : system }
+
+    /// The choice the running app started with (what its texts are in).
+    static let atLaunch = chosen
+}
+
 enum L10n {
+    private static let language = AppLanguage.current
+
+    /// The app's texts in [language] (its `.lproj`); the main bundle when there is none.
+    private static let bundle: Bundle =
+        Bundle.main.path(forResource: language, ofType: "lproj").flatMap(Bundle.init(path:)) ?? .main
+
     static func get(_ name: String) -> String {
-        NSLocalizedString(name, comment: "")
+        bundle.localizedString(forKey: name, value: nil, table: nil)
     }
 
     /// A `<plurals>` text for [count] (the catalog's plural variations).
     static func plural(_ name: String, _ count: Int) -> String {
-        String.localizedStringWithFormat(NSLocalizedString(name, comment: ""), count)
+        String(format: bundle.localizedString(forKey: name, value: nil, table: nil),
+               locale: Locale(identifier: language), count)
     }
 }
 
