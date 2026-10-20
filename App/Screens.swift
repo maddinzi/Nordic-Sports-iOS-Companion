@@ -97,6 +97,28 @@ struct ActivitiesScreen: View {
     @EnvironmentObject var companion: Companion
     @State private var adding = false
     @State private var route: ActivityRoute?
+    /// Items that were open and are not any more, newest first: they stay on top of "Done" with a
+    /// green frame until the next pull to refresh (as Android's `JustReviewed`).
+    @State private var seenOpen: Set<String> = []
+    @State private var justDone: [String] = []
+
+    /// Activities still to review (review pending and before its deadline), oldest first.
+    private var openItems: [ActivityItem] {
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        return companion.activities
+            .filter { $0.reviewPending && now < $0.reviewDeadlineEpochMillis }
+            .sorted { $0.startEpochSec < $1.startEpochSec }
+    }
+
+    private func trackOpen(_ ids: Set<String>) {
+        for id in seenOpen where !ids.contains(id) {
+            seenOpen.remove(id)
+            justDone.removeAll { $0 == id }
+            justDone.insert(id, at: 0)
+        }
+        seenOpen.formUnion(ids)
+        justDone.removeAll { ids.contains($0) }
+    }
 
     var body: some View {
         NavigationStack {
@@ -127,12 +149,11 @@ struct ActivitiesScreen: View {
                         }
                         // As Android: activities still to review on top, oldest first (the order the
                         // diary fills a day's slots in), then the rest under "Done".
-                        let now = Int64(Date().timeIntervalSince1970 * 1000)
-                        let open = companion.activities
-                            .filter { $0.reviewPending && now < $0.reviewDeadlineEpochMillis }
-                            .sorted { $0.startEpochSec < $1.startEpochSec }
+                        let open = openItems
                         let openIds = Set(open.map { $0.id })
-                        let rest = companion.activities.filter { !openIds.contains($0.id) }
+                        let finished = justDone.compactMap { id in companion.activities.first { $0.id == id } }
+                        let finishedIds = Set(finished.map { $0.id })
+                        let rest = companion.activities.filter { !openIds.contains($0.id) && !finishedIds.contains($0.id) }
                         if !open.isEmpty {
                             Section(L10n.get("activity_list_section_open")) {
                                 ForEach(open, id: \.id) { item in
@@ -144,7 +165,15 @@ struct ActivitiesScreen: View {
                                 }
                             }
                         }
-                        Section(open.isEmpty ? "" : L10n.get("activity_list_section_done")) {
+                        Section(open.isEmpty && finished.isEmpty ? "" : L10n.get("activity_list_section_done")) {
+                            ForEach(finished, id: \.id) { item in
+                                NavigationLink {
+                                    ActivityDetailScreen(item: item)
+                                } label: {
+                                    ActivityRow(item: item)
+                                }
+                                .listRowBackground(Color.green.opacity(0.18))
+                            }
                             ForEach(rest, id: \.id) { item in
                                 NavigationLink {
                                     ActivityDetailScreen(item: item)
@@ -165,8 +194,10 @@ struct ActivitiesScreen: View {
                 route = ActivityRoute(id: id)
                 companion.openActivityId = nil
             }
+            .onChange(of: openItems.map { $0.id }, initial: true) { _, ids in trackOpen(Set(ids)) }
             .onAppear { companion.refreshWatchCards() }
             .refreshable {
+                justDone = []
                 companion.refreshWatchCards()
                 await companion.sync()
             }
