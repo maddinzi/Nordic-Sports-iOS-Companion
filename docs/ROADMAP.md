@@ -5,6 +5,12 @@ a fix or feature is written **once** wherever possible and both apps stay easy t
 
 Status: sketch (2026-10-09). The decisions marked "proposed" need the athlete's confirmation.
 
+**Release plan (decided 2026-10-20):** the iOS Companion ships through Apple TestFlight only
+and carries no version 1 until further notice. The Garmin app is a beta in the Connect IQ
+Store and the Android Companion a test version in Google Play; all three stay 0.9.x in a
+stabilisation phase with testers. No App Store submission is planned for now. Details:
+`Nordic Sports Watch/testing/release-gate.md`.
+
 ---
 
 ## 1. Architecture choice (proposed)
