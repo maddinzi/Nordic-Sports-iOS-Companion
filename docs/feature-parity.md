@@ -41,6 +41,9 @@ Build 20 also carries every build 19 row (build 19 was never tested on its own).
 | Strava | Backfill, webhook events, self-echo | yes | MVP | | Pulled on app open and Sync now only |
 | Strava | Duplicate merger (a Strava activity on its own row) | yes | build 20 | | Shared `StravaDuplicateMerger`; iOS runs it in a Room transaction when "Add by hand" links a Strava id another row holds |
 | Strava | Strength description | yes | build 20 | | Shared `StrengthDescription`; iOS writes it after the title (`CompanionCore`), numbers as Android's Locale |
+| Strava | Connect with Strava button (official orange image, 48 pt) where OAuth starts | Android branch `strava-brand-compliance` | - | 21 | Add connection, Strava settings row, onboarding; accessibility label "Connect with Strava", not localized. Spec: Companion `design/strava-brand-compliance.md` |
+| Strava | Powered by Strava logo (orange, horizontal, about 18 pt) | Android branch `strava-brand-compliance` | - | 21 | Strava settings page, activity detail with a Strava id; Strava's asset unmodified |
+| Strava | "View on Strava" link (not translated, bold, underlined, #FC5200) | Android branch `strava-brand-compliance` | - | 21 | Activity detail, hidden without a Strava id; opens strava.com/activities/<id> via UIApplication.open |
 | Diary | Write-back, Push to Diary, three diary switches | yes | build 16 | | |
 | Diary | TTB rules 0.9.93: ids in the hidden register sheet (no cell note), compact "Title: comment" joined with "; ", oldest first, back-to-back sessions in one slot, formula results recalculated before upload | yes | - | 22 | All in shared (`DiaryWriter`, `TtbWorkbookEditor`, `TtbRecalculator`); arrives with the next XCFramework. Text `ttb_forwarder_legacy_notes_moved` is in the table |
 | Diary | "Compact diary" for the last n days (temporary, remove a few versions after 0.9.93) | part | - | 22 | `DiarySync.rewriteRecent` shared; iOS needs the settings row (Android: under the Strava backfill) |
@@ -72,6 +75,7 @@ Build 20 also carries every build 19 row (build 19 was never tested on its own).
 - **20:** Strava duplicate merger, strength description, background sync with
   notifications (with the nickname in them); built 2026-10-19 with Companion
   `kmp-shared-module`, so it also needs the database upgrade to version 30.
-- **21:** place names, Recording Boost, language offer, Strava API usage.
+- **21:** place names, Recording Boost, language offer, Strava API usage, Strava brand
+  compliance (after the owner's choice of "Powered by" or "Compatible with" and the Reconnect button style).
 - **22:** all iOS labels from the text table, onboarding, about, changelog; then the
   release steps (roadmap step 6).
