@@ -368,6 +368,18 @@ struct ActivityRow: View {
     }
 }
 
+/// One place an activity is synced to: ticked when it is there.
+struct SyncChip: View {
+    let name: String
+    let on: Bool
+
+    var body: some View {
+        Label(name, systemImage: on ? "checkmark.circle.fill" : "circle")
+            .font(.subheadline)
+            .foregroundStyle(on ? Color.green : Color.secondary)
+    }
+}
+
 struct ActivityDetailScreen: View {
     @EnvironmentObject var companion: Companion
     @Environment(\.dismiss) private var dismiss
@@ -390,10 +402,25 @@ struct ActivityDetailScreen: View {
 
     var body: some View {
         Form {
+            // Where this activity is synced to, as Android's header box.
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.get("activity_detail_synced_to")).font(.caption).foregroundStyle(.secondary)
+                    HStack(spacing: 16) {
+                        SyncChip(name: "Strava", on: !current.stravaActivityId.isEmpty)
+                        if companion.diaryReceives {
+                            SyncChip(name: L10n.get("settings_diary_short_name"),
+                                     on: current.diaryWritten && !current.diaryOutdated)
+                        }
+                    }
+                }
+            }
             if current.reviewPending {
                 Section(L10n.get("activity_detail_review_heading")) {
-                    Text(String(format: L10n.get("activity_detail_review_body_waits"),
-                                Format.date(current.reviewDeadlineEpochMillis / 1000)))
+                    Text(companion.diarySettings.autoUpdate
+                         ? String(format: L10n.get("activity_detail_review_body_waits"),
+                                  Format.date(current.reviewDeadlineEpochMillis / 1000))
+                         : L10n.get("activity_detail_review_body"))
                         .font(.footnote)
                     Button(L10n.get("activity_detail_review_heading")) { editing = true }
                     Button(L10n.get("activity_detail_review_skip")) {
@@ -401,6 +428,7 @@ struct ActivityDetailScreen: View {
                     }
                     .disabled(companion.syncing)
                 }
+                .listRowBackground(Color.yellow.opacity(0.18))
             }
             Section {
                 LabeledContent(L10n.get("activity_detail_started_label"), value: Format.date(current.startEpochSec))

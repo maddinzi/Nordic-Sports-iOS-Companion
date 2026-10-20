@@ -118,7 +118,7 @@ final class FolderFiles: NSObject, FolderFileAccess, @unchecked Sendable {
     private func withFolder<T>(_ bookmark: String, _ body: (URL) throws -> T) -> T? {
         failureBox.set(Failure())
         guard let data = Data(base64Encoded: bookmark) else {
-            return fail("The folder is no longer valid. Please choose it again.", permanent: true)
+            return fail(L10n.get("ios_folder_invalid"), permanent: true)
         }
         var stale = false
         let root: URL

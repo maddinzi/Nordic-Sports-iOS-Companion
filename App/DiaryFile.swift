@@ -236,7 +236,7 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
         // iOS ended the background time (or the sync was cancelled): never start the write.
         if stoppedBox.get() {
             log("write not started: background time ran out")
-            lastFailure = "The diary was not updated because the background time ran out."
+            lastFailure = L10n.get("ios_diary_background_time_over")
             lastFailurePermanent = false
             return false
         }
@@ -282,7 +282,7 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
             }
             return true
         }
-        if lastConflict { lastFailure = "The diary workbook changed while it was being updated." }
+        if lastConflict { lastFailure = L10n.get("ios_diary_workbook_changed") }
         else if written == nil { log("write failed for good: \(lastFailure)") }
         return written ?? false
     }
@@ -400,7 +400,7 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
             }
         }
         guard let bookmark = UserDefaults.standard.data(forKey: bookmarkKey) else {
-            return fail("No diary workbook chosen.", permanent: true)
+            return fail(L10n.get("ios_no_diary_workbook"), permanent: true)
         }
         let url: URL
         var stale = false
@@ -491,5 +491,5 @@ final class Locked<Value>: @unchecked Sendable {
 
 /// Thrown inside a diary write that was stopped (background time over, sync cancelled).
 struct StopError: LocalizedError {
-    var errorDescription: String? { "The diary was not updated because the background time ran out." }
+    var errorDescription: String? { L10n.get("ios_diary_background_time_over") }
 }
