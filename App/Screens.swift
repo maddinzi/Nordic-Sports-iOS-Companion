@@ -370,8 +370,10 @@ struct ActivityDetailScreen: View {
                     }
                 } else {
                     if !current.stravaTitle.isEmpty { LabeledContent("Strava", value: current.stravaTitle) }
-                    ViewOnStravaLink(stravaActivityId: current.stravaActivityId)
-                    PoweredByStrava()
+                    HStack(spacing: 16) {
+                        ViewOnStravaLink(stravaActivityId: current.stravaActivityId)
+                        PoweredByStrava()
+                    }
                     if current.stravaConflict {
                         Text(L10n.get("ios_strava_changed"))
                             .foregroundStyle(.red)
@@ -839,7 +841,7 @@ struct StravaConnectButton: View {
     }
 }
 
-/// Strava's "Powered by Strava" logo (orange, horizontal), about 18 pt high.
+/// Strava's "Powered by Strava" logo (orange, horizontal; Strava's white one in dark mode, set in the asset), about 18 pt high.
 struct PoweredByStrava: View {
     var body: some View {
         Image("StravaPoweredBy").resizable().scaledToFit().frame(height: 18)

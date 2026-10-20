@@ -391,13 +391,14 @@ struct StravaApiUsageScreen: View {
                 Section {
                     ForEach(group.calls, id: \.id) { call in
                         VStack(alignment: .leading, spacing: 2) {
-                            HStack {
-                                Text("\(call.method) \(call.endpoint)").font(.system(.subheadline, design: .monospaced))
-                                Spacer()
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text("\(call.method) \(call.endpoint)").font(.system(.footnote, design: .monospaced))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                                 Text(Date(timeIntervalSince1970: TimeInterval(call.epochMillis) / 1000)
                                     .formatted(date: .omitted, time: .standard))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                    .fixedSize()
                             }
                             Text(call.purpose).font(.footnote)
                             HStack(spacing: 8) {
@@ -412,6 +413,7 @@ struct StravaApiUsageScreen: View {
                                 Text(call.detail).font(.caption).foregroundStyle(.secondary)
                             }
                         }
+                        .textSelection(.enabled)
                     }
                 } header: {
                     let failed = group.calls.filter { !$0.success }.count
@@ -664,6 +666,7 @@ private struct LogList: View {
                         Text(line.detail).font(.footnote).foregroundStyle(.secondary)
                     }
                 }
+                .textSelection(.enabled)
             }
         }
     }
