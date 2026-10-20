@@ -143,7 +143,7 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
     @objc(deviceStatusChanged:status:)
     func deviceStatusChanged(_ device: IQDevice!, status: IQDeviceStatus) {
         let name = Self.name(of: status)
-        let deviceUuid = device.uuid
+        let deviceUuid: UUID = device.uuid
         let deviceId = Self.deviceId(device)
         let watchName = device.friendlyName
         add("device \(watchName ?? "?"): \(name)")
