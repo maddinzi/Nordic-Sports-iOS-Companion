@@ -18,6 +18,8 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
     private let bookmarkKey = "diary.bookmark"
     private var lastFailure = ""
     private var lastFailurePermanent = false
+    private var lastConflict = false
+    private var lastBackupFailed = false
 
     var hasWorkbook: Bool { UserDefaults.standard.data(forKey: bookmarkKey) != nil }
 
@@ -118,32 +120,107 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
         return false
     }
 
-    /// A coordinated write in place. Build 16 with OneDrive in Files: "no permission to save",
-    /// so a refused write is logged with what iOS reports about the file, and then tried
-    /// again without `.forReplacing` through a file handle (no create, only overwrite).
-    func writeWorkbook(data: Data) -> Bool {
+    /// The workbook's version token (modification date and size), or "" when iOS can't tell.
+    /// Asked right before the read; the write is refused when it no longer matches.
+    func workbookRevision() -> String {
+        withWorkbook { url in Self.revision(of: url) } ?? ""
+    }
+
+    private static func revision(of url: URL) -> String {
+        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        guard let modified = values?.contentModificationDate, let size = values?.fileSize else { return "" }
+        return "\(modified.timeIntervalSince1970)|\(size)"
+    }
+
+    /// Whether the file is known to differ from [expected] (unknown on either side: not changed).
+    private static func hasChanged(_ url: URL, since expected: String) -> Bool {
+        guard !expected.isEmpty else { return false }
+        let current = revision(of: url)
+        return !current.isEmpty && current != expected
+    }
+
+    /// A coordinated write that never truncates the workbook first: the new bytes go to a
+    /// temporary file in the system's replacement directory and are swapped in with
+    /// `replaceItemAt`. Only when that is refused (build 16 with OneDrive in Files: "no permission
+    /// to save") the file is written in place, and then read back and compared; on any failure
+    /// the previous bytes are put back. A workbook that changed since [expectedRevision] is not
+    /// written at all (`failureIsConflict`).
+    func writeWorkbook(data: Data, expectedRevision: String) -> Bool {
+        lastConflict = false
         let written: Bool? = withWorkbook { url in
+            var conflict = false
             do {
                 try Self.coordinatedWrite(url, options: .forReplacing) { writeURL in
-                    // In place, not atomic: access is granted to this one file, not to its
-                    // folder, so a temporary file next to it may not be allowed.
-                    try data.write(to: writeURL)
+                    if Self.hasChanged(writeURL, since: expectedRevision) {
+                        conflict = true
+                        return
+                    }
+                    do {
+                        try Self.replaceAtomically(writeURL, with: data)
+                    } catch {
+                        log("atomic replace failed: \(Self.describe(error)); writing in place")
+                        try Self.writeInPlace(writeURL, data) { try data.write(to: writeURL) }
+                    }
                 }
-                return true
             } catch {
                 log("write failed: \(Self.describe(error)); \(Self.writeState(url))")
                 try Self.coordinatedWrite(url, options: []) { writeURL in
-                    let handle = try FileHandle(forWritingTo: writeURL)
-                    defer { try? handle.close() }
-                    try handle.truncate(atOffset: 0)
-                    try handle.write(contentsOf: data)
+                    if Self.hasChanged(writeURL, since: expectedRevision) {
+                        conflict = true
+                        return
+                    }
+                    try Self.writeInPlace(writeURL, data) {
+                        let handle = try FileHandle(forWritingTo: writeURL)
+                        defer { try? handle.close() }
+                        try handle.truncate(atOffset: 0)
+                        try handle.write(contentsOf: data)
+                    }
+                    log("write through a file handle worked")
                 }
-                log("write through a file handle worked")
-                return true
             }
+            if conflict {
+                lastConflict = true
+                return false
+            }
+            return true
         }
-        if written == nil { log("write failed for good: \(lastFailure)") }
+        if lastConflict { lastFailure = "The diary workbook changed while it was being updated." }
+        else if written == nil { log("write failed for good: \(lastFailure)") }
         return written ?? false
+    }
+
+    /// Writes [data] to a temporary file next to the system's replacement directory for [url],
+    /// checks it, and swaps it in. The original is replaced in one step or not at all.
+    private static func replaceAtomically(_ url: URL, with data: Data) throws {
+        let fileManager = FileManager.default
+        let directory = try fileManager.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: url, create: true)
+        defer { try? fileManager.removeItem(at: directory) }
+        let temporary = directory.appendingPathComponent(url.lastPathComponent)
+        try data.write(to: temporary)
+        guard try Data(contentsOf: temporary) == data else { throw CocoaError(.fileWriteUnknown) }
+        _ = try fileManager.replaceItemAt(url, withItemAt: temporary)
+    }
+
+    /// An in-place write by [write], verified by reading the file back; when it fails or does
+    /// not match, the bytes the file had before are written back and the error is rethrown.
+    private static func writeInPlace(_ url: URL, _ data: Data, _ write: () throws -> Void) throws {
+        let original = try? Data(contentsOf: url)
+        do {
+            try write()
+            guard try Data(contentsOf: url) == data else { throw CocoaError(.fileWriteUnknown) }
+        } catch {
+            if let original { restore(original, to: url) }
+            throw error
+        }
+    }
+
+    private static func restore(_ original: Data, to url: URL) {
+        if (try? original.write(to: url)) != nil { return }
+        if let handle = try? FileHandle(forWritingTo: url) {
+            defer { try? handle.close() }
+            try? handle.truncate(atOffset: 0)
+            try? handle.write(contentsOf: original)
+        }
     }
 
     private static func coordinatedWrite(
@@ -173,7 +250,12 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
 
     func failureIsPermanent() -> Bool { lastFailurePermanent }
 
+    func failureIsConflict() -> Bool { lastConflict }
+
+    func backupFailed() -> Bool { lastBackupFailed }
+
     func saveBackup(data: Data) -> String {
+        lastBackupFailed = false
         do {
             let folder = try FileManager.default
                 .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
@@ -191,6 +273,7 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
             }
             return String(format: L10n.get("ttb_forwarder_backup_saved"), "On My iPhone › Nordic Sports › \(Self.backupFolder)", Self.keepBackups)
         } catch {
+            lastBackupFailed = true
             return String(format: L10n.get("ttb_forwarder_backup_failed"), error.localizedDescription)
         }
     }
