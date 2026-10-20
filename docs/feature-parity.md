@@ -76,6 +76,7 @@ Build 20 also carries every build 19 row (build 19 was never tested on its own).
   notifications (with the nickname in them); built 2026-10-19 with Companion
   `kmp-shared-module`, so it also needs the database upgrade to version 30.
 - **21:** place names, Recording Boost, language offer, Strava API usage, Strava brand
-  compliance (after the owner's choice of "Powered by" or "Compatible with" and the Reconnect button style).
+  compliance (decided 2026-10-20: "Powered by Strava"; Reconnect Strava also uses the official
+  Connect with Strava button; no Strava logo on About).
 - **22:** all iOS labels from the text table, onboarding, about, changelog; then the
   release steps (roadmap step 6).
