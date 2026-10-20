@@ -26,6 +26,12 @@ struct WatchSettingsScreen: View {
                         Text(L10n.plural("watch_settings_waiting", Int(watch.pendingCount)))
                             .font(.footnote)
                             .foregroundStyle(.orange)
+                        // Changes wait and the watch has been silent for hours: the link is probably stuck.
+                        if Date().timeIntervalSince1970 - TimeInterval(watch.reportedAtEpochSec) > 3600 {
+                            Text(L10n.get("watch_settings_stale_hint"))
+                                .font(.footnote)
+                                .foregroundStyle(.red)
+                        }
                     }
                     Button(L10n.get("watch_settings_refresh")) { companion.askWatchAgain(deviceId: watch.deviceId) }
                     if let sync = watch.sync {
