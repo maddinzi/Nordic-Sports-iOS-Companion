@@ -32,6 +32,7 @@ struct NordicSportsCompanionApp: App {
                 Task { await companion.syncOnOpen() }
             case .background:
                 WatchLinkSpike.shared.add("app in background")
+                WatchLinkSpike.shared.flushLog()
                 BackgroundSpike.shared.schedule(reason: "app went to background")
             default:
                 break

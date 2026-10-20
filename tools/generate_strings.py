@@ -140,10 +140,37 @@ def build_tables(res: Path) -> dict:
     return tables
 
 
+def _placeholders(text: str) -> list:
+    """The format conversions in a text, sorted: a translation must take the same arguments as the
+    English text, or String(format:) reads the wrong memory."""
+    return sorted(m[2] for m in _FORMAT.findall(text) if m[2] != "%")
+
+
+def placeholder_problems(res: Path) -> list:
+    """Names whose translation has other format placeholders than the English text."""
+    english, _ = read_language(res / "values", android_format=True)
+    problems = []
+    for folder, lang in LANGUAGES.items():
+        if lang == "en":
+            continue
+        texts, _ = read_language(res / folder, android_format=True)
+        for key, value in texts.items():
+            if key not in english:
+                continue
+            if isinstance(value, dict) != isinstance(english[key], dict):
+                problems.append(f"{lang}/{key}: plural and plain text mixed")
+            elif isinstance(value, str) and _placeholders(value) != _placeholders(english[key]):
+                problems.append(f"{lang}/{key}: placeholders {_placeholders(value)} instead of {_placeholders(english[key])}")
+    return problems
+
+
 def main(argv):
     if len(argv) not in (3, 4):
         sys.exit(__doc__)
     res, out = Path(argv[1]), Path(argv[2])
+    problems = placeholder_problems(res)
+    if problems:
+        sys.exit("Format placeholders differ from the English text:\n  " + "\n  ".join(problems))
     if len(argv) == 4:
         folder = Path(argv[3])
         folder.mkdir(parents=True, exist_ok=True)

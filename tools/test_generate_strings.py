@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from generate_strings import build_catalog, build_tables, convert_format, unescape
+from generate_strings import build_catalog, build_tables, convert_format, placeholder_problems, unescape
 
 
 class ConversionTest(unittest.TestCase):
@@ -69,6 +69,21 @@ class TableTest(unittest.TestCase):
         self.assertEqual("Only English", tables["de"]["only_en"])
         self.assertEqual({"one": "%d change", "other": "%d changes"}, tables["de"]["waiting"])
         self.assertEqual(set(tables), {"en", "de", "fr", "it", "rm", "gsw", "nb", "fi", "sv"})
+
+
+class PlaceholderTest(unittest.TestCase):
+    def test_translation_with_other_placeholders_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            res = Path(tmp)
+            (res / "values").mkdir()
+            (res / "values-de").mkdir()
+            (res / "values" / "strings.xml").write_text(
+                '<resources><string name="a">%1$s: %2$d</string><string name="b">%s</string></resources>', encoding="utf-8")
+            (res / "values-de" / "strings.xml").write_text(
+                '<resources><string name="a">%1$s</string><string name="b">%s</string></resources>', encoding="utf-8")
+            problems = placeholder_problems(res)
+        self.assertEqual(1, len(problems))
+        self.assertTrue(problems[0].startswith("de/a:"))
 
 
 if __name__ == "__main__":

@@ -429,7 +429,10 @@ struct StravaApiUsageScreen: View {
     }
 
     private func load() async {
-        calls = (try? await companion.core.stravaApiCalls(limit: 500)) ?? []
+        do { calls = try await companion.core.stravaApiCalls(limit: 500) } catch {
+            if !error.isCancellation { WatchLinkSpike.shared.add("Strava API usage not loaded: \(error.localizedDescription)") }
+            calls = []
+        }
         loaded = true
     }
 }
@@ -465,6 +468,10 @@ struct OutdatedScreen: View {
             }
         } message: {
             Text(L10n.get("status_delete_confirm_body"))
+        }
+        .onDisappear {
+            companion.discardExport(exportURL)
+            exportURL = nil
         }
     }
 }
@@ -640,7 +647,10 @@ struct RecordingBoostScreen: View {
     }
 
     private func load() async {
-        bursts = (try? await companion.core.recordingBoosts()) ?? []
+        do { bursts = try await companion.core.recordingBoosts() } catch {
+            if !error.isCancellation { WatchLinkSpike.shared.add("Recording Boost list not loaded: \(error.localizedDescription)") }
+            bursts = []
+        }
         loaded = true
     }
 }
@@ -1131,7 +1141,7 @@ struct DiaryLocationsScreen: View {
             choice = result
             choosing = !result.candidates.isEmpty
             if result.candidates.isEmpty {
-                companion.post("'\(result.folderName)' has no files in it - nothing to pick from.")
+                companion.post(String(format: L10n.get("ios_diary_no_files"), result.folderName))
             }
         default:
             companion.message = result.message

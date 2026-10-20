@@ -330,24 +330,24 @@ struct ActivityDetailScreen: View {
                 }
             }
             Section {
-                LabeledContent(L10n.get("activity_detail_started_label"), value: Format.date(item.startEpochSec))
-                LabeledContent(L10n.get("activity_detail_duration_label"), value: Format.duration(item.elapsedSec))
-                if item.distanceM > 0 { LabeledContent(L10n.get("activity_detail_distance_label"), value: Format.distance(item.distanceM)) }
-                if item.avgHeartRate > 0 { LabeledContent(L10n.get("activity_detail_avg_hr_label"), value: "\(item.avgHeartRate) bpm") }
-                if item.maxHeartRate > 0 { LabeledContent(L10n.get("activity_detail_max_hr_label"), value: "\(item.maxHeartRate) bpm") }
-                if item.totalAscentM > 0 { LabeledContent(L10n.get("activity_detail_ascent_label"), value: "\(Int(item.totalAscentM)) m") }
-                if item.calories > 0 { LabeledContent(L10n.get("activity_detail_calories_label"), value: "\(item.calories) kcal") }
-                if !item.locationName.isEmpty { LabeledContent(L10n.get("activity_detail_location_label"), value: item.locationName) }
+                LabeledContent(L10n.get("activity_detail_started_label"), value: Format.date(current.startEpochSec))
+                LabeledContent(L10n.get("activity_detail_duration_label"), value: Format.duration(current.elapsedSec))
+                if current.distanceM > 0 { LabeledContent(L10n.get("activity_detail_distance_label"), value: Format.distance(current.distanceM)) }
+                if current.avgHeartRate > 0 { LabeledContent(L10n.get("activity_detail_avg_hr_label"), value: "\(current.avgHeartRate) bpm") }
+                if current.maxHeartRate > 0 { LabeledContent(L10n.get("activity_detail_max_hr_label"), value: "\(current.maxHeartRate) bpm") }
+                if current.totalAscentM > 0 { LabeledContent(L10n.get("activity_detail_ascent_label"), value: "\(Int(current.totalAscentM)) m") }
+                if current.calories > 0 { LabeledContent(L10n.get("activity_detail_calories_label"), value: "\(current.calories) kcal") }
+                if !current.locationName.isEmpty { LabeledContent(L10n.get("activity_detail_location_label"), value: current.locationName) }
             }
             Section(L10n.get("activity_detail_training_type_label")) {
-                LabeledContent(L10n.get("activity_detail_sport_label"), value: Format.presetWord(item.preset))
-                if !item.trainingType.isEmpty, item.trainingType != "unknown" {
-                    LabeledContent(L10n.get("ios_intensity"), value: Format.trainingTypeWord(item.trainingType))
+                LabeledContent(L10n.get("activity_detail_sport_label"), value: Format.presetWord(current.preset))
+                if !current.trainingType.isEmpty, current.trainingType != "unknown" {
+                    LabeledContent(L10n.get("ios_intensity"), value: Format.trainingTypeWord(current.trainingType))
                 }
-                if item.rpe > 0 { LabeledContent(L10n.get("activity_detail_rpe_label"), value: "\(item.rpe)") }
-                if item.feeling > 0 { LabeledContent(L10n.get("activity_detail_feeling_label"), value: "\(item.feeling)") }
+                if current.rpe > 0 { LabeledContent(L10n.get("activity_detail_rpe_label"), value: "\(current.rpe)") }
+                if current.feeling > 0 { LabeledContent(L10n.get("activity_detail_feeling_label"), value: "\(current.feeling)") }
             }
-            let zones = item.hrZonePercents.map { $0.floatValue }
+            let zones = current.hrZonePercents.map { $0.floatValue }
             if zones.contains(where: { $0 > 0 }) {
                 Section(L10n.get("ios_hr_zones")) {
                     ForEach(Array(zones.enumerated()), id: \.offset) { index, percent in
@@ -379,7 +379,7 @@ struct ActivityDetailScreen: View {
                             .foregroundStyle(.red)
                     }
                 }
-                if item.conflict {
+                if current.conflict {
                     Text(L10n.get("data_conflict_title")).foregroundStyle(.red)
                 }
             }
@@ -776,6 +776,10 @@ struct SettingsPrivacyPage: View {
                 } message: {
                     Text(L10n.get("status_delete_confirm_body"))
                 }
+        }
+        .onDisappear {
+            companion.discardExport(exportURL)
+            exportURL = nil
         }
         .navigationTitle(L10n.get("settings_page_privacy"))
     }

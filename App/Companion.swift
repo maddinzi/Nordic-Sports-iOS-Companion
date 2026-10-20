@@ -286,7 +286,7 @@ final class Companion: NSObject, ObservableObject {
             // The watch keeps what is not confirmed and sends it again; after three failures in a
             // row the athlete is told (and again after every third one).
             if storeFailures % 3 == 0 {
-                post("Activities from the watch could not be saved on this iPhone (\(storeFailures) failures in a row). The watch keeps them and sends them again. Last error: \(error.localizedDescription)")
+                post(String(format: L10n.get("ios_store_failures"), storeFailures, error.localizedDescription))
             }
             return 0
         }
@@ -355,7 +355,9 @@ final class Companion: NSObject, ObservableObject {
         content.userInfo = ["activityId": result.activityId]
         UNUserNotificationCenter.current().add(
             UNNotificationRequest(identifier: "activity-\(result.activityId)", content: content, trigger: nil)
-        )
+        ) { error in
+            if let error { WatchLinkSpike.shared.add("notification not shown: \(error.localizedDescription)") }
+        }
     }
 
     /// Runs the shared sync; the result tells a background run whether it really worked.
@@ -421,11 +423,6 @@ final class Companion: NSObject, ObservableObject {
 
     func connectStrava() {
         guard let url = URL(string: core.stravaAuthorizeUrl()) else { return }
-        guard #available(iOS 17.4, *) else {
-            // The reason is English only; the surrounding "connecting failed" text is localised.
-            post(String(format: L10n.get("main_toast_strava_connect_failed"), "iOS 17.4 or later is required."))
-            return
-        }
         let token = beginAuth()
         let session = ASWebAuthenticationSession(
             url: url,
@@ -437,7 +434,7 @@ final class Companion: NSObject, ObservableObject {
         authSession = session
         if !session.start() {
             endAuth(token)
-            post(String(format: L10n.get("main_toast_strava_connect_failed"), "the sign-in could not start."))
+            post(L10n.get("ios_sign_in_not_started"))
         }
     }
 
@@ -558,25 +555,18 @@ final class Companion: NSObject, ObservableObject {
     func signInCloud(_ source: String) {
         let scheme = core.cloudCallbackScheme(provider: source)
         guard let url = URL(string: core.cloudSignInUrl(provider: source)), !scheme.isEmpty else {
-            post("This build has no app id for that service.")
+            post(L10n.get("ios_cloud_not_configured"))
             return
         }
         let token = beginAuth()
-        let session: ASWebAuthenticationSession
-        if #available(iOS 17.4, *) {
-            session = ASWebAuthenticationSession(url: url, callback: .customScheme(scheme)) { callbackURL, error in
-                Task { @MainActor in await self.finishCloudSignIn(callbackURL, error, token) }
-            }
-        } else {
-            session = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme) { callbackURL, error in
-                Task { @MainActor in await self.finishCloudSignIn(callbackURL, error, token) }
-            }
+        let session = ASWebAuthenticationSession(url: url, callback: .customScheme(scheme)) { callbackURL, error in
+            Task { @MainActor in await self.finishCloudSignIn(callbackURL, error, token) }
         }
         session.presentationContextProvider = self
         authSession = session
         if !session.start() {
             endAuth(token)
-            post("The sign-in could not start.")
+            post(L10n.get("ios_sign_in_not_started"))
         }
     }
 
@@ -767,7 +757,10 @@ final class Companion: NSObject, ObservableObject {
     }
 
     func feedbackWatches() async -> [FeedbackWatchView] {
-        (try? await core.feedbackWatches()) ?? []
+        do { return try await core.feedbackWatches() } catch {
+            WatchLinkSpike.shared.add("watch list for the feedback form not loaded: \(error.localizedDescription)")
+            return []
+        }
     }
 
     func dismissWatchNote(deviceId: Int64, key: String) {
@@ -793,7 +786,10 @@ final class Companion: NSObject, ObservableObject {
     }
 
     func activityLog(_ activityId: String) async -> [LogLine] {
-        (try? await core.activityLog(activityId: activityId)) ?? []
+        do { return try await core.activityLog(activityId: activityId) } catch {
+            WatchLinkSpike.shared.add("activity history not loaded: \(error.localizedDescription)")
+            return []
+        }
     }
 
     /// "Export my data": the JSON written to a temporary file, for the share sheet.
@@ -801,11 +797,22 @@ final class Companion: NSObject, ObservableObject {
         do {
             let json = try await core.exportJson()
             let url = FileManager.default.temporaryDirectory.appendingPathComponent(core.exportFileName())
+            discardExport(url)
             try json.write(to: url, atomically: true, encoding: .utf8)
             return url
         } catch {
             post(String(format: L10n.get("main_toast_export_failed"), error.localizedDescription))
             return nil
+        }
+    }
+
+    /// Removes an export file once its screen is left: it holds the athlete's whole data and would
+    /// otherwise stay in the temporary folder until the system clears it.
+    func discardExport(_ url: URL?) {
+        guard let url else { return }
+        do { try FileManager.default.removeItem(at: url) } catch let error as NSError
+            where !(error.domain == NSCocoaErrorDomain && error.code == NSFileNoSuchFileError) {
+            WatchLinkSpike.shared.add("export file could not be removed: \(error.localizedDescription)")
         }
     }
 
@@ -848,7 +855,7 @@ final class Companion: NSObject, ObservableObject {
         syncLines = []
         await refresh()
         post(failed.isEmpty
-            ? "All data on this iPhone deleted; Strava and the diary disconnected."
+            ? L10n.get("main_toast_all_data_deleted")
             : String(format: L10n.get("main_toast_data_delete_partly"), failed.joined(separator: ", ")))
     }
 

@@ -292,9 +292,21 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         let update = {
             self.log.insert(entry, at: 0)
             if self.log.count > 500 { self.log.removeLast(self.log.count - 500) }
-            self.defaults.set(self.log, forKey: "spike.log")
+            // A Recording Boost sends dozens of chunks: save the log at most every two seconds.
+            if !self.saveScheduled {
+                self.saveScheduled = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.flushLog() }
+            }
         }
         if Thread.isMainThread { update() } else { DispatchQueue.main.async(execute: update) }
+    }
+
+    private var saveScheduled = false
+
+    /// Writes the log now (also when the app goes to the background).
+    func flushLog() {
+        saveScheduled = false
+        defaults.set(log, forKey: "spike.log")
     }
 
     private func saveDevices(_ devices: [IQDevice]) {
