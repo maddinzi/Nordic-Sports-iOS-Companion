@@ -351,6 +351,15 @@ struct ActivityDetailScreen: View {
     /// The row as the list has it now, so a push shows its result here too.
     private var current: ActivityItem { companion.activities.first { $0.id == item.id } ?? item }
 
+    /// The wrist in the app language; the watch's own label is English.
+    private func wristText(_ a: ActivityItem) -> String? {
+        switch a.watchWrist {
+        case 1: return L10n.get("watch_option_wrist_left")
+        case 2: return L10n.get("watch_option_wrist_right")
+        default: return a.watchWristLabel.isEmpty ? nil : a.watchWristLabel
+        }
+    }
+
     var body: some View {
         Form {
             if current.reviewPending {
@@ -383,13 +392,18 @@ struct ActivityDetailScreen: View {
                                    value: String(format: "%lld / %.2f m / %.0f ms / %.0f %%", Int(current.avgSpm), Double(current.avgDpsM),
                                                  Double(current.avgApidMs), Double(current.avgAdcPercent)))
                 }
+                if current.techniqueSharePercent.isEmpty, !current.watch.isEmpty,
+                   ["running", "trailrun", "track"].contains(current.preset) {
+                    LabeledContent(L10n.get("activity_detail_technique_share_label"),
+                                   value: L10n.get("activity_detail_technique_share_running_missing"))
+                }
                 if current.techniqueCatalog == "running", current.techniqueSharePercent.count >= 2 {
                     LabeledContent(L10n.get("activity_detail_technique_share_label"),
                                    value: String(format: L10n.get("activity_detail_technique_share_running_value"),
                                                  current.techniqueSharePercent[0].doubleValue, current.techniqueSharePercent[1].doubleValue))
                 }
                 if !current.watch.isEmpty { LabeledContent(L10n.get("activity_detail_device_label"), value: current.watch) }
-                if !current.watchWristLabel.isEmpty { LabeledContent(L10n.get("activity_detail_watch_wrist_label"), value: current.watchWristLabel) }
+                if let wrist = wristText(current) { LabeledContent(L10n.get("activity_detail_watch_wrist_label"), value: wrist) }
                 if !current.locationName.isEmpty { LabeledContent(L10n.get("activity_detail_location_label"), value: current.locationName) }
             }
             Section(L10n.get("activity_detail_training_type_label")) {
