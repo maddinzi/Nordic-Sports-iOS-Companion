@@ -12,13 +12,21 @@ struct RootView: View {
     @State private var showOnboarding = false
 
     var body: some View {
+        if companion.outdated {
+            OutdatedScreen()
+        } else {
+            mainTabs
+        }
+    }
+
+    private var mainTabs: some View {
         TabView {
             ActivitiesScreen()
-                .tabItem { Label("Activities", systemImage: "list.bullet") }
+                .tabItem { Label(L10n.get("ios_tab_activities"), systemImage: "list.bullet") }
             SettingsScreen()
                 .tabItem { Label(L10n.get("status_title"), systemImage: "gearshape") }
             WatchLinkSpikeView()
-                .tabItem { Label("Diagnostics", systemImage: "stethoscope") }
+                .tabItem { Label(L10n.get("ios_tab_diagnostics"), systemImage: "stethoscope") }
         }
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingScreen { showOnboarding = false }
@@ -117,7 +125,7 @@ struct ActivitiesScreen: View {
                     }
                 }
             }
-            .navigationTitle("Activities")
+            .navigationTitle(L10n.get("ios_tab_activities"))
             .onAppear { companion.refreshWatchCards() }
             .refreshable {
                 companion.refreshWatchCards()
@@ -331,17 +339,17 @@ struct ActivityDetailScreen: View {
             Section(L10n.get("activity_detail_training_type_label")) {
                 LabeledContent(L10n.get("activity_detail_sport_label"), value: Format.presetWord(item.preset))
                 if !item.trainingType.isEmpty, item.trainingType != "unknown" {
-                    LabeledContent("Intensity", value: Format.trainingTypeWord(item.trainingType))
+                    LabeledContent(L10n.get("ios_intensity"), value: Format.trainingTypeWord(item.trainingType))
                 }
                 if item.rpe > 0 { LabeledContent(L10n.get("activity_detail_rpe_label"), value: "\(item.rpe)") }
                 if item.feeling > 0 { LabeledContent(L10n.get("activity_detail_feeling_label"), value: "\(item.feeling)") }
             }
             let zones = item.hrZonePercents.map { $0.floatValue }
             if zones.contains(where: { $0 > 0 }) {
-                Section("Heart rate zones") {
+                Section(L10n.get("ios_hr_zones")) {
                     ForEach(Array(zones.enumerated()), id: \.offset) { index, percent in
                         HStack {
-                            Text("Zone \(index + 1)").frame(width: 70, alignment: .leading)
+                            Text(String(format: L10n.get("ios_zone_n"), index + 1)).frame(width: 70, alignment: .leading)
                             ProgressView(value: Double(percent), total: 100)
                             Text("\(Int(percent.rounded())) %").frame(width: 50, alignment: .trailing)
                         }
@@ -350,7 +358,7 @@ struct ActivityDetailScreen: View {
             }
             Section(L10n.get("activity_detail_synced_to")) {
                 if current.stravaActivityId.isEmpty {
-                    Text("Not linked to Strava yet")
+                    Text(L10n.get("ios_not_linked_strava"))
                     if stravaRemovedAt > 0 {
                         Label(String(format: L10n.get("activity_detail_strava_removed_note"), Format.date(stravaRemovedAt / 1000)),
                               systemImage: "info.circle")
@@ -362,12 +370,12 @@ struct ActivityDetailScreen: View {
                     ViewOnStravaLink(stravaActivityId: current.stravaActivityId)
                     PoweredByStrava()
                     if current.stravaConflict {
-                        Text("Changed on Strava since the Companion last saw it; the title was left alone.")
+                        Text(L10n.get("ios_strava_changed"))
                             .foregroundStyle(.red)
                     }
                 }
                 if item.conflict {
-                    Text("Another activity starts at almost the same time; check both.").foregroundStyle(.red)
+                    Text(L10n.get("data_conflict_title")).foregroundStyle(.red)
                 }
             }
             if companion.diaryConnected {
@@ -441,8 +449,8 @@ struct SettingsScreen: View {
                     ForEach(watch.devices, id: \.uuid) { device in
                         LabeledContent(device.friendlyName ?? "?", value: watch.statuses[device.uuid] ?? "")
                     }
-                    Button("Choose watch in Garmin Connect") { watch.chooseWatch() }
-                    NavigationLink("Watch settings") { WatchSettingsScreen() }
+                    Button(L10n.get("ios_choose_watch")) { watch.chooseWatch() }
+                    NavigationLink(L10n.get("settings_tile_watch")) { WatchSettingsScreen() }
                 }
                 Section {
                     TextField(L10n.get("nickname_label"), text: $nicknameDraft)
@@ -489,9 +497,9 @@ struct SettingsScreen: View {
                             .foregroundStyle(.green)
                         Button(L10n.get("status_backfill_sync_now")) { Task { await companion.sync() } }
                             .disabled(companion.syncing)
-                        Button("Pull the last 7 days from Strava") { Task { await companion.backfill(days: 7) } }
+                        Button(L10n.get("ios_pull_strava_7")) { Task { await companion.backfill(days: 7) } }
                             .disabled(companion.syncing)
-                        Button("Disconnect Strava", role: .destructive) { confirmingStravaDisconnect = true }
+                        Button(L10n.get("ios_disconnect_strava"), role: .destructive) { confirmingStravaDisconnect = true }
                             .confirmationDialog(
                                 String(format: L10n.get("status_disconnect_confirm_title"), "Strava"),
                                 isPresented: $confirmingStravaDisconnect,
@@ -522,7 +530,7 @@ struct SettingsScreen: View {
                             Text(L10n.get("status_diary_issue_title")).foregroundStyle(.red)
                             Text(companion.diaryIssue).font(.footnote).foregroundStyle(.secondary)
                         }
-                        Toggle("Write new activities automatically", isOn: Binding(
+                        Toggle(L10n.get("ios_diary_auto"), isOn: Binding(
                             get: { companion.diarySettings.autoUpdate },
                             set: { companion.setDiaryAutoUpdate($0) }
                         ))
@@ -530,11 +538,11 @@ struct SettingsScreen: View {
                             get: { companion.diarySettings.roundDurationUp },
                             set: { companion.setDiaryRoundDurationUp($0) }
                         ))
-                        Toggle("Compact diary entries", isOn: Binding(
+                        Toggle(L10n.get("status_ttb_compact_switch"), isOn: Binding(
                             get: { companion.diarySettings.compactDiary },
                             set: { companion.setDiaryCompact($0) }
                         ))
-                        Button("Write the last 7 days to the diary") { Task { await companion.writeDiary(days: 7) } }
+                        Button(L10n.get("ios_diary_write_7")) { Task { await companion.writeDiary(days: 7) } }
                             .disabled(companion.syncing)
                         // TEMPORARY, as on Android: remove a few versions after 0.9.93.
                         Text(L10n.get("settings_intro_compact_diary")).font(.footnote).foregroundStyle(.secondary)
@@ -551,13 +559,13 @@ struct SettingsScreen: View {
                 }
                 .disabled(companion.diaryBusy)
                 if companion.syncing || !companion.syncLines.isEmpty || companion.lastSync != nil {
-                    Section("Last sync") {
+                    Section(L10n.get("ios_last_sync")) {
                         if companion.syncing { ProgressView() }
                         if let last = companion.lastSync {
                             Text(last.formatted(date: .abbreviated, time: .shortened)).foregroundStyle(.secondary)
                         }
                         if companion.syncLines.isEmpty, !companion.syncing {
-                            Text("Nothing to do.").foregroundStyle(.secondary)
+                            Text(L10n.get("ios_nothing_to_do")).foregroundStyle(.secondary)
                         }
                         ForEach(Array(companion.syncLines.enumerated()), id: \.offset) { _, line in
                             Text(line).font(.footnote)
@@ -571,8 +579,8 @@ struct SettingsScreen: View {
                     NavigationLink(L10n.get("status_view_app_log")) {
                         LogScreen(title: L10n.get("app_log_title"), kind: .app)
                     }
-                    NavigationLink("Watch transfer log") {
-                        LogScreen(title: "Watch transfer log", kind: .transfer)
+                    NavigationLink(L10n.get("ios_transfer_log")) {
+                        LogScreen(title: L10n.get("ios_transfer_log"), kind: .transfer)
                     }
                     NavigationLink(L10n.get("status_view_strava_api_usage")) { StravaApiUsageScreen() }
                     NavigationLink(L10n.get("status_view_recording_boosts")) { RecordingBoostScreen() }
@@ -601,7 +609,7 @@ struct SettingsScreen: View {
                 }
                 Section {
                     NavigationLink(L10n.get("status_about_button")) { AboutScreen() }
-                    LabeledContent("Version", value: Format.appVersion)
+                    LabeledContent(L10n.get("ios_version"), value: Format.appVersion)
                 }
             }
             .navigationTitle(L10n.get("status_title"))

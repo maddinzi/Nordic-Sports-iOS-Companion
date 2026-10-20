@@ -61,7 +61,7 @@ struct WatchSettingsScreen: View {
                 }
             }
         }
-        .navigationTitle("Watch settings")
+        .navigationTitle(L10n.get("settings_tile_watch"))
         .onAppear { companion.refreshWatchSettings() }
     }
 }
@@ -429,6 +429,41 @@ struct StravaApiUsageScreen: View {
     private func load() async {
         calls = (try? await companion.core.stravaApiCalls(limit: 500)) ?? []
         loaded = true
+    }
+}
+
+/// Android's BuildExpiryScreen for a build below the server's minimum: no sync any more, but the
+/// athlete's own data stays reachable (export, delete).
+struct OutdatedScreen: View {
+    @EnvironmentObject var companion: Companion
+    @State private var exportURL: URL?
+    @State private var confirmingDelete = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(L10n.get("expiry_outdated_title")).font(.title2.bold())
+            Text(L10n.get("expiry_body_store"))
+            Text(L10n.get("expiry_data_note")).font(.footnote).foregroundStyle(.secondary)
+            if let exportURL {
+                ShareLink(item: exportURL) { Label(exportURL.lastPathComponent, systemImage: "square.and.arrow.up") }
+            } else {
+                Button(L10n.get("status_download_my_data")) {
+                    Task { exportURL = await companion.exportFile() }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            Button(L10n.get("status_delete_my_data"), role: .destructive) { confirmingDelete = true }
+            Spacer()
+        }
+        .padding()
+        .confirmationDialog(L10n.get("status_delete_confirm_title"), isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button(L10n.get("status_delete_confirm_button"), role: .destructive) {
+                exportURL = nil
+                Task { await companion.deleteAllData() }
+            }
+        } message: {
+            Text(L10n.get("status_delete_confirm_body"))
+        }
     }
 }
 
@@ -959,7 +994,7 @@ struct EditActivitySheet: View {
                     Button(L10n.get("common_cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button(L10n.get("watch_intervals_save")) {
                         Task {
                             saving = true
                             let km = Double(kilometers.replacingOccurrences(of: ",", with: ".")) ?? 0

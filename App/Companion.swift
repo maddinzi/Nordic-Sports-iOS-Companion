@@ -23,6 +23,8 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var syncLines: [String] = []
     @Published private(set) var lastSync: Date?
     @Published private(set) var stravaConnected = false
+    /// Older than the server's minimum build: nothing syncs, only export and delete stay (Android: BuildExpiry).
+    @Published private(set) var outdated = false
     @Published private(set) var diaryName = ""
     @Published private(set) var diaryIssue = ""
     @Published private(set) var diarySettings = DiarySettings(autoUpdate: true, roundDurationUp: true, compactDiary: true)
@@ -175,6 +177,7 @@ final class Companion: NSObject, ObservableObject {
     /// One message from the watch app [variant] (a Connect IQ dictionary). Returns the start
     /// time to confirm to the watch, or 0.
     func receive(message dict: [String: Any], variant: String) async -> Int64 {
+        guard !outdated else { return 0 }
         guard JSONSerialization.isValidJSONObject(dict),
               let data = try? JSONSerialization.data(withJSONObject: dict),
               let json = String(data: data, encoding: .utf8) else {
@@ -205,9 +208,17 @@ final class Companion: NSObject, ObservableObject {
 
     // MARK: - Sync
 
+    /// Asks the server for the oldest supported build (kept when it cannot be reached).
+    private func checkOutdated() async {
+        let build = Int32(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "") ?? Int32.max
+        outdated = (try? await core.buildOutdated(build: build)) ?? outdated
+    }
+
     /// Like Android's onResume: a quiet sync whenever the app comes to the foreground
     /// (automated sync mode only).
     func syncOnOpen() async {
+        await checkOutdated()
+        guard !outdated else { return }
         await purgeExpiredStravaData()
         await refresh()
         guard core.syncAutomatically(), stravaConnected || core.diaryConnected(), !syncing else { return }
@@ -217,6 +228,7 @@ final class Companion: NSObject, ObservableObject {
     /// A background run (BGTaskScheduler; Android: the daily ActivitySyncWorker): the same
     /// sync as on opening, in automated mode only. Returns a line for the Diagnostics log.
     func backgroundSync() async -> String {
+        guard !outdated else { return "this build is no longer supported, nothing run" }
         let purged = await purgeExpiredStravaData()
         if purged > 0 { WatchLinkSpike.shared.add("bg: Strava data removed from \(purged) activities") }
         guard core.syncAutomatically() else { return "manual sync mode, nothing run" }
@@ -240,7 +252,7 @@ final class Companion: NSObject, ObservableObject {
     }
 
     func sync() async {
-        guard !syncing else { return }
+        guard !syncing, !outdated else { return }
         syncing = true
         defer { syncing = false }
         do {
