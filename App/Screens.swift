@@ -23,6 +23,22 @@ struct RootView: View {
         ) {
             Button("OK", role: .cancel) {}
         }
+        // A second alert needs its own view: the Strava deletion and withdrawal confirmations.
+        .background {
+            Color.clear.alert(
+                companion.notice?.title ?? "",
+                isPresented: Binding(get: { companion.notice != nil }, set: { shown in
+                    if !shown {
+                        companion.notice?.onDismiss?()
+                        companion.notice = nil
+                    }
+                })
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(companion.notice?.text ?? "")
+            }
+        }
     }
 }
 
@@ -541,14 +557,6 @@ struct SettingsScreen: View {
                 }
             }
             .navigationTitle(L10n.get("status_title"))
-            .alert(
-                companion.notice?.title ?? "",
-                isPresented: Binding(get: { companion.notice != nil }, set: { if !$0 { companion.notice = nil } })
-            ) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(companion.notice?.text ?? "")
-            }
         }
     }
 }

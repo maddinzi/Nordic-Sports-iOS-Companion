@@ -159,6 +159,11 @@ Build 21 carries everything of builds 19 and 20 too.
     the access was revoked at Strava. All Strava links are gone; reconnect with the orange button
     and pull the last 7 days to get them back.
 
+52. **Access withdrawn on Strava (optional, after 51 and reconnecting):** on strava.com ›
+    Settings › My Apps, revoke Nordic Sports. Open the app and pull Sync (it may take until the
+    next token refresh, up to 6 hours): an alert says Strava access was withdrawn and the Strava
+    data was deleted; after OK it does not come back. Reconnect with the orange button.
+
 30. **Delete my data (last, it empties the app):** export first if you want the data,
     then Settings › My Data › Delete my data › confirm. Activities and logs are empty
     (the app log starts with "data deleted"), Strava and the diary show "not connected",

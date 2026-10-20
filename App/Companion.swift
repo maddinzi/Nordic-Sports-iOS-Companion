@@ -78,6 +78,16 @@ final class Companion: NSObject, ObservableObject {
         } catch {
             message = error.localizedDescription
         }
+        showStravaWithdrawalNotice()
+    }
+
+    /// Strava access withdrawn on strava.com or by Strava, noticed by the shared code at a token
+    /// refresh: it has already deleted the Strava data; show its notice once (as Android on resume)
+    /// and acknowledge it when the athlete closes it.
+    private func showStravaWithdrawalNotice() {
+        guard notice == nil, let pending = core.pendingStravaWithdrawalNotice() else { return }
+        stravaConnected = core.stravaConnected()
+        notice = Notice(title: pending.title, text: pending.text) { [core] in core.acknowledgeStravaWithdrawalNotice() }
     }
 
     /// One message from the watch app [variant] (a Connect IQ dictionary). Returns the start
@@ -758,4 +768,6 @@ enum L10n {
 struct Notice {
     let title: String
     let text: String
+    /// Runs when the athlete closes the alert.
+    var onDismiss: (() -> Void)? = nil
 }
