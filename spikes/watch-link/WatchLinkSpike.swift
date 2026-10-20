@@ -245,7 +245,19 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
             add("settings for an unknown watch or app (\(appId)) not sent")
             return false
         }
+        // Garmin Connect can take a message and never report back (seen on Android, 2026-10-20):
+        // after 20 s the core is told "no answer" instead of waiting in silence.
+        let answered = AnswerFlag()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
+            guard answered.first() else { return }
+            self.add("settings: no answer from Garmin Connect after 20 s")
+            Task { @MainActor in
+                Companion.shared.core.watchMessageResult(requestId: requestId, sent: false, status: "NO_ANSWER")
+                Companion.shared.refreshWatchSettings()
+            }
+        }
         send(message, to: app, what: "settings") { result in
+            answered.mark()
             let sent = result.rawValue == 0
             let status = Self.name(of: result)
             Task { @MainActor in
@@ -254,6 +266,22 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
             }
         }
         return true
+    }
+
+    /// Whether a settings message got its result yet; the timeout and the real result race.
+    private final class AnswerFlag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var set = false
+        /// True the first time only.
+        func first() -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            if set { return false }
+            set = true
+            return true
+        }
+        func mark() {
+            lock.lock(); set = true; lock.unlock()
+        }
     }
 
     /// The Companion's id for a watch: the first 8 bytes of its Connect IQ UUID (stable).

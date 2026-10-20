@@ -337,6 +337,23 @@ struct ActivityDetailScreen: View {
                 if current.maxHeartRate > 0 { LabeledContent(L10n.get("activity_detail_max_hr_label"), value: "\(current.maxHeartRate) bpm") }
                 if current.totalAscentM > 0 { LabeledContent(L10n.get("activity_detail_ascent_label"), value: "\(Int(current.totalAscentM)) m") }
                 if current.calories > 0 { LabeledContent(L10n.get("activity_detail_calories_label"), value: "\(current.calories) kcal") }
+                if current.avgSpeedMps > 0 {
+                    LabeledContent(L10n.get("activity_detail_avg_max_speed_label"),
+                                   value: String(format: "%.1f / %.1f km/h", Double(current.avgSpeedMps) * 3.6, Double(current.maxSpeedMps) * 3.6))
+                }
+                // Poling metrics only for rollski and langlauf, as on Android.
+                if current.avgSpm > 0, current.preset.hasPrefix("rollski") || current.preset.hasPrefix("langlauf") {
+                    LabeledContent(L10n.get("activity_detail_stroke_metrics_label"),
+                                   value: String(format: "%lld / %.2f m / %.0f ms / %.0f %%", Int(current.avgSpm), Double(current.avgDpsM),
+                                                 Double(current.avgApidMs), Double(current.avgAdcPercent)))
+                }
+                if current.techniqueCatalog == "running", current.techniqueSharePercent.count >= 2 {
+                    LabeledContent(L10n.get("activity_detail_technique_share_label"),
+                                   value: String(format: L10n.get("activity_detail_technique_share_running_value"),
+                                                 current.techniqueSharePercent[0].doubleValue, current.techniqueSharePercent[1].doubleValue))
+                }
+                if !current.watch.isEmpty { LabeledContent(L10n.get("activity_detail_device_label"), value: current.watch) }
+                if !current.watchWristLabel.isEmpty { LabeledContent(L10n.get("activity_detail_watch_wrist_label"), value: current.watchWristLabel) }
                 if !current.locationName.isEmpty { LabeledContent(L10n.get("activity_detail_location_label"), value: current.locationName) }
             }
             Section(L10n.get("activity_detail_training_type_label")) {
@@ -356,6 +373,13 @@ struct ActivityDetailScreen: View {
                             ProgressView(value: Double(percent), total: 100)
                             Text("\(Int(percent.rounded())) %").frame(width: 50, alignment: .trailing)
                         }
+                    }
+                }
+            }
+            if current.techniqueCatalog == "rollski", !current.techniqueSharePercent.isEmpty {
+                Section(L10n.get("activity_detail_technique_share_rollski_label")) {
+                    ForEach(Array(current.techniqueSharePercent.enumerated()), id: \.offset) { index, percent in
+                        LabeledContent(L10n.get("technique_labels_rollski_\(index)"), value: String(format: "%.0f%%", percent.doubleValue))
                     }
                 }
             }

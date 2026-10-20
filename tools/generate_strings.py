@@ -94,6 +94,13 @@ def read_language(folder: Path, android_format: bool = False):
             key = el.get("name")
             if el.tag == "string":
                 texts[key] = text_of(el, android_format)
+            elif el.tag == "string-array":
+                # iOS has no arrays: item i is the text "<name>_<i>".
+                for index, item in enumerate(el.findall("item")):
+                    texts[f"{key}_{index}"] = text_of(item, android_format)
+                    if el.get("translatable") == "false":
+                        fixed.add(f"{key}_{index}")
+                continue
             elif el.tag == "plurals":
                 forms = {item.get("quantity"): text_of(item, android_format) for item in el if item.get("quantity") in PLURAL_FORMS}
                 texts[key] = forms

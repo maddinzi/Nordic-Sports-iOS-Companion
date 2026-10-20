@@ -19,6 +19,21 @@ class ConversionTest(unittest.TestCase):
         self.assertEqual("C:\\x", unescape("C:\\\\x"))
 
 
+class ArrayTest(unittest.TestCase):
+    def test_string_array_items_become_numbered_texts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            res = Path(tmp)
+            (res / "values").mkdir()
+            (res / "values-de").mkdir()
+            (res / "values" / "strings.xml").write_text(
+                '<resources><string-array name="labels"><item>One</item><item>Two</item></string-array></resources>', encoding="utf-8")
+            (res / "values-de" / "strings.xml").write_text(
+                '<resources><string-array name="labels"><item>Eins</item><item>Zwei</item></string-array></resources>', encoding="utf-8")
+            strings = build_catalog(res)["strings"]
+        self.assertEqual({"labels_0", "labels_1"}, set(strings))
+        self.assertEqual("Zwei", strings["labels_1"]["localizations"]["de"]["stringUnit"]["value"])
+
+
 class CatalogTest(unittest.TestCase):
     def test_languages_plurals_and_fixed_names(self):
         with tempfile.TemporaryDirectory() as tmp:
