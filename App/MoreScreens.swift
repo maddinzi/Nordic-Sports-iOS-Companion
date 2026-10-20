@@ -401,11 +401,21 @@ struct FeedbackScreen: View {
     @State private var includeNickname = false
     @State private var watches: [FeedbackWatchView] = []
     @State private var watchIndex = 0
+    @State private var wordingEntries: [WordingEntry] = []
+    @State private var wordingPicked: WordingEntry?
+    @State private var wordingLang = "en"
+    @State private var wordingProposed = ""
     @State private var sending = false
     @State private var sent = false
     @State private var error: String?
 
     private var emailValid: Bool { email.isEmpty || (email.contains("@") && email.contains(".")) }
+    private var wording: Bool { category == "wording" }
+    private var canSend: Bool {
+        let blank = { (s: String) in s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        if wording { return wordingPicked != nil && !blank(wordingProposed) }
+        return !blank(text)
+    }
 
     var body: some View {
         Form {
@@ -422,14 +432,21 @@ struct FeedbackScreen: View {
                         Text(L10n.get("feedback_category_error")).tag("error_report")
                         Text(L10n.get("feedback_category_feature")).tag("feature_request")
                         Text(L10n.get("feedback_category_other")).tag("other")
+                        Text(L10n.get("feedback_category_wording")).tag("wording")
                     }
-                    Picker(L10n.get("feedback_app_label"), selection: $app) {
-                        Text(L10n.get("feedback_app_watch")).tag("watch")
-                        Text(L10n.get("feedback_app_companion")).tag("companion")
-                        Text(L10n.get("feedback_app_both")).tag("both")
+                    if !wording {
+                        Picker(L10n.get("feedback_app_label"), selection: $app) {
+                            Text(L10n.get("feedback_app_watch")).tag("watch")
+                            Text(L10n.get("feedback_app_companion")).tag("companion")
+                            Text(L10n.get("feedback_app_both")).tag("both")
+                        }
                     }
                 }
-                if app != "companion" && !watches.isEmpty {
+                if wording {
+                    WordingPicker(entries: wordingEntries, appLanguage: companion.language,
+                                  picked: $wordingPicked, lang: $wordingLang, proposed: $wordingProposed)
+                }
+                if !wording && app != "companion" && !watches.isEmpty {
                     Section {
                         Picker(L10n.get("feedback_watch_label"), selection: $watchIndex) {
                             ForEach(Array(watches.enumerated()), id: \.offset) { index, watch in
@@ -438,7 +455,7 @@ struct FeedbackScreen: View {
                         }
                     }
                 }
-                Section(L10n.get("feedback_message_label")) {
+                Section(L10n.get(wording ? "feedback_wording_reason" : "feedback_message_label")) {
                     TextEditor(text: $text).frame(minHeight: 140)
                 }
                 if !companion.nickname.isEmpty {
@@ -477,10 +494,24 @@ struct FeedbackScreen: View {
                         Task {
                             sending = true
                             error = nil
-                            let watch = app != "companion" && watches.indices.contains(watchIndex) ? watches[watchIndex] : nil
+                            var sendApp = app
+                            var sendCategory = category
+                            var sendText = text
+                            var extra: [String: String] = [:]
+                            if wording, let entry = wordingPicked {
+                                let composed = WordingFeedback.compose(
+                                    entry: entry, lang: wordingLang, current: entry.texts[wordingLang] ?? "",
+                                    proposed: wordingProposed.trimmingCharacters(in: .whitespacesAndNewlines),
+                                    reason: text.trimmingCharacters(in: .whitespacesAndNewlines))
+                                sendApp = entry.app.wireValue
+                                sendCategory = "other"
+                                sendText = composed.message
+                                extra = composed.details
+                            }
+                            let watch = !wording && app != "companion" && watches.indices.contains(watchIndex) ? watches[watchIndex] : nil
                             let result = await companion.sendFeedback(
-                                category: category, app: app, text: text, email: email, includeDetails: includeDetails,
-                                watch: watch, includeNickname: includeNickname
+                                category: sendCategory, app: sendApp, text: sendText, email: email, includeDetails: includeDetails,
+                                watch: watch, includeNickname: includeNickname, extraDetails: extra
                             )
                             sending = false
                             switch result {
@@ -492,12 +523,15 @@ struct FeedbackScreen: View {
                     } label: {
                         if sending { ProgressView() } else { Text(L10n.get("feedback_send")) }
                     }
-                    .disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !emailValid)
+                    .disabled(sending || !canSend || !emailValid)
                 }
             }
         }
         .navigationTitle(L10n.get("feedback_title"))
-        .task { watches = await companion.feedbackWatches() }
+        .task {
+            watches = await companion.feedbackWatches()
+            wordingEntries = WordingFeedback.load()
+        }
     }
 }
 

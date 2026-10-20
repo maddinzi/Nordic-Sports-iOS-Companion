@@ -68,6 +68,8 @@ jobs:
         run: |
           python3 -m unittest discover -s tools -p "test_*.py"
           python3 tools/generate_strings.py companion/app/src/main/res App/Localizable.xcstrings App/Texts
+          # The wording-feedback search index (generated in the Companion repo, shared search code)
+          cp companion/app/src/main/assets/wording_texts.json App/Texts/wording_texts.json
 
       # Strava app credentials and the webhook server key (repo secrets) into the gitignored
       # Secrets.xcconfig that project.yml reads; the app takes them from Info.plist. Values

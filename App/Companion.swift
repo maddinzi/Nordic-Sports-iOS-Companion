@@ -581,7 +581,7 @@ final class Companion: NSObject, ObservableObject {
     /// "sent", "tooMany" or "failed". [watch]: the watch the athlete picked (its details are added with the phone's), or nil.
     func sendFeedback(
         category: String, app: String, text: String, email: String, includeDetails: Bool,
-        watch: FeedbackWatchView? = nil, includeNickname: Bool = false
+        watch: FeedbackWatchView? = nil, includeNickname: Bool = false, extraDetails: [String: String] = [:]
     ) async -> String {
         var details: [String: String] = [:]
         if includeDetails {
@@ -594,6 +594,7 @@ final class Companion: NSObject, ObservableObject {
             }
         }
         if includeNickname, !nickname.isEmpty { details["nickname"] = nickname }
+        details.merge(extraDetails) { _, new in new }
         do {
             return try await core.sendFeedback(
                 category: category, app: app, message: text, contactEmail: email,
