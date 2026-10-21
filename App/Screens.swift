@@ -221,6 +221,15 @@ struct ActivitiesScreen: View {
                     }
                     .accessibilityLabel(L10n.get("add_activity_title"))
                 }
+                // Android's chat icon next to settings: feedback one tap away, not only under Settings › Privacy.
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        FeedbackScreen()
+                    } label: {
+                        Image(systemName: "bubble.left.and.text.bubble.right")
+                    }
+                    .accessibilityLabel(L10n.get("activity_list_feedback_content_description"))
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     if companion.syncing {
                         ProgressView()

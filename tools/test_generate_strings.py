@@ -63,6 +63,38 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual({"one", "other"}, set(plural))
 
 
+class ReferenceTest(unittest.TestCase):
+    def _res(self, tmp, english_extra=""):
+        res = Path(tmp)
+        (res / "values").mkdir()
+        (res / "values-de").mkdir()
+        (res / "values" / "strings.xml").write_text(
+            '<resources><string name="watch_preset_run">Running</string>'
+            '<string name="manual_preset_run" translatable="false">@string/watch_preset_run</string>'
+            f'{english_extra}</resources>', encoding="utf-8")
+        (res / "values-de" / "strings.xml").write_text(
+            '<resources><string name="watch_preset_run">Laufen</string></resources>', encoding="utf-8")
+        return res
+
+    def test_reference_takes_the_text_of_each_language(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            res = self._res(tmp)
+            strings = build_catalog(res)["strings"]
+            tables = build_tables(res)
+        entry = strings["manual_preset_run"]
+        self.assertNotIn("shouldTranslate", entry)
+        self.assertEqual("Running", entry["localizations"]["en"]["stringUnit"]["value"])
+        self.assertEqual("Laufen", entry["localizations"]["de"]["stringUnit"]["value"])
+        self.assertEqual("Laufen", tables["de"]["manual_preset_run"])
+        self.assertEqual("Running", tables["fr"]["manual_preset_run"])
+
+    def test_reference_to_a_missing_text_stops(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            res = self._res(tmp, '<string name="broken">@string/nowhere</string>')
+            with self.assertRaises(SystemExit):
+                build_tables(res)
+
+
 class TableTest(unittest.TestCase):
     def test_android_format_and_english_fallback(self):
         with tempfile.TemporaryDirectory() as tmp:

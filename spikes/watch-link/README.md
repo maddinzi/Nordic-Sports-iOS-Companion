@@ -164,6 +164,15 @@ Build 21 carries everything of builds 19 and 20 too.
     next token refresh, up to 6 hours): an alert says Strava access was withdrawn and the Strava
     data was deleted; after OK it does not come back. Reconnect with the orange button.
 
+## Build 33 additions (feedback button, activity type names)
+
+53. **Feedback button:** Activities has a speech-bubble button next to Sync; it opens the
+    feedback form (Settings › Privacy › Feedback still works too).
+54. **Add by hand:** "+" › Activity type lists real names in the app language ("Rollski
+    Skating", "Laufen", …), no `@string/…`. Save one: its name in the list and the diary is the
+    real name. Activities added by hand before build 33 keep the `@string/…` name: rename or
+    delete them.
+
 30. **Delete my data (last, it empties the app):** export first if you want the data,
     then Settings › My Data › Delete my data › confirm. Activities and logs are empty
     (the app log starts with "data deleted"), Strava and the diary show "not connected",

@@ -17,7 +17,9 @@ English filled in for names a language lacks. The shared Kotlin code reads these
 Conversions: `%1$s` -> `%1$@` (Swift strings are objects), `%1$d` -> `%1$lld` (Kotlin Int
 and Swift Int are 64 bit on iOS), floats unchanged; Android escapes (`\\'`, `\\"`, `\\n`) are
 resolved; `<plurals>` become plural variations. A name marked translatable="false" exists in
-English only and is marked as not to be translated.
+English only and is marked as not to be translated. A reference (`@string/other_name`, an alias
+such as `manual_preset_*`) takes the referenced text in each language, as Android does; one that
+names no text stops the script.
 """
 import json
 import re
@@ -111,6 +113,30 @@ def read_language(folder: Path, android_format: bool = False):
     return texts, fixed
 
 
+_REFERENCE = re.compile(r"@string/(\w+)")
+
+
+def read_all(res: Path, android_format: bool = False) -> dict:
+    """language -> (texts, fixed) with references resolved: a reference takes the referenced
+    text of that language (English when the language lacks it) and is translated like it."""
+    per_language = {lang: read_language(res / folder, android_format) for folder, lang in LANGUAGES.items()}
+    english, _ = per_language["en"]
+    aliases = {key: m.group(1) for key, value in english.items()
+               if isinstance(value, str) and (m := _REFERENCE.fullmatch(value))}
+    for lang, (texts, fixed) in per_language.items():
+        for key, target in aliases.items():
+            seen = {key}
+            while target in aliases and target not in seen:
+                seen.add(target)
+                target = aliases[target]
+            value = texts.get(target, english.get(target))
+            if value is None or target in aliases:
+                sys.exit(f"{lang}/{key}: @string/{target} names no text")
+            texts[key] = value
+            fixed.discard(key)
+    return per_language
+
+
 def unit(value: str) -> dict:
     return {"stringUnit": {"state": "translated", "value": value}}
 
@@ -122,7 +148,7 @@ def localization(value) -> dict:
 
 
 def build_catalog(res: Path) -> dict:
-    per_language = {lang: read_language(res / folder) for folder, lang in LANGUAGES.items()}
+    per_language = read_all(res)
     english, fixed = per_language["en"]
     strings = {}
     for key in sorted(english):
@@ -139,12 +165,9 @@ def build_catalog(res: Path) -> dict:
 
 def build_tables(res: Path) -> dict:
     """language -> {name: text or {plural form: text}} in Android format, English filled in."""
-    english, _ = read_language(res / "values", android_format=True)
-    tables = {}
-    for folder, lang in LANGUAGES.items():
-        texts, _ = read_language(res / folder, android_format=True)
-        tables[lang] = {**english, **texts}
-    return tables
+    per_language = read_all(res, android_format=True)
+    english, _ = per_language["en"]
+    return {lang: {**english, **texts} for lang, (texts, _) in per_language.items()}
 
 
 def _placeholders(text: str) -> list:
