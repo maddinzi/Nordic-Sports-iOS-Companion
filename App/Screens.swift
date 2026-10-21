@@ -537,8 +537,14 @@ struct ActivityDetailScreen: View {
             }
             if companion.diaryConnected {
                 Section(L10n.get("activity_detail_diary_card_title")) {
+                    Text(L10n.get("activity_detail_diary_card_intro")).font(.footnote).foregroundStyle(.secondary)
                     if current.diaryWritten {
-                        Label(companion.diaryName, systemImage: "book.closed")
+                        // The workbook, as plain text: a tinted icon made it look like a link.
+                        Label {
+                            Text(companion.diaryName)
+                        } icon: {
+                            Image(systemName: "book.closed").foregroundStyle(.secondary)
+                        }
                         if current.diaryOutdated {
                             Text(L10n.get(companion.diarySettings.autoUpdate
                                 ? "activity_detail_diary_outdated_auto" : "activity_detail_diary_outdated_manual"))
@@ -1032,7 +1038,36 @@ enum Format {
     }
 
     /// The watch's own word for a preset, in the app language (watch_labels.xml).
+    /// Lowercased Strava `sport_type` -> the text name of this app's own word for it, so a
+    /// Strava-origin row never shows Strava's term (Android's WatchWording.STRAVA_SPORT_LABEL).
+    private static let stravaSport: [String: String] = [
+        "rollerski": "activity_detail_sport_option_rollski",
+        "nordicski": "activity_detail_sport_option_langlauf",
+        "inlineskate": "watch_preset_inlineSkating",
+        "run": "watch_preset_running",
+        "virtualrun": "watch_preset_running",
+        "walk": "watch_preset_running",
+        "trailrun": "watch_preset_trailrun",
+        "ride": "watch_preset_cycling",
+        "virtualride": "watch_preset_cycling",
+        "gravelride": "watch_preset_cycling",
+        "ebikeride": "watch_preset_cycling",
+        "mountainbikeride": "watch_preset_mtb",
+        "emountainbikeride": "watch_preset_mtb",
+        "weighttraining": "watch_preset_strength",
+        "crossfit": "watch_preset_strength",
+        "workout": "watch_preset_training",
+        "highintensityintervaltraining": "watch_preset_training",
+        "swim": "watch_preset_swim",
+        "standuppaddling": "watch_preset_sup",
+    ]
+
     static func presetWord(_ preset: String) -> String {
+        // A Strava row ("strava:<sport_type>"): Strava's raw term only when unknown.
+        if preset.hasPrefix("strava:") {
+            let sportType = String(preset.dropFirst("strava:".count))
+            return stravaSport[sportType.lowercased()].map { L10n.get($0) } ?? sportType
+        }
         let name = "watch_preset_\(preset)"
         let word = L10n.get(name)
         return word == name ? preset : word

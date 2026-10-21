@@ -1272,14 +1272,24 @@ enum L10n {
     private static let bundle: Bundle =
         Bundle.main.path(forResource: language, ofType: "lproj").flatMap(Bundle.init(path:)) ?? .main
 
+    /// English, for names [bundle] lacks: texts marked translatable="false" ("View on Strava")
+    /// and ones not yet translated exist only there, as on Android's `values/`.
+    private static let english: Bundle =
+        Bundle.main.path(forResource: "en", ofType: "lproj").flatMap(Bundle.init(path:)) ?? .main
+
+    private static func text(_ name: String) -> String {
+        let missing = "\u{1}"
+        let word = bundle.localizedString(forKey: name, value: missing, table: nil)
+        return word == missing ? english.localizedString(forKey: name, value: nil, table: nil) : word
+    }
+
     static func get(_ name: String) -> String {
-        bundle.localizedString(forKey: name, value: nil, table: nil)
+        text(name)
     }
 
     /// A `<plurals>` text for [count] (the catalog's plural variations).
     static func plural(_ name: String, _ count: Int) -> String {
-        String(format: bundle.localizedString(forKey: name, value: nil, table: nil),
-               locale: Locale(identifier: language), count)
+        String(format: text(name), locale: Locale(identifier: language), count)
     }
 }
 

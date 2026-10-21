@@ -177,6 +177,12 @@ Build 21 carries everything of builds 19 and 20 too.
     Skating", "Laufen", …), no `@string/…`. Save one: its name in the list and the diary is the
     real name. Activities added by hand before build 33 keep the `@string/…` name: rename or
     delete them.
+55. **Activity detail texts (app in German):** an activity on Strava shows "View on Strava"
+    in bold orange, underlined, next to the Strava logo (no `strava_view_on_strava`); it opens
+    the activity. "Tagebucheintrag" starts with "Diese Werte kommen in dein
+    Trainingstagebuch." and names the workbook in plain text, not tinted like a link. A row
+    imported from Strava shows "Sportart: Laufen" (not `strava:run`). Feedback › App shows
+    "Companion" for the third choice.
 
 30. **Delete my data (last, it empties the app):** export first if you want the data,
     then Settings › My Data › Delete my data › confirm. Activities and logs are empty
