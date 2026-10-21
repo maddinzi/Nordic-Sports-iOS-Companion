@@ -307,6 +307,22 @@ final class Companion: NSObject, ObservableObject {
         if let answer = try? await core.buildOutdated(build: build) { outdated = answer.boolValue }
     }
 
+    // MARK: - Server token (Android: About > Tester access; design/server-credentials.md)
+
+    /// True when this install holds a server token (pasted by a tester; later from App Attest).
+    var hasServerToken: Bool { !core.serverTokenKind.isEmpty }
+
+    /// Stores a pasted tester token; false when it is not a well-formed token.
+    func saveServerToken(_ raw: String) -> Bool { core.saveServerToken(raw: raw) }
+
+    func clearServerToken() { core.clearServerToken() }
+
+    /// Sends the finished days of usage counts (Strava calls per kind, no athlete data); does
+    /// nothing without a server token. Safe to call often.
+    private func reportUsage() async {
+        try? await core.reportUsage(appVersion: Format.serverVersion, osVersion: UIDevice.current.systemVersion)
+    }
+
     /// Like Android's onResume: a quiet sync whenever the app comes to the foreground
     /// (automated sync mode only).
     func syncOnOpen() async {
@@ -315,6 +331,7 @@ final class Companion: NSObject, ObservableObject {
         if let last = lastOpenSync, Date().timeIntervalSince(last) < 60 { return }
         lastOpenSync = Date()
         await checkOutdated()
+        await reportUsage()
         guard !outdated else { return }
         await purgeExpiredStravaData()
         await refresh()
