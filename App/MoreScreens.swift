@@ -553,6 +553,11 @@ struct OnboardingScreen: View {
 struct AboutScreen: View {
     private static let site = "https://nordicsports.maddin.me"
 
+    @EnvironmentObject var companion: Companion
+    @State private var tokenSaved = false
+    @State private var tokenText = ""
+    @State private var tokenInvalid = false
+
     var body: some View {
         List {
             Section {
@@ -569,12 +574,40 @@ struct AboutScreen: View {
                     Link(L10n.get("about_imprint"), destination: imprint)
                 }
             }
+            // Where a tester pastes the token they were given; without one the app works as before.
+            Section(header: Text(L10n.get("about_tester_title")), footer: Text(L10n.get("about_tester_hint"))) {
+                if tokenSaved {
+                    Text(L10n.get("about_tester_saved"))
+                    Button(L10n.get("about_tester_remove"), role: .destructive) {
+                        companion.clearServerToken()
+                        tokenSaved = false
+                    }
+                } else {
+                    SecureField(L10n.get("about_tester_field"), text: $tokenText)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .onChange(of: tokenText) { _, _ in tokenInvalid = false }
+                    if tokenInvalid {
+                        Text(L10n.get("about_tester_invalid")).font(.footnote).foregroundStyle(.red)
+                    }
+                    Button(L10n.get("about_tester_save")) {
+                        if companion.saveServerToken(tokenText) {
+                            tokenSaved = true
+                            tokenText = ""
+                        } else {
+                            tokenInvalid = true
+                        }
+                    }
+                    .disabled(tokenText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
             Section {
                 Text(L10n.get("about_body"))
                 Text(L10n.get("about_trademark_disclaimer")).font(.footnote).foregroundStyle(.secondary)
             }
         }
         .navigationTitle(L10n.get("about_title"))
+        .onAppear { tokenSaved = companion.hasServerToken }
     }
 }
 
