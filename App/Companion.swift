@@ -869,8 +869,9 @@ final class Companion: NSObject, ObservableObject {
     /// "tooMany" or "failed". Only this tap sends it.
     func sendCrashReport(_ id: String, note: String) async -> String {
         var details = Self.deviceDetails()
+        details["companion"] = Format.appVersion
         details["language"] = language
-        let result = (try? await core.sendCrashReport(id: id, note: note, appVersion: Format.appVersion, details: details)) ?? "failed"
+        let result = (try? await core.sendCrashReport(id: id, note: note, appVersion: Format.serverVersion, details: details)) ?? "failed"
         refreshWatchCards()
         return result
     }
@@ -1001,27 +1002,56 @@ final class Companion: NSObject, ObservableObject {
         Int32(clamping: min(max(0, minutes), 100_000) * 60)
     }
 
-    /// "sent", "tooMany" or "failed". [watch]: the watch the athlete picked (its details are added with the phone's), or nil.
-    func sendFeedback(
-        category: String, app: String, text: String, email: String, includeDetails: Bool,
-        watch: FeedbackWatchView? = nil, includeNickname: Bool = false, extraDetails: [String: String] = [:]
-    ) async -> String {
-        var details: [String: String] = [:]
-        if includeDetails {
-            details = Self.deviceDetails()
-            details["language"] = language
-            if let watch {
-                details.merge(watch.details) { _, new in new }
-            } else if let name = try? await core.latestWatchName(), !name.isEmpty {
-                details["watch"] = name
+    /// The newest watch named in an activity, for the details of a report about the Companion; "" when none.
+    func latestWatchName() async -> String {
+        (try? await core.latestWatchName()) ?? ""
+    }
+
+    /// The technical details a feedback report carries, in the order the form lists them (all of
+    /// them, so the athlete sees exactly what is sent), as Android's FeedbackScreen. [aboutWatch]:
+    /// the report is about the watch app; then [watch] (picked) or [otherWatch] (typed model)
+    /// describes the watch, else [latestWatch] (the newest one seen) is added as "Last watch".
+    func feedbackDetailLines(aboutWatch: Bool, watch: FeedbackWatchView?, otherWatch: String, latestWatch: String) -> [FeedbackDetailLine] {
+        let device = Self.deviceDetails()
+        var lines = [
+            FeedbackDetailLine(key: "companion", label: L10n.get("feedback_detail_app"), value: Format.appVersion),
+            FeedbackDetailLine(key: "phone", label: L10n.get("feedback_detail_phone"), value: device["phone"] ?? ""),
+            FeedbackDetailLine(key: "ios", label: "iOS", value: device["ios"] ?? ""),
+            FeedbackDetailLine(key: "language", label: L10n.get("feedback_detail_language"), value: language),
+        ]
+        if !aboutWatch {
+            if !latestWatch.isEmpty {
+                lines.append(FeedbackDetailLine(key: "watch", label: L10n.get("feedback_detail_watch"), value: latestWatch))
             }
+        } else if let watch {
+            let labels = [("watch", "feedback_detail_watch_model"), ("watch_app", "feedback_detail_watch_app"),
+                          ("watch_channel", "feedback_detail_watch_channel"), ("watch_fw", "feedback_detail_watch_fw"),
+                          ("watch_ciq", "feedback_detail_watch_ciq")]
+            for (key, label) in labels {
+                guard let value = watch.details[key], !value.isEmpty else { continue }
+                let shown = key == "watch_channel" ? L10n.get("feedback_channel_\(value)") : value
+                lines.append(FeedbackDetailLine(key: key, label: L10n.get(label), value: shown))
+            }
+        } else if !otherWatch.isEmpty {
+            lines.append(FeedbackDetailLine(key: "watch", label: L10n.get("feedback_detail_watch_model"), value: otherWatch))
         }
-        if includeNickname, !nickname.isEmpty { details["nickname"] = nickname }
-        details.merge(extraDetails) { _, new in new }
+        return lines
+    }
+
+    /// "sent", "tooMany" or "failed". [details]: the lines the form showed, or empty when the
+    /// athlete switched them off; [extraDetails] (the wording proposal) is always sent.
+    func sendFeedback(
+        category: String, app: String, text: String, email: String, details: [FeedbackDetailLine],
+        includeNickname: Bool = false, extraDetails: [String: String] = [:]
+    ) async -> String {
+        var sent: [String: String] = [:]
+        for line in details { sent[line.key] = line.value }
+        if includeNickname, !nickname.isEmpty { sent["nickname"] = nickname }
+        sent.merge(extraDetails) { _, new in new }
         do {
             return try await core.sendFeedback(
                 category: category, app: app, message: text, contactEmail: email,
-                appVersion: Format.appVersion, details: details
+                appVersion: Format.serverVersion, details: sent
             )
         } catch {
             return "failed"
@@ -1254,6 +1284,13 @@ enum L10n {
 }
 
 /// A title and a text to confirm something that happened (an alert with OK).
+/// One technical detail of a feedback report: the server's [key], the form's [label], the [value].
+struct FeedbackDetailLine: Hashable {
+    let key: String
+    let label: String
+    let value: String
+}
+
 struct Notice {
     let title: String
     let text: String

@@ -167,7 +167,12 @@ Build 21 carries everything of builds 19 and 20 too.
 ## Build 33 additions (feedback button, activity type names)
 
 53. **Feedback button:** Activities has a speech-bubble button next to Sync; it opens the
-    feedback form (Settings › Privacy › Feedback still works too).
+    feedback form (Settings › Privacy › Feedback still works too). Send a short test message:
+    it now arrives ("Thank you!"); builds before 33 always said "Couldn't send". Check the
+    form: hint text in the empty message, a "n / 4000" counter, Send stays off below 3
+    characters and for an e-mail like "a@b."; "Watch app" shows "Which watch?" with "Other
+    watch" and a model field; the details list every line that is sent (Companion, phone, iOS,
+    language, watch lines). Send a watch crash report too, if the card shows.
 54. **Add by hand:** "+" › Activity type lists real names in the app language ("Rollski
     Skating", "Laufen", …), no `@string/…`. Save one: its name in the list and the diary is the
     real name. Activities added by hand before build 33 keep the `@string/…` name: rename or

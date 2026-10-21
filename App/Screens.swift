@@ -1048,6 +1048,13 @@ enum Format {
         let info = Bundle.main.infoDictionary ?? [:]
         return "\(info["CFBundleShortVersionString"] as? String ?? "?") (\(info["CFBundleVersion"] as? String ?? "?"))"
     }
+
+    /// The version for the server's `app_version` ("0.9.100+ios.33"): it accepts only letters,
+    /// digits, ".", "+" and "-", and the "+ios" tells the reports apart from Android's.
+    static var serverVersion: String {
+        let info = Bundle.main.infoDictionary ?? [:]
+        return "\(info["CFBundleShortVersionString"] as? String ?? "0")+ios.\(info["CFBundleVersion"] as? String ?? "0")"
+    }
 }
 
 // MARK: - Strava branding (Strava's guidelines; Companion design/strava-brand-compliance.md)

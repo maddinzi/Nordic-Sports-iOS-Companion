@@ -732,13 +732,22 @@ struct FeedbackScreen: View {
         _category = State(initialValue: startCategory)
     }
 
+    /// The server's limits (api/feedback.php): 3 to 4000 characters, as Android's form.
+    private static let minMessage = 3
+    private static let maxMessage = 4000
+    /// Android's Patterns.EMAIL_ADDRESS, close to what the server's FILTER_VALIDATE_EMAIL accepts.
+    private static let emailPattern = #"^[A-Za-z0-9+._%\-]{1,256}@[A-Za-z0-9][A-Za-z0-9\-]{0,64}(\.[A-Za-z0-9][A-Za-z0-9\-]{0,25})+$"#
+
     @State private var app = "companion"
     @State private var text = ""
     @State private var email = ""
     @State private var includeDetails = true
     @State private var includeNickname = false
     @State private var watches: [FeedbackWatchView] = []
+    @State private var latestWatch = ""
+    /// Index into [watches]; -1 = "Other watch" (typed in), also while no watch is known.
     @State private var watchIndex = 0
+    @State private var otherWatch = ""
     @State private var wordingEntries: [WordingEntry] = []
     @State private var wordingPicked: WordingEntry?
     @State private var wordingLang = "en"
@@ -747,12 +756,31 @@ struct FeedbackScreen: View {
     @State private var sent = false
     @State private var error: String?
 
-    private var emailValid: Bool { email.isEmpty || (email.contains("@") && email.contains(".")) }
+    private var trimmedEmail: String { email.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var emailValid: Bool {
+        trimmedEmail.isEmpty || trimmedEmail.range(of: Self.emailPattern, options: .regularExpression) != nil
+    }
     private var wording: Bool { category == "wording" }
+    private var aboutWatch: Bool { !wording && app != "companion" }
+    private var pickedWatch: FeedbackWatchView? {
+        aboutWatch && watchIndex >= 0 && watches.indices.contains(watchIndex) ? watches[watchIndex] : nil
+    }
+    private var detailLines: [FeedbackDetailLine] {
+        companion.feedbackDetailLines(
+            aboutWatch: aboutWatch, watch: pickedWatch,
+            otherWatch: otherWatch.trimmingCharacters(in: .whitespacesAndNewlines), latestWatch: latestWatch)
+    }
     private var canSend: Bool {
-        let blank = { (s: String) in s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        if wording { return wordingPicked != nil && !blank(wordingProposed) }
-        return !blank(text)
+        if wording { return wordingPicked != nil && !wordingProposed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let length = text.trimmingCharacters(in: .whitespacesAndNewlines).count
+        return length >= Self.minMessage && length <= Self.maxMessage
+    }
+    private var hintKey: String {
+        switch category {
+        case "feature_request": return "feedback_message_hint_feature"
+        case "other": return "feedback_message_hint_other"
+        default: return "feedback_message_hint_error"
+        }
     }
 
     var body: some View {
@@ -784,17 +812,45 @@ struct FeedbackScreen: View {
                     WordingPicker(entries: wordingEntries, appLanguage: companion.language,
                                   picked: $wordingPicked, lang: $wordingLang, proposed: $wordingProposed)
                 }
-                if !wording && app != "companion" && !watches.isEmpty {
-                    Section {
-                        Picker(L10n.get("feedback_watch_label"), selection: $watchIndex) {
-                            ForEach(Array(watches.enumerated()), id: \.offset) { index, watch in
-                                Text(watch.name).tag(index)
+                if aboutWatch {
+                    // "Which watch?": the watches seen so far plus "Other watch" with a model field,
+                    // only the field while none is known (Android's WatchChoice).
+                    Section(L10n.get("feedback_watch_label")) {
+                        if !watches.isEmpty {
+                            Picker(L10n.get("feedback_watch_label"), selection: $watchIndex) {
+                                ForEach(Array(watches.enumerated()), id: \.offset) { index, watch in
+                                    Text(watch.name).tag(index)
+                                }
+                                Text(L10n.get("feedback_watch_other")).tag(-1)
                             }
+                            .labelsHidden()
+                        }
+                        if watches.isEmpty || watchIndex < 0 {
+                            TextField(L10n.get("feedback_watch_other_field"), text: $otherWatch)
+                                .onChange(of: otherWatch) { _, value in
+                                    if value.count > 100 { otherWatch = String(value.prefix(100)) }
+                                }
                         }
                     }
                 }
-                Section(L10n.get(wording ? "feedback_wording_reason" : "feedback_message_label")) {
-                    TextEditor(text: $text).frame(minHeight: 140)
+                Section {
+                    ZStack(alignment: .topLeading) {
+                        if text.isEmpty && !wording {
+                            Text(L10n.get(hintKey))
+                                .foregroundStyle(.tertiary)
+                                .padding(.top, 8)
+                                .padding(.leading, 5)
+                                .allowsHitTesting(false)
+                        }
+                        TextEditor(text: $text).frame(minHeight: 140)
+                    }
+                    .onChange(of: text) { _, value in
+                        if value.count > Self.maxMessage { text = String(value.prefix(Self.maxMessage)) }
+                    }
+                } header: {
+                    Text(L10n.get(wording ? "feedback_wording_reason" : "feedback_message_label"))
+                } footer: {
+                    if !wording { Text("\(text.count) / \(Self.maxMessage)") }
                 }
                 if !companion.nickname.isEmpty {
                     Section {
@@ -807,19 +863,23 @@ struct FeedbackScreen: View {
                 Section(L10n.get("feedback_email_label")) {
                     TextField("", text: $email)
                         .keyboardType(.emailAddress)
+                        .textContentType(.emailAddress)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .onChange(of: email) { _, value in
+                            if value.count > 254 { email = String(value.prefix(254)) }
+                        }
                     Text(L10n.get(emailValid ? "feedback_email_hint" : "feedback_email_invalid"))
                         .font(.footnote)
                         .foregroundStyle(emailValid ? Color.secondary : Color.red)
                 }
                 Section {
                     Toggle(L10n.get("feedback_details_switch"), isOn: $includeDetails)
+                    // Listed in full, so the athlete sees exactly what would be sent.
                     if includeDetails {
-                        let details = Companion.deviceDetails()
-                        Text("\(L10n.get("feedback_detail_app")) \(Format.appVersion) · \(details["phone"] ?? "") · iOS \(details["ios"] ?? "") · \(companion.language)")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        ForEach(detailLines, id: \.self) { line in
+                            Text("\(line.label): \(line.value)").font(.footnote).foregroundStyle(.secondary)
+                        }
                     } else {
                         Text(L10n.get("feedback_details_off")).font(.footnote).foregroundStyle(.secondary)
                     }
@@ -829,35 +889,7 @@ struct FeedbackScreen: View {
                 }
                 Section {
                     Button {
-                        Task {
-                            sending = true
-                            error = nil
-                            var sendApp = app
-                            var sendCategory = category
-                            var sendText = text
-                            var extra: [String: String] = [:]
-                            if wording, let entry = wordingPicked {
-                                let composed = WordingFeedback.compose(
-                                    entry: entry, lang: wordingLang, current: entry.texts[wordingLang] ?? "",
-                                    proposed: wordingProposed.trimmingCharacters(in: .whitespacesAndNewlines),
-                                    reason: text.trimmingCharacters(in: .whitespacesAndNewlines))
-                                sendApp = entry.app.wireValue
-                                sendCategory = "other"
-                                sendText = composed.message
-                                extra = composed.details
-                            }
-                            let watch = !wording && app != "companion" && watches.indices.contains(watchIndex) ? watches[watchIndex] : nil
-                            let result = await companion.sendFeedback(
-                                category: sendCategory, app: sendApp, text: sendText, email: email, includeDetails: includeDetails,
-                                watch: watch, includeNickname: includeNickname, extraDetails: extra
-                            )
-                            sending = false
-                            switch result {
-                            case "sent": sent = true
-                            case "tooMany": error = L10n.get("feedback_error_too_many")
-                            default: error = L10n.get("feedback_error_failed")
-                            }
-                        }
+                        Task { await send() }
                     } label: {
                         if sending { ProgressView() } else { Text(L10n.get("feedback_send")) }
                     }
@@ -868,7 +900,38 @@ struct FeedbackScreen: View {
         .navigationTitle(L10n.get("feedback_title"))
         .task {
             watches = await companion.feedbackWatches()
+            if watches.isEmpty { watchIndex = -1 }
+            latestWatch = await companion.latestWatchName()
             wordingEntries = WordingFeedback.load()
+        }
+    }
+
+    private func send() async {
+        sending = true
+        error = nil
+        var sendApp = app
+        var sendCategory = category
+        var sendText = text
+        var extra: [String: String] = [:]
+        if wording, let entry = wordingPicked {
+            let composed = WordingFeedback.compose(
+                entry: entry, lang: wordingLang, current: entry.texts[wordingLang] ?? "",
+                proposed: wordingProposed.trimmingCharacters(in: .whitespacesAndNewlines),
+                reason: text.trimmingCharacters(in: .whitespacesAndNewlines))
+            sendApp = entry.app.wireValue
+            sendCategory = "other"
+            sendText = composed.message
+            extra = composed.details
+        }
+        let result = await companion.sendFeedback(
+            category: sendCategory, app: sendApp, text: sendText, email: trimmedEmail,
+            details: includeDetails ? detailLines : [], includeNickname: includeNickname, extraDetails: extra
+        )
+        sending = false
+        switch result {
+        case "sent": sent = true
+        case "tooMany": error = L10n.get("feedback_error_too_many")
+        default: error = L10n.get("feedback_error_failed")
         }
     }
 }
