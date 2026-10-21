@@ -603,7 +603,7 @@ struct AboutScreen: View {
             }
             Section {
                 Text(L10n.get("about_body"))
-                Text(L10n.get("about_trademark_disclaimer")).font(.footnote).foregroundStyle(.secondary)
+                Text(L10n.get("about_trademark_disclaimer_ios")).font(.footnote).foregroundStyle(.secondary)
             }
         }
         .navigationTitle(L10n.get("about_title"))

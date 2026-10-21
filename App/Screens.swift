@@ -896,6 +896,19 @@ struct SettingsStravaPage: View {
                 }
         }
         .navigationTitle("Strava")
+        .disabled(companion.stravaBusy != nil)
+        .overlay {
+            // Connecting and disconnecting take a few seconds: say so, and block a second tap.
+            if let text = companion.stravaBusy {
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text(text).multilineTextAlignment(.center)
+                }
+                .padding(24)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                .padding(32)
+            }
+        }
     }
 }
 

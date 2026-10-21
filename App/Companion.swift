@@ -25,6 +25,8 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var syncLines: [String] = []
     @Published private(set) var lastSync: Date?
     @Published private(set) var stravaConnected = false
+    /// Set while connecting or disconnecting Strava takes a few seconds (the text to show); nil otherwise.
+    @Published private(set) var stravaBusy: String?
     /// Older than the server's minimum build: nothing syncs, only export and delete stay (Android: BuildExpiry).
     @Published private(set) var outdated = false
     @Published private(set) var diaryName = ""
@@ -471,8 +473,10 @@ final class Companion: NSObject, ObservableObject {
             return
         }
         guard let callbackURL else { return }
+        stravaBusy = L10n.get("strava_connecting")
         do {
             let reason = try await core.completeStravaSignIn(callbackUrl: callbackURL.absoluteString)
+            stravaBusy = nil  // the backfill below has its own progress display
             if reason.isEmpty {
                 // An empty reason also means "cancelled": only a stored sign-in counts as connected.
                 stravaConnected = core.stravaConnected()
@@ -483,6 +487,7 @@ final class Companion: NSObject, ObservableObject {
                 post(String(format: L10n.get("main_toast_strava_connect_failed"), reason))
             }
         } catch {
+            stravaBusy = nil
             if error.isCancellation { return }
             post(String(format: L10n.get("main_toast_strava_connect_failed"), error.localizedDescription))
         }
@@ -491,6 +496,9 @@ final class Companion: NSObject, ObservableObject {
     /// As Android: revokes the access at Strava, deletes every Strava data the app holds, then
     /// shows the deletion confirmation (the same text is in the app log).
     func disconnectStrava() async {
+        guard stravaBusy == nil else { return }
+        stravaBusy = L10n.get("strava_disconnecting")
+        defer { stravaBusy = nil }
         do {
             let result = try await core.disconnectStrava()
             notice = Notice(title: result.title, text: result.text)
