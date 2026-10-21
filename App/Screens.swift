@@ -370,6 +370,9 @@ struct ActivityRow: View {
                 Text(item.title.isEmpty ? L10n.get("activity_detail_title_fallback") : item.title)
                     .font(.headline)
                 Spacer()
+                if item.origin == "watch" {
+                    Image(systemName: "applewatch").foregroundStyle(.primary)
+                }
                 if !item.stravaActivityId.isEmpty {
                     Image(systemName: "link").foregroundStyle(.orange)
                 }
@@ -429,6 +432,7 @@ struct ActivityDetailScreen: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L10n.get("activity_detail_synced_to")).font(.caption).foregroundStyle(.secondary)
                     HStack(spacing: 16) {
+                        SyncChip(name: L10n.get("sync_presence_destination_watch"), on: current.origin == "watch")
                         SyncChip(name: "Strava", on: !current.stravaActivityId.isEmpty)
                         if companion.diaryReceives {
                             SyncChip(name: L10n.get("settings_diary_short_name"),

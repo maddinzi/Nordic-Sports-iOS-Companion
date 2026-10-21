@@ -426,6 +426,10 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
             return try body(url)
         } catch {
             log("with the bookmark (scoped access \(scoped)): \(Self.describe(error))")
+            // A cloud file opened through the Files app is read-only: say what to do instead.
+            if (error as? CocoaError)?.code == .fileWriteNoPermission {
+                return fail(L10n.get("ios_diary_readonly_error"), permanent: true)
+            }
             return fail(error.localizedDescription, permanent: Self.isPermanent(error))
         }
     }

@@ -276,6 +276,8 @@ final class Companion: NSObject, ObservableObject {
             // A burst arrives in dozens of chunks: only the last one (stored) changes anything.
             if result.summary == "Recording Boost chunk" { return 0 }
             await refresh()
+            // The saved recording's "running on the watch" card was removed in the core.
+            refreshWatchCards()
             if !result.activityId.isEmpty {
                 notifyNewActivity(result)
                 // As Android in automated mode: forward on arrival (the diary now; Strava's

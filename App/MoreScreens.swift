@@ -1110,6 +1110,9 @@ struct EditActivitySheet: View {
                ("sprints", "activity_detail_training_option_sprints")]
     }
 
+    /// The tint of the rows the diary entry is built from (the same yellow as the review box on the detail screen).
+    private static let diaryRow = Color.yellow.opacity(0.18)
+
     private static let feelings = [
         "activity_detail_feeling_option_not_entered", "activity_detail_feeling_option_very_weak",
         "activity_detail_feeling_option_weak", "activity_detail_feeling_option_normal",
@@ -1119,7 +1122,9 @@ struct EditActivitySheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                // Everything the diary entry is built from is framed in yellow, as on Android.
                 Section {
+                    Text(L10n.get("activity_detail_diary_card_intro")).font(.footnote).foregroundStyle(.secondary)
                     TextField(L10n.get("activity_detail_name_label"), text: $title)
                     Picker(L10n.get("activity_detail_training_type_label"), selection: $trainingType) {
                         ForEach(trainingOptions, id: \.0) { option in Text(L10n.get(option.1)).tag(option.0) }
@@ -1127,18 +1132,20 @@ struct EditActivitySheet: View {
                             Text(Format.trainingTypeWord(trainingType)).tag(trainingType)
                         }
                     }
+                } header: {
+                    Text(L10n.get("activity_detail_diary_card_title"))
                 }
+                .listRowBackground(Self.diaryRow)
                 Section {
                     Picker(L10n.get("activity_detail_rpe_label"), selection: $rpe) {
                         ForEach(0...10, id: \.self) { value in Text(value == 0 ? "–" : "\(value)").tag(value) }
                     }
-                    Picker(L10n.get("activity_detail_feeling_label"), selection: $feeling) {
-                        ForEach(Self.feelings.indices, id: \.self) { index in Text(L10n.get(Self.feelings[index])).tag(index) }
-                    }
                 }
+                .listRowBackground(Self.diaryRow)
                 Section(L10n.get("activity_detail_diary_comment_label")) {
                     TextEditor(text: $comment).frame(minHeight: 80)
                 }
+                .listRowBackground(Self.diaryRow)
                 Section {
                     LabeledContent(L10n.get("activity_detail_duration_label")) {
                         TextField(Format.duration(item.elapsedSec), text: $minutes)
@@ -1154,6 +1161,12 @@ struct EditActivitySheet: View {
                     }
                 } footer: {
                     Text(L10n.get("ios_leave_empty_watch"))
+                }
+                .listRowBackground(Self.diaryRow)
+                Section {
+                    Picker(L10n.get("activity_detail_feeling_label"), selection: $feeling) {
+                        ForEach(Self.feelings.indices, id: \.self) { index in Text(L10n.get(Self.feelings[index])).tag(index) }
+                    }
                 }
                 sendSection
             }
@@ -1303,10 +1316,8 @@ struct DiaryLocationsScreen: View {
                 }
             }
             if source.key == "LOCAL" {
-                if !source.connected {
-                    Text(L10n.get("ios_local_workbook_hint"))
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
+                Label(L10n.get("ios_local_workbook_hint"), systemImage: "exclamationmark.triangle")
+                    .font(.footnote).foregroundStyle(.orange)
                 Button(source.connected ? L10n.get("ios_choose_other_workbook") : L10n.get("ios_choose_workbook")) { pickingFile = true }
             } else if !source.signedIn {
                 Button("\(L10n.get("destination_sign_in")) · \(source.name)") { companion.signInCloud(source.key) }
