@@ -70,6 +70,8 @@ jobs:
           python3 tools/generate_strings.py companion/app/src/main/res App/Localizable.xcstrings App/Texts
           # The wording-feedback search index (generated in the Companion repo, shared search code)
           cp companion/app/src/main/assets/wording_texts.json App/Texts/wording_texts.json
+          # The open-source notices (About > Open-source licenses), generated in the Companion repo
+          cp companion/app/src/main/assets/open_source_licenses.txt App/Texts/open_source_licenses.txt
 
       # Strava app credentials and the webhook server key (repo secrets) into the gitignored
       # Secrets.xcconfig that project.yml reads; the app takes them from Info.plist. Values

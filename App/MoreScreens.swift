@@ -573,6 +573,7 @@ struct AboutScreen: View {
                 if let imprint = URL(string: Self.site + "/impressum.html") {
                     Link(L10n.get("about_imprint"), destination: imprint)
                 }
+                NavigationLink(L10n.get("about_licenses")) { LicensesScreen() }
             }
             // Where a tester pastes the token they were given; without one the app works as before.
             Section(header: Text(L10n.get("about_tester_title")), footer: Text(L10n.get("about_tester_hint"))) {
@@ -608,6 +609,27 @@ struct AboutScreen: View {
         }
         .navigationTitle(L10n.get("about_title"))
         .onAppear { tokenSaved = companion.hasServerToken }
+    }
+}
+
+/// The open-source notices, the Companion's generated `open_source_licenses.txt` (CI copies it
+/// into App/Texts); the same text as Android's About > Open-source licenses.
+struct LicensesScreen: View {
+    private let text: String = {
+        guard let url = Bundle.main.url(forResource: "open_source_licenses", withExtension: "txt"),
+              let content = try? String(contentsOf: url, encoding: .utf8) else { return "https://nordicsports.maddin.me" }
+        return content
+    }()
+
+    var body: some View {
+        ScrollView {
+            Text(text)
+                .font(.system(size: 11, design: .monospaced))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+        }
+        .navigationTitle(L10n.get("licenses_title"))
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
