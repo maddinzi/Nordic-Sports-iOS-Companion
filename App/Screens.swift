@@ -515,6 +515,15 @@ struct ActivityDetailScreen: View {
                     }
                 }
             }
+            // Strength sets as the Strava description block says them (shared StrengthDescription.body).
+            let setLines = current.strengthSetLines
+            if !setLines.isEmpty {
+                Section(L10n.get("activity_detail_strength_sets_label")) {
+                    ForEach(Array(setLines.enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                    }
+                }
+            }
             Section(L10n.get("activity_detail_synced_to")) {
                 if current.stravaActivityId.isEmpty {
                     Text(L10n.get("ios_not_linked_strava"))
