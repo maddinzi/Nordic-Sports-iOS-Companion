@@ -907,7 +907,18 @@ final class Companion: NSObject, ObservableObject {
     func refreshWatchCards() {
         liveActivities = core.liveActivities()
         crashReports = core.crashReports()
+        // A discarded recording's card goes a few seconds after the watch's message (as Android).
+        discardedCardTimer?.cancel()
+        let wait = core.discardedCardExpiresInMillis()
+        guard wait >= 0 else { return }
+        discardedCardTimer = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(wait + 100) * 1_000_000)
+            guard !Task.isCancelled else { return }
+            self?.refreshWatchCards()
+        }
     }
+
+    private var discardedCardTimer: Task<Void, Never>?
 
     func dismissCrashReport(_ id: String) {
         core.dismissCrashReport(id: id)
