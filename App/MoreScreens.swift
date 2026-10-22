@@ -697,6 +697,18 @@ struct RecordingBoostScreen: View {
                          ? L10n.get("recording_boost_list_not_linked")
                          : String(format: L10n.get("recording_boost_list_linked"), burst.activityTitle))
                         .font(.caption)
+                    if !burst.channels.isEmpty {
+                        Text(String(format: L10n.get("recording_boost_list_channels"), burst.channels)).font(.caption)
+                    }
+                    HStack {
+                        Text(burst.labelSummary.isEmpty
+                             ? L10n.get("recording_boost_list_unlabelled")
+                             : String(format: L10n.get("recording_boost_list_label"), burst.labelSummary))
+                            .fontWeight(burst.labelSummary.isEmpty ? .regular : .bold)
+                        Spacer()
+                        Button(L10n.get("recording_boost_label_button")) { labelling = burst }
+                            .buttonStyle(.borderless)
+                    }
                     if !burst.fileName.isEmpty {
                         Text(L10n.get("recording_boost_list_file_saved")).font(.subheadline.bold())
                         Text(String(format: L10n.get("recording_boost_list_file_name"), burst.fileName))
@@ -718,7 +730,22 @@ struct RecordingBoostScreen: View {
         .navigationTitle(L10n.get("recording_boost_list_title"))
         .task { await load() }
         .refreshable { await load() }
+        .sheet(item: $labelling) { burst in
+            BurstLabelSheet(burst: burst) { technique, terrain, poles, note in
+                labelling = nil
+                Task {
+                    do {
+                        try await companion.labelBoost(id: burst.id, technique: technique, terrain: terrain, poles: poles, note: note)
+                    } catch {
+                        if !error.isCancellation { WatchLinkSpike.shared.add("Recording Boost label not saved: \(error.localizedDescription)") }
+                    }
+                    await load()
+                }
+            }
+        }
     }
+
+    @State private var labelling: RecordingBoostView?
 
     private func load() async {
         do {
@@ -732,6 +759,82 @@ struct RecordingBoostScreen: View {
             bursts = []
         }
         loaded = true
+    }
+}
+
+extension RecordingBoostView: Identifiable {}
+
+/// Android's BurstLabelDialog: technique and terrain (coach codes, untranslated except "mixed"),
+/// poles for running and unknown sports, and a note. Tapping a selected choice again clears it.
+struct BurstLabelSheet: View {
+    let burst: RecordingBoostView
+    let onSave: (String, String, Int32, String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var technique = ""
+    @State private var terrain = ""
+    @State private var poles: Int32 = -1
+    @State private var note = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section { Text(L10n.get("recording_boost_label_hint")).font(.footnote) }
+                Section(L10n.get("recording_boost_label_technique")) {
+                    choices(burst.techniqueOptions, selected: $technique)
+                }
+                Section(L10n.get("recording_boost_label_terrain")) {
+                    choices(burst.terrainOptions, selected: $terrain)
+                }
+                if burst.askPoles {
+                    Section(L10n.get("recording_boost_label_poles")) {
+                        row(L10n.get("recording_boost_label_poles_yes"), on: poles == 1) { poles = poles == 1 ? -1 : 1 }
+                        row(L10n.get("recording_boost_label_poles_no"), on: poles == 0) { poles = poles == 0 ? -1 : 0 }
+                    }
+                }
+                Section {
+                    TextField(L10n.get("recording_boost_label_note"), text: $note)
+                }
+                if !burst.labelSummary.isEmpty {
+                    Section {
+                        Button(L10n.get("recording_boost_label_clear"), role: .destructive) { onSave("", "", -1, "") }
+                    }
+                }
+            }
+            .navigationTitle(L10n.get("recording_boost_label_title"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button(L10n.get("common_cancel")) { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L10n.get("recording_boost_label_save")) {
+                        onSave(technique, terrain, burst.askPoles ? poles : -1, String(note.prefix(200)))
+                    }
+                }
+            }
+            .onAppear {
+                technique = burst.labelTechnique
+                terrain = burst.labelTerrain
+                poles = burst.labelPoles
+                note = burst.labelNote
+            }
+        }
+    }
+
+    private func choices(_ codes: [String], selected: Binding<String>) -> some View {
+        ForEach(codes, id: \.self) { code in
+            row(code == "MIXED" ? L10n.get("recording_boost_label_mixed") : code, on: selected.wrappedValue == code) {
+                selected.wrappedValue = selected.wrappedValue == code ? "" : code
+            }
+        }
+    }
+
+    private func row(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Text(title).foregroundStyle(.primary)
+                Spacer()
+                if on { Image(systemName: "checkmark") }
+            }
+        }
     }
 }
 
