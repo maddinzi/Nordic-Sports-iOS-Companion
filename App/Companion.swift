@@ -41,6 +41,8 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var crashReports: [CrashReportView] = []
     @Published private(set) var nickname = ""
     @Published private(set) var placeNamesEnabled = true
+    @Published private(set) var stravaUpdateMyActivities = true
+    @Published private(set) var stravaIncludeOtherDevices = true
     @Published private(set) var reviewNewActivities = true
     @Published private(set) var syncAutomatically = true
     /// The alert shown now; further messages wait in `queuedMessages` (use `post`).
@@ -96,6 +98,8 @@ final class Companion: NSObject, ObservableObject {
         refreshWatchCards()
         nickname = core.nickname()
         placeNamesEnabled = core.placeNamesEnabled()
+        stravaUpdateMyActivities = core.stravaUpdateMyActivities()
+        stravaIncludeOtherDevices = core.stravaIncludeOtherDevices()
         reviewNewActivities = core.reviewNewActivities()
         syncAutomatically = core.syncAutomatically()
     }
@@ -254,6 +258,17 @@ final class Companion: NSObject, ObservableObject {
         core.setPlaceNamesEnabled(on: on)
         placeNamesEnabled = core.placeNamesEnabled()
         if on { lookupPlaceNames() }
+    }
+
+    /// The two Strava switches (as Android's Strava section, both on by default).
+    func setStravaUpdateMyActivities(_ on: Bool) {
+        core.setStravaUpdateMyActivities(on: on)
+        stravaUpdateMyActivities = core.stravaUpdateMyActivities()
+    }
+
+    func setStravaIncludeOtherDevices(_ on: Bool) {
+        core.setStravaIncludeOtherDevices(on: on)
+        stravaIncludeOtherDevices = core.stravaIncludeOtherDevices()
     }
 
     /// Strava access withdrawn on strava.com or by Strava, noticed by the shared code at a token
