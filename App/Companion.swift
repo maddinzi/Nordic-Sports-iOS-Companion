@@ -887,6 +887,33 @@ final class Companion: NSObject, ObservableObject {
         refreshWatchSettings()
     }
 
+    /// "Pace → Speed" ([toSpeed]) or "Speed → Pace" for every sport's data fields.
+    func switchWatchPaceSpeed(deviceId: Int64, toSpeed: Bool) {
+        core.switchWatchPaceSpeed(deviceId: deviceId, toSpeed: toSpeed)
+        refreshWatchSettings()
+    }
+
+    /// The data field sets, plans and routines of [deviceId] that have something to share.
+    func shareableWatchSets(deviceId: Int64) -> [ShareSetView] {
+        core.shareableWatchSets(deviceId: deviceId)
+    }
+
+    /// The message to share for the sets [ids]: a sentence, then the settings as JSON.
+    func watchShareText(deviceId: Int64, ids: [Int32]) -> String {
+        core.watchShareText(deviceId: deviceId, ids: ids.map { KotlinInt(value: $0) })
+    }
+
+    /// The sets in a pasted message, or nil when it holds no Nordic Sports settings.
+    func readWatchImport(deviceId: Int64, text: String) -> [ImportSetView]? {
+        core.readWatchImport(deviceId: deviceId, text: text)
+    }
+
+    /// Imports the sets of [text] into [targets] (one per set, "" to leave it out).
+    func applyWatchImport(deviceId: Int64, text: String, targets: [String]) {
+        core.applyWatchImport(deviceId: deviceId, text: text, targets: targets)
+        refreshWatchSettings()
+    }
+
     /// The editor for plan or routine slot [key] ("IntervalPlan1", "StrengthRoutine2").
     func openWatchPlan(deviceId: Int64, key: String) -> PlanEditView? {
         core.openWatchPlan(deviceId: deviceId, key: key)

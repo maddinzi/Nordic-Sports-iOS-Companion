@@ -46,6 +46,9 @@ struct WatchSettingsScreen: View {
                     if !watch.routineSlots.isEmpty {
                         NavigationLink(L10n.get("watch_strength_routines")) { WatchPlansScreen(deviceId: watch.deviceId, routines: true) }
                     }
+                    if !watch.dataFieldGroups.isEmpty || !watch.intervalSlots.isEmpty || !watch.routineSlots.isEmpty {
+                        NavigationLink(L10n.get("watch_share_title")) { WatchShareScreen(deviceId: watch.deviceId) }
+                    }
                 } header: {
                     Text(watch.watchName)
                 }
@@ -138,8 +141,134 @@ struct WatchDataFieldsScreen: View {
                     Text(group.title)
                 }
             }
+            // Every sport's pace fields (lap pace too) to speed, or back, in one go.
+            if watch?.canPaceToSpeed == true || watch?.canSpeedToPace == true {
+                Section {
+                    if watch?.canPaceToSpeed == true {
+                        Button(L10n.get("watch_data_fields_to_speed")) { companion.switchWatchPaceSpeed(deviceId: deviceId, toSpeed: true) }
+                    }
+                    if watch?.canSpeedToPace == true {
+                        Button(L10n.get("watch_data_fields_to_pace")) { companion.switchWatchPaceSpeed(deviceId: deviceId, toSpeed: false) }
+                    }
+                }
+            }
         }
         .navigationTitle(L10n.get("watch_data_fields_title"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Share and import of data fields, interval plans and strength routines (shared
+/// WatchSettingsShare, as Android's WatchSettingsShareUi): pick the sets, share the message
+/// through the share sheet; or paste a received message and choose a slot per set.
+struct WatchShareScreen: View {
+    @EnvironmentObject var companion: Companion
+    let deviceId: Int64
+    @State private var sets: [ShareSetView] = []
+    @State private var picked: Set<Int32> = []
+
+    var body: some View {
+        let text = companion.watchShareText(deviceId: deviceId, ids: sets.map(\.id).filter { picked.contains($0) })
+        Form {
+            Section { Text(L10n.get("watch_share_intro")).font(.footnote).foregroundStyle(.secondary) }
+            Section(L10n.get("watch_share_pick")) {
+                if sets.isEmpty {
+                    Text(L10n.get("watch_share_nothing")).foregroundStyle(.secondary)
+                }
+                ForEach(sets, id: \.id) { set in
+                    Toggle(isOn: Binding(
+                        get: { picked.contains(set.id) },
+                        set: { on in if on { picked.insert(set.id) } else { picked.remove(set.id) } }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(set.title)
+                            Text(set.summary).font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                ShareLink(item: text) { Label(L10n.get("watch_share_send"), systemImage: "square.and.arrow.up") }
+                    .disabled(text.isEmpty)
+            }
+            Section {
+                NavigationLink(L10n.get("watch_import_title")) { WatchImportScreen(deviceId: deviceId) }
+            }
+        }
+        .navigationTitle(L10n.get("watch_share_title"))
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            sets = companion.shareableWatchSets(deviceId: deviceId)
+            picked = Set(sets.map(\.id))
+        }
+    }
+}
+
+/// Step 1: paste the received message. Step 2: per set the slot it goes to, or "Don't import".
+struct WatchImportScreen: View {
+    @EnvironmentObject var companion: Companion
+    @Environment(\.dismiss) private var dismiss
+    let deviceId: Int64
+    @State private var text = ""
+    @State private var invalid = false
+    @State private var sets: [ImportSetView]?
+    @State private var targets: [String] = []
+
+    var body: some View {
+        Form {
+            if let sets {
+                Section { Text(L10n.get("watch_import_choose")).font(.footnote).foregroundStyle(.secondary) }
+                ForEach(Array(sets.enumerated()), id: \.offset) { i, set in
+                    Section {
+                        Text(set.summary).font(.footnote).foregroundStyle(.secondary)
+                        if set.targets.isEmpty {
+                            Text(L10n.get("watch_import_no_slot")).font(.footnote).foregroundStyle(.red)
+                        } else {
+                            Picker(L10n.get("watch_import_goes_to"), selection: $targets[i]) {
+                                Text(L10n.get("watch_import_skip")).tag("")
+                                ForEach(set.targets, id: \.key) { target in
+                                    Text(target.label).tag(target.key)
+                                }
+                            }
+                            .pickerStyle(.navigationLink)
+                        }
+                    } header: {
+                        Text(set.title)
+                    }
+                }
+                Section {
+                    Button(L10n.get("watch_import_apply")) {
+                        companion.applyWatchImport(deviceId: deviceId, text: text, targets: targets)
+                        dismiss()
+                    }
+                    .disabled(targets.allSatisfy { $0.isEmpty })
+                }
+            } else {
+                Section {
+                    Text(L10n.get("watch_import_paste_hint")).font(.footnote).foregroundStyle(.secondary)
+                    // PasteButton reads the clipboard without iOS asking for permission.
+                    PasteButton(payloadType: String.self) { strings in
+                        if let first = strings.first { text = first; invalid = false }
+                    }
+                    TextEditor(text: $text)
+                        .frame(minHeight: 120)
+                        .onChange(of: text) { invalid = false }
+                    if invalid {
+                        Text(L10n.get("watch_import_invalid")).font(.footnote).foregroundStyle(.red)
+                    }
+                }
+                Section {
+                    Button(L10n.get("watch_import_next")) {
+                        if let found = companion.readWatchImport(deviceId: deviceId, text: text), !found.isEmpty {
+                            targets = found.map(\.proposed)
+                            sets = found
+                        } else {
+                            invalid = true
+                        }
+                    }
+                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .navigationTitle(L10n.get("watch_import_title"))
         .navigationBarTitleDisplayMode(.inline)
     }
 }
