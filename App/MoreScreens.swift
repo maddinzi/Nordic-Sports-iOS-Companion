@@ -119,10 +119,19 @@ struct WatchDataFieldsScreen: View {
                                 get: { slot.field },
                                 set: { companion.changeWatchDataField(deviceId: deviceId, key: group.key, index: slot.index, field: $0) }
                             )) {
-                                ForEach(watch?.dataFieldOptions ?? [], id: \.value) { option in
-                                    Text(option.label).tag(option.value)
+                                // The fields this sport offers on this watch; a hint
+                                // ("Needs Enhanced Metrics") under the name.
+                                ForEach(group.options, id: \.value) { option in
+                                    VStack(alignment: .leading) {
+                                        Text(option.label)
+                                        if !option.hint.isEmpty {
+                                            Text(option.hint).font(.footnote).foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    .tag(option.value)
                                 }
                             }
+                            .pickerStyle(.navigationLink)
                         }
                     }
                     if !group.note.isEmpty {
