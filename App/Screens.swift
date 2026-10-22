@@ -475,11 +475,12 @@ struct ActivityDetailScreen: View {
                                                  Double(current.avgApidMs), Double(current.avgAdcPercent)))
                 }
                 if current.techniqueSharePercent.isEmpty, !current.watch.isEmpty,
-                   ["running", "trailrun", "track"].contains(current.preset) {
+                   ["running", "poleRunning", "trailrun", "mountainRun", "track"].contains(current.preset) {
                     LabeledContent(L10n.get("activity_detail_technique_share_label"),
                                    value: L10n.get("activity_detail_technique_share_running_missing"))
                 }
-                if current.techniqueCatalog == "running", current.techniqueSharePercent.count >= 2 {
+                // Older watch versions: shares only; newer ones send averages (analysis section below).
+                if current.techniqueCatalog == "running", current.techniqueSharePercent.count >= 2, current.analysisLines.isEmpty {
                     LabeledContent(L10n.get("activity_detail_technique_share_label"),
                                    value: String(format: L10n.get("activity_detail_technique_share_running_value"),
                                                  current.techniqueSharePercent[0].doubleValue, current.techniqueSharePercent[1].doubleValue))
@@ -512,6 +513,15 @@ struct ActivityDetailScreen: View {
                 Section(L10n.get("activity_detail_technique_share_rollski_label")) {
                     ForEach(Array(current.techniqueSharePercent.enumerated()), id: \.offset) { index, percent in
                         LabeledContent(L10n.get("technique_labels_rollski_\(index)"), value: String(format: "%.0f%%", percent.doubleValue))
+                    }
+                }
+            }
+            // The watch's analysis as the Strava description block says it (shared AnalysisDescription.body).
+            let analysisLines = current.analysisLines
+            if !analysisLines.isEmpty {
+                Section(current.analysisTitle) {
+                    ForEach(Array(analysisLines.enumerated()), id: \.offset) { _, line in
+                        Text(line)
                     }
                 }
             }
