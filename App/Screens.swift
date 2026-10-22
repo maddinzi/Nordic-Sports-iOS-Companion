@@ -646,7 +646,8 @@ struct SettingsScreen: View {
             Page(id: "watch", title: L10n.get("settings_tile_watch"),
                  words: ["ios_choose_watch", "settings_tile_watch"].map(L10n.get), destination: AnyView(SettingsWatchPage())),
             Page(id: "strava", title: String(format: L10n.get("settings_tile_repository_named"), "Strava"),
-                 words: ["Strava", L10n.get("status_backfill_sync_now"), L10n.get("ios_pull_strava_7"), L10n.get("ios_disconnect_strava")],
+                 words: ["Strava", L10n.get("status_backfill_sync_now"), L10n.get("ios_pull_strava_7"), L10n.get("ios_disconnect_strava"),
+                         L10n.get("status_strava_update_my_activities"), L10n.get("status_strava_include_other_devices")],
                  destination: AnyView(SettingsStravaPage())),
             Page(id: "diary", title: diaryTitle,
                  words: ["ios_diary_auto", "status_ttb_round_switch", "status_ttb_compact_switch", "ios_diary_write_7", "connect_diary_title"].map(L10n.get),
@@ -916,6 +917,22 @@ struct SettingsStravaPage: View {
                         StravaConnectButton { companion.connectStrava() }
                     }
                     if companion.stravaConfigured { PoweredByStrava() }
+                }
+                if companion.stravaConnected {
+                    Section {
+                        Toggle(L10n.get("status_strava_update_my_activities"), isOn: Binding(
+                            get: { companion.stravaUpdateMyActivities },
+                            set: { companion.setStravaUpdateMyActivities($0) }
+                        ))
+                        Text(L10n.get("status_strava_update_my_activities_description")).font(.footnote).foregroundStyle(.secondary)
+                        Toggle(L10n.get("status_strava_include_other_devices"), isOn: Binding(
+                            get: { companion.stravaIncludeOtherDevices },
+                            set: { companion.setStravaIncludeOtherDevices($0) }
+                        ))
+                        Text(L10n.get("status_strava_include_other_devices_description")).font(.footnote).foregroundStyle(.secondary)
+                    } footer: {
+                        Text(L10n.get("status_strava_body"))
+                    }
                 }
         }
         .navigationTitle("Strava")
