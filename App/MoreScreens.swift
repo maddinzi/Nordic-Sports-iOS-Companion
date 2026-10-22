@@ -604,6 +604,8 @@ struct AboutScreen: View {
             }
             Section {
                 Text(L10n.get("about_body"))
+                // Free during the beta, paid features possible later; same statement as the website imprint.
+                Text(L10n.get("about_pricing_note")).font(.subheadline).foregroundStyle(.secondary)
                 Text(L10n.get("about_trademark_disclaimer_ios")).font(.footnote).foregroundStyle(.secondary)
             }
         }
