@@ -169,6 +169,13 @@ final class Companion: NSObject, ObservableObject {
 
     static let boostFolder = "recording-boost"
 
+    /// Android's WatchEventRepository.labelBurst: stores the label (the shared core marks the file
+    /// for writing again) and rewrites the CSV with it. Poles: 1 with, 0 without, -1 not said.
+    func labelBoost(id: String, technique: String, terrain: String, poles: Int32, note: String) async throws {
+        _ = try await core.setRecordingBoostLabel(id: id, technique: technique, terrain: terrain, poles: poles, note: note)
+        await exportBoostFiles()
+    }
+
     /// Android's RecordingBoostFileExporter: one CSV per burst in the Documents folder (visible in
     /// Files under On My iPhone > Nordic Sports > recording-boost). The shared core stores and
     /// links the bursts and lists those without a file (also after a late link to an activity,
