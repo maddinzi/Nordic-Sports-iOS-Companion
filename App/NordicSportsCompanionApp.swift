@@ -22,6 +22,8 @@ struct NordicSportsCompanionApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                // Built again when the app language changes, so every text is in the new one.
+                .id(companion.language)
                 .environmentObject(companion)
                 // Garmin Connect Mobile returns the device selection through our URL scheme.
                 .onOpenURL { url in WatchLinkSpike.shared.handle(url: url) }

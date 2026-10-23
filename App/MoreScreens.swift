@@ -47,7 +47,9 @@ struct WatchSettingsScreen: View {
                         NavigationLink(L10n.get("watch_strength_routines")) { WatchPlansScreen(deviceId: watch.deviceId, routines: true) }
                     }
                     if !watch.dataFieldGroups.isEmpty || !watch.intervalSlots.isEmpty || !watch.routineSlots.isEmpty {
-                        NavigationLink(L10n.get("watch_share_title")) { WatchShareScreen(deviceId: watch.deviceId) }
+                        NavigationLink { WatchShareScreen(deviceId: watch.deviceId) } label: {
+                            Label(L10n.get("watch_share_title"), systemImage: "square.and.arrow.up")
+                        }
                     }
                 } header: {
                     Text(watch.watchName)
@@ -199,7 +201,9 @@ struct WatchShareScreen: View {
                     .disabled(text.isEmpty)
             }
             Section {
-                NavigationLink(L10n.get("watch_import_title")) { WatchImportScreen(deviceId: deviceId) }
+                NavigationLink { WatchImportScreen(deviceId: deviceId) } label: {
+                    Label(L10n.get("watch_import_title"), systemImage: "square.and.arrow.down")
+                }
             }
         }
         .navigationTitle(L10n.get("watch_share_title"))
@@ -474,9 +478,18 @@ struct LogScreen: View {
         self.kind = kind
     }
 
+    private var shareKinds: [NordicSportsShared.LogKind] {
+        switch kind {
+        case .diary: return [.diary]
+        case .app: return [.app]
+        case .transfer: return [.watchTransfers]
+        }
+    }
+
     var body: some View {
         LogList(lines: lines, loaded: loaded)
             .navigationTitle(title)
+            .toolbar { ShareLogButton(kinds: shareKinds) }
             .task {
                 lines = await companion.logLines(kind)
                 loaded = true
@@ -500,6 +513,7 @@ struct ActivityLogScreen: View {
     var body: some View {
         LogList(lines: lines, loaded: loaded, empty: L10n.get("activity_change_log_empty"), failure: failure)
             .navigationTitle(L10n.get("activity_change_log_title"))
+            .toolbar { ShareLogButton(kinds: [.activityHistory], activityId: activityId) }
             .task {
                 do { lines = try await companion.activityLog(activityId) } catch {
                     if !error.isCancellation { failure = error.localizedDescription }
@@ -573,6 +587,7 @@ struct StravaApiUsageScreen: View {
             }
         }
         .navigationTitle(L10n.get("strava_api_usage_title"))
+        .toolbar { ShareLogButton(kinds: [.stravaApi]) }
         .task { await load() }
         .refreshable { await load() }
     }
@@ -596,7 +611,6 @@ struct StravaApiUsageScreen: View {
 /// athlete's own data stays reachable (export, delete).
 struct OutdatedScreen: View {
     @EnvironmentObject var companion: Companion
-    @State private var exportURL: URL?
     @State private var confirmingDelete = false
 
     var body: some View {
@@ -604,29 +618,18 @@ struct OutdatedScreen: View {
             Text(L10n.get("expiry_outdated_title")).font(.title2.bold())
             Text(L10n.get("expiry_body_store"))
             Text(L10n.get("expiry_data_note")).font(.footnote).foregroundStyle(.secondary)
-            if let exportURL {
-                ShareLink(item: exportURL) { Label(exportURL.lastPathComponent, systemImage: "square.and.arrow.up") }
-            } else {
-                Button(L10n.get("status_download_my_data")) {
-                    Task { exportURL = await companion.exportFile() }
-                }
+            DownloadMyDataButton()
                 .buttonStyle(.borderedProminent)
-            }
             Button(L10n.get("status_delete_my_data"), role: .destructive) { confirmingDelete = true }
             Spacer()
         }
         .padding()
         .confirmationDialog(L10n.get("status_delete_confirm_title"), isPresented: $confirmingDelete, titleVisibility: .visible) {
             Button(L10n.get("status_delete_confirm_button"), role: .destructive) {
-                exportURL = nil
                 Task { await companion.deleteAllData() }
             }
         } message: {
             Text(L10n.get("status_delete_confirm_body"))
-        }
-        .onDisappear {
-            companion.discardExport(exportURL)
-            exportURL = nil
         }
     }
 }
@@ -773,29 +776,18 @@ struct LicensesScreen: View {
     }
 }
 
-/// What changed, for the athlete: starts with the first iOS version (Android's older entries do
-/// not apply here). Each release adds its lines on top.
+/// What changed, for the athlete: the shared `AppChangelog` (the same list as Android's), from
+/// the first iOS version on (Android's older entries do not apply here). A release adds its entry
+/// there once, and a unit test in the Companion fails a version bump without one.
 struct ChangelogScreen: View {
-    private struct Entry: Identifiable {
-        let version: String
-        let date: String
-        let keys: [String]
-        var id: String { version }
-    }
-
-    private let entries = [
-        Entry(version: "0.9.96", date: "2026-10-20", keys: [
-            "changelog_0996_retention", "changelog_0996_deleted_on_strava", "changelog_0996_disconnect",
-            "changelog_0996_log", "changelog_0996_withdrawn", "changelog_0996_wording",
-        ]),
-    ]
+    private let entries = AppChangelog.shared.iosEntries
 
     var body: some View {
         List {
-            ForEach(entries) { entry in
+            ForEach(entries, id: \.version) { entry in
                 Section("\(entry.version) · \(entry.date)") {
-                    ForEach(entry.keys, id: \.self) { key in
-                        Text(L10n.get(key))
+                    ForEach(entry.highlights + entry.highlightKeys.map { L10n.get($0) }, id: \.self) { line in
+                        Text(line)
                     }
                 }
             }
@@ -1474,8 +1466,9 @@ struct EditActivitySheet: View {
 // MARK: - Diary locations
 
 /// Android's "Athlete's Diary connections": the Files app and the three clouds, each
-/// connected on its own; one is active and receives the diary entries. A cloud needs a
-/// sign-in (system sheet) and then the folder's sharing link (Dropbox: link or path).
+/// connected on its own; one is active and receives the diary entries. A cloud shows only what
+/// works on iOS (feedback 2026-10-23: the OneDrive part was confusing): the folder's share link
+/// (Dropbox: link or path) and Connect, which signs in first when needed (system sheet).
 struct DiaryLocationsScreen: View {
     @EnvironmentObject var companion: Companion
     @State private var pickingFile = false
@@ -1562,8 +1555,6 @@ struct DiaryLocationsScreen: View {
                 Label(L10n.get("ios_local_workbook_hint"), systemImage: "exclamationmark.triangle")
                     .font(.footnote).foregroundStyle(.orange)
                 Button(source.connected ? L10n.get("ios_choose_other_workbook") : L10n.get("ios_choose_workbook")) { pickingFile = true }
-            } else if !source.signedIn {
-                Button("\(L10n.get("destination_sign_in")) · \(source.name)") { companion.signInCloud(source.key) }
             } else {
                 TextField(locationLabel(source.key), text: Binding(
                     get: { links[source.key] ?? source.location },
@@ -1574,10 +1565,21 @@ struct DiaryLocationsScreen: View {
                 .keyboardType(.URL)
                 Button(L10n.get("connect_diary_connect_button")) {
                     let link = links[source.key] ?? source.location
-                    Task { show(await companion.connectCloud(source.key, location: link)) }
+                    if source.signedIn {
+                        Task { show(await companion.connectCloud(source.key, location: link)) }
+                    } else {
+                        // Signs in first; the link is connected right after the sign-in sheet closes.
+                        companion.signInCloud(source.key) {
+                            show(await companion.connectCloud(source.key, location: link))
+                        }
+                    }
                 }
                 .disabled((links[source.key] ?? source.location).trimmingCharacters(in: .whitespaces).isEmpty)
-                Button("\(L10n.get("cloud_account_sign_out_button")) · \(source.name)", role: .destructive) { companion.signOutCloud(source.key) }
+                Text(String(format: L10n.get("ios_cloud_link_footer"), source.name))
+                    .font(.footnote).foregroundStyle(.secondary)
+                if source.signedIn {
+                    Button("\(L10n.get("cloud_account_sign_out_button")) · \(source.name)", role: .destructive) { companion.signOutCloud(source.key) }
+                }
             }
             if source.connected {
                 Button(L10n.get("connect_diary_disconnect_button"), role: .destructive) { companion.disconnectDiary(source.key) }
