@@ -534,6 +534,27 @@ struct ActivityDetailScreen: View {
                     }
                 }
             }
+            // What goes to Strava (title, sport type, description), built by the shared code from the
+            // same blocks the write uses (StravaWritePreview), so it is clear before anything is sent.
+            if let preview = current.stravaPreview {
+                Section {
+                    LabeledContent(L10n.get("activity_detail_strava_preview_title"), value: preview.title)
+                    LabeledContent(L10n.get("activity_detail_strava_preview_sport_type"), value: preview.sportType)
+                    if !preview.description_.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(L10n.get("activity_detail_strava_preview_description"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(preview.description_)
+                                .textSelection(.enabled)
+                        }
+                    }
+                } header: {
+                    Text(L10n.get("activity_detail_strava_preview_heading"))
+                } footer: {
+                    Text(L10n.get("activity_detail_strava_preview_note"))
+                }
+            }
             Section(L10n.get("activity_detail_synced_to")) {
                 if current.stravaActivityId.isEmpty {
                     Text(L10n.get("ios_not_linked_strava"))
@@ -773,9 +794,6 @@ struct SettingsAppPage: View {
                     }
                     .pickerStyle(.inline)
                     .labelsHidden()
-                    if languageChoice != AppLanguage.atLaunch {
-                        Text(L10n.get("ios_language_restart")).font(.footnote).foregroundStyle(.secondary)
-                    }
                 } header: {
                     Text(L10n.get("language_section_title"))
                 }
@@ -783,7 +801,7 @@ struct SettingsAppPage: View {
                     guard code != AppLanguage.chosen else { return }
                     let effective = code.isEmpty ? AppLanguage.system : code
                     if companion.watchesForLanguage(effective).isEmpty {
-                        AppLanguage.chosen = code
+                        companion.chooseAppLanguage(code)
                     } else {
                         pendingLanguage = code
                     }
@@ -796,12 +814,12 @@ struct SettingsAppPage: View {
                     Button(L10n.get("language_offer_both")) {
                         let effective = code.isEmpty ? AppLanguage.system : code
                         for watch in companion.watchesForLanguage(effective) { companion.setWatchLanguage(watch.deviceId, effective) }
-                        AppLanguage.chosen = code
                         pendingLanguage = nil
+                        companion.chooseAppLanguage(code)
                     }
                     Button(L10n.get("language_offer_only_companion")) {
-                        AppLanguage.chosen = code
                         pendingLanguage = nil
+                        companion.chooseAppLanguage(code)
                     }
                     Button(L10n.get("common_cancel"), role: .cancel) {}
                 } message: { code in
@@ -1021,6 +1039,10 @@ struct SettingsLogsPage: View {
                     NavigationLink(L10n.get("status_view_strava_api_usage")) { StravaApiUsageScreen() }
                     NavigationLink(L10n.get("status_view_recording_boosts")) { RecordingBoostScreen() }
                     NavigationLink(L10n.get("ios_developer_log")) { DeveloperLogScreen() }
+                    ShareLink(item: LogFile(companion: companion, kinds: [.activityHistory, .watchTransfers, .stravaApi, .diary, .app]),
+                              preview: SharePreview(L10n.get("log_share_all"))) {
+                        Label(L10n.get("log_share_all"), systemImage: "square.and.arrow.up")
+                    }
                 }
         }
         .navigationTitle(L10n.get("status_data_logs_heading"))
@@ -1029,19 +1051,12 @@ struct SettingsLogsPage: View {
 
 struct SettingsPrivacyPage: View {
     @EnvironmentObject var companion: Companion
-    @State private var exportURL: URL?
     @State private var confirmingDeleteAll = false
 
     var body: some View {
         Form {
                 Section(L10n.get("status_my_data_heading")) {
-                    if let exportURL {
-                        ShareLink(item: exportURL) { Label(exportURL.lastPathComponent, systemImage: "square.and.arrow.up") }
-                    } else {
-                        Button(L10n.get("status_download_my_data")) {
-                            Task { exportURL = await companion.exportFile() }
-                        }
-                    }
+                    DownloadMyDataButton()
                     NavigationLink(L10n.get("feedback_title")) { FeedbackScreen() }
                     Button(L10n.get("status_delete_my_data"), role: .destructive) { confirmingDeleteAll = true }
                         .disabled(companion.syncing)
@@ -1050,16 +1065,11 @@ struct SettingsPrivacyPage: View {
                     L10n.get("status_delete_confirm_title"), isPresented: $confirmingDeleteAll, titleVisibility: .visible
                 ) {
                     Button(L10n.get("status_delete_confirm_button"), role: .destructive) {
-                        exportURL = nil
                         Task { await companion.deleteAllData() }
                     }
                 } message: {
                     Text(L10n.get("status_delete_confirm_body"))
                 }
-        }
-        .onDisappear {
-            companion.discardExport(exportURL)
-            exportURL = nil
         }
         .navigationTitle(L10n.get("settings_page_privacy"))
     }

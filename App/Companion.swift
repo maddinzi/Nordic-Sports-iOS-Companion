@@ -56,7 +56,9 @@ final class Companion: NSObject, ObservableObject {
     @Published var notice: Notice?
 
     let core: CompanionCore
-    let language: String
+    /// The app language ("de"); changes while the app runs ([chooseAppLanguage]), and the root view
+    /// is built again for it.
+    @Published private(set) var language: String
     private var authSession: ASWebAuthenticationSession?
     /// Identifies the running sign-in, so a cancelled earlier session's completion cannot clear the new one.
     private var authToken = UUID()
@@ -611,8 +613,14 @@ final class Companion: NSObject, ObservableObject {
 
     // MARK: - Diary clouds
 
-    /// Signs in to OneDrive, Dropbox or Google Drive in the system sign-in sheet (PKCE).
-    func signInCloud(_ source: String) {
+    /// Runs after the next successful cloud sign-in (Connect before signing in: the link is
+    /// connected once the sheet closes).
+    private var afterCloudSignIn: (() async -> Void)?
+
+    /// Signs in to OneDrive, Dropbox or Google Drive in the system sign-in sheet (PKCE);
+    /// [then] runs once the sign-in succeeded.
+    func signInCloud(_ source: String, then: (() async -> Void)? = nil) {
+        afterCloudSignIn = then
         let scheme = core.cloudCallbackScheme(provider: source)
         guard let url = URL(string: core.cloudSignInUrl(provider: source)), !scheme.isEmpty else {
             post(L10n.get("ios_cloud_not_configured"))
@@ -638,13 +646,20 @@ final class Companion: NSObject, ObservableObject {
             return
         }
         guard let callbackURL else { return }
+        let next = afterCloudSignIn
+        afterCloudSignIn = nil
         do {
             let reason = try await core.completeCloudSignIn(callbackUrl: callbackURL.absoluteString)
-            if !reason.isEmpty { post(reason) }
+            refreshDiary()
+            if !reason.isEmpty {
+                post(reason)
+            } else if let next {
+                await next()
+            }
         } catch {
             report(error)
+            refreshDiary()
         }
-        refreshDiary()
     }
 
     func signOutCloud(_ source: String) {
@@ -870,10 +885,18 @@ final class Companion: NSObject, ObservableObject {
         refreshWatchSettings()
     }
 
-    /// Takes [tag] as the app language; it applies when the app is opened again.
+    /// Takes [tag] as the app language ("" = the phone's) and applies it at once: the Swift texts,
+    /// the shared core's texts and, through [language], the whole screen (feedback 2026-10-23:
+    /// "opened again" meant killing the app, so the change looked lost).
     func chooseAppLanguage(_ tag: String) {
         AppLanguage.chosen = tag
-        post(L10n.get("ios_language_restart"))
+        let effective = AppLanguage.current
+        guard effective != language else { return }
+        L10n.reload()
+        if !core.switchLanguage(textsJson: Self.textTable(effective), language: effective) {
+            WatchLinkSpike.shared.add("texts-\(effective).json missing: shared texts stay in \(language)")
+        }
+        language = effective
     }
 
     func askWatchAgain(deviceId: Int64) {
@@ -1016,29 +1039,28 @@ final class Companion: NSObject, ObservableObject {
         try await core.activityLog(activityId: activityId)
     }
 
-    /// "Export my data": the JSON written to a temporary file, for the share sheet.
-    func exportFile() async -> URL? {
+    /// "Download my data": the whole store as JSON, saved with "Save to Files" (DownloadMyDataButton).
+    func exportJson() async -> String? {
         do {
-            let json = try await core.exportJson()
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent(core.exportFileName())
-            discardExport(url)
-            try json.write(to: url, atomically: true, encoding: .utf8)
-            return url
+            return try await core.exportJson()
         } catch {
             post(String(format: L10n.get("main_toast_export_failed"), error.localizedDescription))
             return nil
         }
     }
 
-    /// Removes an export file once its screen is left: it holds the athlete's whole data and would
-    /// otherwise stay in the temporary folder until the system clears it.
-    func discardExport(_ url: URL?) {
-        guard let url else { return }
-        do { try FileManager.default.removeItem(at: url) } catch {
-            let missing = (error as NSError).domain == NSCocoaErrorDomain
-                && (error as NSError).code == NSFileNoSuchFileError
-            if !missing { WatchLinkSpike.shared.add("export file could not be removed: \(error.localizedDescription)") }
-        }
+    /// A log file for the share sheet (shared LogExport, the same text as Android's), written when the
+    /// athlete shares. Earlier log files are removed first, so the temporary folder holds one at most.
+    func logFile(kinds: [NordicSportsShared.LogKind], activityId: String?) async throws -> URL {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        let text = try await core.logExportText(kinds: kinds, activityId: activityId,
+                                                header: "Nordic Sports Companion \(version) (iOS)")
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("logs", isDirectory: true)
+        try? FileManager.default.removeItem(at: folder)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appendingPathComponent(core.logExportFileName(kinds: kinds))
+        try text.write(to: url, atomically: true, encoding: .utf8)
+        return url
     }
 
     /// "Delete my data", as Android's: the shared core revokes Strava, forgets the diary and
@@ -1325,7 +1347,7 @@ extension Companion: ASWebAuthenticationPresentationContextProviding {
 /// The Android texts by name, from App/Localizable.xcstrings (generated from strings.xml).
 /// The language of the app: the one chosen in Settings (Romansh and Swiss German are not iOS
 /// system languages, so the system cannot offer them), else the first system language the app has.
-/// Read once at launch: a change applies after the app is opened again.
+/// A change applies at once (`Companion.chooseAppLanguage`).
 enum AppLanguage {
     static let supported = ["en", "de", "fr", "it", "rm", "gsw", "nb", "fi", "sv"]
     private static let key = "appLanguage"
@@ -1347,17 +1369,23 @@ enum AppLanguage {
     }
 
     static var current: String { supported.contains(chosen) ? chosen : system }
-
-    /// The choice the running app started with (what its texts are in).
-    static let atLaunch = chosen
 }
 
 enum L10n {
-    private static let language = AppLanguage.current
+    private static var language = AppLanguage.current
 
     /// The app's texts in [language] (its `.lproj`); the main bundle when there is none.
-    private static let bundle: Bundle =
+    private static var bundle: Bundle = bundle(for: language)
+
+    private static func bundle(for language: String) -> Bundle {
         Bundle.main.path(forResource: language, ofType: "lproj").flatMap(Bundle.init(path:)) ?? .main
+    }
+
+    /// Reads the texts again after the app language changed (`Companion.chooseAppLanguage`).
+    static func reload() {
+        language = AppLanguage.current
+        bundle = bundle(for: language)
+    }
 
     /// English, for names [bundle] lacks: texts marked translatable="false" ("View on Strava")
     /// and ones not yet translated exist only there, as on Android's `values/`.
