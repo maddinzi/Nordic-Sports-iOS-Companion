@@ -1183,13 +1183,14 @@ final class Companion: NSObject, ObservableObject {
     /// diary: iOS has no background job for that yet, so it runs right away.
     func saveActivity(
         _ activityId: String, title: String, trainingType: String, rpe: Int, feeling: Int,
-        comment: String, minutes: Int, kilometers: Double
+        comment: String, minutes: Int, kilometers: Double, stravaDescriptionMode: Int32
     ) async -> Bool {
         do {
             let saved = try await core.saveActivity(
                 activityId: activityId, title: title, trainingType: trainingType,
                 rpe: Int32(rpe), feeling: Int32(feeling), diaryComment: comment,
-                overrideElapsedSec: Self.seconds(minutes), overrideDistanceM: Float(max(0, kilometers) * 1000)
+                overrideElapsedSec: Self.seconds(minutes), overrideDistanceM: Float(max(0, kilometers) * 1000),
+                stravaDescriptionMode: stravaDescriptionMode
             )
             guard saved.boolValue else { return false }
             post(L10n.get("main_toast_activity_updated"))
