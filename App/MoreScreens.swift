@@ -1321,6 +1321,7 @@ struct EditActivitySheet: View {
     @State private var comment: String
     @State private var minutes: String
     @State private var kilometers: String
+    @State private var stravaDescriptionMode: Int32
     @State private var saving = false
 
     init(item: ActivityItem) {
@@ -1332,6 +1333,7 @@ struct EditActivitySheet: View {
         _comment = State(initialValue: item.diaryComment)
         _minutes = State(initialValue: item.overrideElapsedSec > 0 ? String(item.overrideElapsedSec / 60) : "")
         _kilometers = State(initialValue: item.overrideDistanceM > 0 ? String(format: "%.1f", Double(item.overrideDistanceM) / 1000) : "")
+        _stravaDescriptionMode = State(initialValue: Int32(item.stravaDescriptionMode))
     }
 
     private var trainingOptions: [(String, String)] {
@@ -1377,6 +1379,51 @@ struct EditActivitySheet: View {
                     }
                 }
                 .listRowBackground(Self.diaryRow)
+                if let preview = item.stravaPreview {
+                    // PRIVACY-SYNC: the athlete selects how much generated analysis to send, or removes our blocks.
+                    let selectedPreview = preview.withMode(mode: stravaDescriptionMode)
+                    Section {
+                        LabeledContent(L10n.get("activity_detail_strava_preview_title"), value: selectedPreview.title)
+                        LabeledContent(L10n.get("activity_detail_strava_preview_sport_type"), value: selectedPreview.sportType)
+                        HStack {
+                            Spacer()
+                            Button {
+                                stravaDescriptionMode = 3
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .disabled(stravaDescriptionMode == 3)
+                            .accessibilityLabel(L10n.get("activity_detail_strava_description_remove"))
+                            Button {
+                                stravaDescriptionMode = max(0, stravaDescriptionMode - 1)
+                            } label: {
+                                Image(systemName: "arrow.down")
+                            }
+                            .disabled(!selectedPreview.canShrink.boolValue)
+                            .accessibilityLabel(L10n.get("activity_detail_strava_description_shrink"))
+                            Button {
+                                stravaDescriptionMode = stravaDescriptionMode == 3 ? 0 : min(2, stravaDescriptionMode + 1)
+                            } label: {
+                                Image(systemName: "arrow.up")
+                            }
+                            .disabled(!selectedPreview.canGrow.boolValue)
+                            .accessibilityLabel(L10n.get("activity_detail_strava_description_grow"))
+                        }
+                        if !selectedPreview.description_.isEmpty {
+                            Text(selectedPreview.description_)
+                                .textSelection(.enabled)
+                        } else if stravaDescriptionMode == 3 {
+                            Text(L10n.get("activity_detail_strava_description_removed"))
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    } header: {
+                        Text(L10n.get("activity_detail_strava_preview_heading"))
+                    } footer: {
+                        Text(L10n.get("activity_detail_strava_preview_note"))
+                    }
+                    .listRowBackground(Self.diaryRow)
+                }
                 Section(L10n.get("activity_detail_diary_comment_label")) {
                     TextEditor(text: $comment).frame(minHeight: 80)
                 }
@@ -1428,7 +1475,8 @@ struct EditActivitySheet: View {
         let km = Double(kilometers.replacingOccurrences(of: ",", with: ".")) ?? 0
         let saved = await companion.saveActivity(
             item.id, title: title, trainingType: trainingType, rpe: rpe, feeling: feeling,
-            comment: comment, minutes: Int(minutes) ?? 0, kilometers: km
+            comment: comment, minutes: Int(minutes) ?? 0, kilometers: km,
+            stravaDescriptionMode: stravaDescriptionMode
         )
         if saved {
             if createOnStrava { await companion.createOnStrava(item.id) }
