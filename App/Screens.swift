@@ -843,6 +843,13 @@ struct SettingsAppPage: View {
                                   : "interaction_option_passive_description"))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                    Toggle(L10n.get("settings_review_imported_activities"), isOn: Binding(
+                        get: { companion.reviewImportedActivities },
+                        set: { companion.setReviewImportedActivities($0) }
+                    ))
+                    Text(L10n.get("settings_review_imported_activities_description"))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                     Toggle(L10n.get("status_place_names_switch"), isOn: Binding(
                         get: { companion.placeNamesEnabled },
                         set: { companion.setPlaceNamesEnabled($0) }
