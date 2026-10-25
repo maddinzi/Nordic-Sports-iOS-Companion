@@ -44,6 +44,7 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var stravaUpdateMyActivities = true
     @Published private(set) var stravaIncludeOtherDevices = true
     @Published private(set) var reviewNewActivities = true
+    @Published private(set) var reviewImportedActivities = false
     @Published private(set) var syncAutomatically = true
     /// The alert shown now; further messages wait in `queuedMessages` (use `post`).
     /// The activity a tapped notification asks to show; the Activities tab opens it and clears this.
@@ -103,6 +104,7 @@ final class Companion: NSObject, ObservableObject {
         stravaUpdateMyActivities = core.stravaUpdateMyActivities()
         stravaIncludeOtherDevices = core.stravaIncludeOtherDevices()
         reviewNewActivities = core.reviewNewActivities()
+        reviewImportedActivities = core.reviewImportedActivities()
         syncAutomatically = core.syncAutomatically()
     }
 
@@ -943,14 +945,20 @@ final class Companion: NSObject, ObservableObject {
     }
 
     /// [view] after picking [option] in row [rowId] (an action row's option, or 0 to remove).
-    func editWatchPlan(_ view: PlanEditView, key: String, rowId: String, option: Int32) -> PlanEditView {
-        core.editWatchPlan(key: key, draft: view.draft, canClear: view.canClear, rowId: rowId, option: option) ?? view
+    func editWatchPlan(_ view: PlanEditView, deviceId: Int64, key: String, rowId: String, option: Int32) -> PlanEditView {
+        core.editWatchPlan(deviceId: deviceId, key: key, draft: view.draft, canClear: view.canClear, rowId: rowId, option: option) ?? view
     }
 
     /// Sends [draft] to the watch; an empty draft clears the slot.
     func saveWatchPlan(deviceId: Int64, key: String, draft: [KotlinInt]) {
         core.saveWatchPlan(deviceId: deviceId, key: key, draft: draft)
         refreshWatchSettings()
+    }
+
+    func changeWatchCustomStrengthExercises(deviceId: Int64, names: [String]) -> Bool {
+        let changed = core.changeWatchCustomStrengthExercises(deviceId: deviceId, names: names)
+        refreshWatchSettings()
+        return changed
     }
 
     /// The activity list's watch cards: recordings running on a watch, crash reports.
@@ -997,6 +1005,11 @@ final class Companion: NSObject, ObservableObject {
     func setReviewNewActivities(_ on: Bool) {
         core.setReviewNewActivities(on: on)
         reviewNewActivities = core.reviewNewActivities()
+    }
+
+    func setReviewImportedActivities(_ on: Bool) {
+        core.setReviewImportedActivities(on: on)
+        reviewImportedActivities = core.reviewImportedActivities()
     }
 
     func setSyncAutomatically(_ on: Bool) {
@@ -1247,7 +1260,7 @@ final class Companion: NSObject, ObservableObject {
     }
 
     private func afterEdit() async {
-        if diaryConnected, diarySettings.autoUpdate {
+        if automaticSync, diaryConnected, diarySettings.autoUpdate {
             await sync()
         } else {
             await refresh()

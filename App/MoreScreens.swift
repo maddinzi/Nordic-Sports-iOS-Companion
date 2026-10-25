@@ -297,6 +297,22 @@ struct WatchPlansScreen: View {
         let watch = companion.watchSettings.first { $0.deviceId == deviceId }
         Form {
             Section { Text(L10n.get(routines ? "watch_routines_intro" : "watch_intervals_intro")).font(.footnote).foregroundStyle(.secondary) }
+            if routines, watch?.customStrengthExercisesAvailable == true {
+                Section {
+                    NavigationLink {
+                        WatchCustomExercisesScreen(
+                            deviceId: deviceId,
+                            initialNames: watch?.customStrengthExercises ?? []
+                        )
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L10n.get("watch_strength_custom_exercises"))
+                            Text((watch?.customStrengthExercises ?? []).joined(separator: ", "))
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
             ForEach((routines ? watch?.routineSlots : watch?.intervalSlots) ?? [], id: \.key) { slot in
                 Section {
                     NavigationLink {
@@ -331,6 +347,89 @@ struct WatchPlansScreen: View {
     }
 }
 
+private struct WatchCustomExercisesScreen: View {
+    @EnvironmentObject var companion: Companion
+    @Environment(\.dismiss) private var dismiss
+    let deviceId: Int64
+    let initialNames: [String]
+    @State private var names: [String]
+    @State private var newName = ""
+    @State private var saveFailed = false
+
+    init(deviceId: Int64, initialNames: [String]) {
+        self.deviceId = deviceId
+        self.initialNames = initialNames
+        _names = State(initialValue: initialNames)
+    }
+
+    private var normalizedNames: [String] {
+        names.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+    }
+
+    private var validNames: Bool {
+        normalizedNames.count <= 16 &&
+            normalizedNames.allSatisfy { !$0.isEmpty && $0.count <= 32 } &&
+            Set(normalizedNames.map { $0.lowercased() }).count == normalizedNames.count
+    }
+
+    private var candidateNames: [String] { normalizedNames + [newName.trimmingCharacters(in: .whitespacesAndNewlines)] }
+    private var canAdd: Bool {
+        names.count < 16 && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            Set(candidateNames.map { $0.lowercased() }).count == candidateNames.count
+    }
+
+    var body: some View {
+        Form {
+            Section(footer: Text(L10n.get("watch_strength_custom_exercises_hint") + " " + L10n.get("watch_strength_custom_exercises_limit"))) {
+                ForEach(names.indices, id: \.self) { index in
+                    TextField(
+                        L10n.get("watch_strength_exercise") + " \(index + 1)",
+                        text: Binding(
+                            get: { names[index] },
+                            set: { names[index] = String($0.prefix(32)); saveFailed = false }
+                        )
+                    )
+                }
+                if !validNames || saveFailed {
+                    Text(L10n.get("watch_strength_custom_exercises_invalid"))
+                        .font(.footnote).foregroundStyle(.red)
+                }
+            }
+            Section {
+                HStack {
+                    TextField(L10n.get("watch_strength_custom_exercise_add"), text: $newName)
+                        .onChange(of: newName) { _, value in
+                            newName = String(value.prefix(32))
+                            saveFailed = false
+                        }
+                    Button(L10n.get("watch_strength_custom_exercise_add")) {
+                        names.append(newName.trimmingCharacters(in: .whitespacesAndNewlines))
+                        newName = ""
+                    }
+                    .disabled(!canAdd)
+                }
+            }
+        }
+        .navigationTitle(L10n.get("watch_strength_custom_exercises"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button(L10n.get("common_cancel")) { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button(L10n.get("watch_intervals_save")) {
+                    if companion.changeWatchCustomStrengthExercises(deviceId: deviceId, names: normalizedNames) {
+                        dismiss()
+                    } else {
+                        saveFailed = true
+                    }
+                }
+                .disabled(!validNames || normalizedNames == initialNames || !newName.isEmpty)
+            }
+        }
+    }
+}
+
 /// Edits one plan or routine with the watch editor's own choices (shared WatchPlanEditor).
 /// Back discards the draft; Save sends it to the watch.
 struct WatchPlanEditScreen: View {
@@ -351,12 +450,12 @@ struct WatchPlanEditScreen: View {
                     Section {
                         ForEach(section.rows, id: \.id) { row in
                             PlanRow(row: row) { option in
-                                self.view = companion.editWatchPlan(view, key: key, rowId: row.id, option: option)
+                                self.view = companion.editWatchPlan(view, deviceId: deviceId, key: key, rowId: row.id, option: option)
                             }
                         }
                         if !section.removeId.isEmpty {
                             Button(L10n.get("watch_strength_remove_exercise"), role: .destructive) {
-                                self.view = companion.editWatchPlan(view, key: key, rowId: section.removeId, option: 0)
+                                self.view = companion.editWatchPlan(view, deviceId: deviceId, key: key, rowId: section.removeId, option: 0)
                             }
                         }
                     } header: {
@@ -400,9 +499,51 @@ struct WatchPlanEditScreen: View {
 private struct PlanRow: View {
     let row: PlanEditRow
     let pick: (Int32) -> Void
+    @State private var showingExerciseSearch = false
+    @State private var searchText = ""
+
+    private var isExerciseSearch: Bool {
+        row.id == "add" || row.id.hasSuffix(".exercise")
+    }
 
     var body: some View {
-        if row.selected >= 0 {
+        if isExerciseSearch {
+            Button { showingExerciseSearch = true } label: {
+                HStack {
+                    Text(row.label).foregroundStyle(Color.primary)
+                    Spacer()
+                    Text(row.value.isEmpty ? "…" : row.value).foregroundStyle(.secondary)
+                }
+            }
+            .sheet(isPresented: $showingExerciseSearch, onDismiss: { searchText = "" }) {
+                NavigationStack {
+                    List {
+                        let matches = row.options.filter {
+                            searchText.isEmpty || $0.localizedCaseInsensitiveContains(searchText)
+                        }
+                        if matches.isEmpty {
+                            Text(L10n.get("settings_search_no_results")).foregroundStyle(.secondary)
+                        } else {
+                            ForEach(Array(row.options.enumerated()), id: \.offset) { index, option in
+                                if searchText.isEmpty || option.localizedCaseInsensitiveContains(searchText) {
+                                    Button(option) {
+                                        pick(Int32(index))
+                                        showingExerciseSearch = false
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .navigationTitle(row.label)
+                    .searchable(text: $searchText, prompt: L10n.get("settings_search_hint"))
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(L10n.get("common_cancel")) { showingExerciseSearch = false }
+                        }
+                    }
+                }
+            }
+        } else if row.selected >= 0 {
             Picker(row.label, selection: Binding(get: { row.selected }, set: { pick($0) })) {
                 ForEach(Array(row.options.enumerated()), id: \.offset) { index, option in
                     Text(option).tag(Int32(index))
@@ -1383,8 +1524,12 @@ struct EditActivitySheet: View {
                     // PRIVACY-SYNC: the athlete selects how much generated analysis to send, or removes our blocks.
                     let selectedPreview = preview.withMode(mode: stravaDescriptionMode)
                     Section {
-                        LabeledContent(L10n.get("activity_detail_strava_preview_title"), value: selectedPreview.title)
-                        LabeledContent(L10n.get("activity_detail_strava_preview_sport_type"), value: selectedPreview.sportType)
+                        if !selectedPreview.title.isEmpty {
+                            LabeledContent(L10n.get("activity_detail_strava_preview_title"), value: selectedPreview.title)
+                        }
+                        if !selectedPreview.sportType.isEmpty {
+                            LabeledContent(L10n.get("activity_detail_strava_preview_sport_type"), value: selectedPreview.sportType)
+                        }
                         HStack {
                             Spacer()
                             Button {
@@ -1459,7 +1604,7 @@ struct EditActivitySheet: View {
                     Button(L10n.get("common_cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    // Automatic mode sends on its own: there the form's "Save & send" replaces "Save".
+                    // Automatic mode sends on its own: the form action replaces this toolbar Save.
                     if !(companion.automaticSync && companion.sendsSomewhere) {
                         Button(L10n.get("activity_detail_save_button")) { Task { await save(send: false) } }
                             .disabled(saving)
@@ -1492,10 +1637,14 @@ struct EditActivitySheet: View {
     private var sendSection: some View {
         let sends = companion.sendsSomewhere
         let canCreate = companion.stravaConnected && item.stravaActivityId.isEmpty
-        if sends || canCreate {
+        let showSend = sends && (item.origin != "strava" || companion.automaticSync)
+        if showSend || canCreate {
             Section {
-                if sends {
-                    Button(L10n.get(companion.automaticSync ? "activity_detail_save_and_send" : "activity_detail_send_now")) {
+                if showSend {
+                    let label = item.origin == "strava"
+                        ? "activity_detail_save_button"
+                        : companion.automaticSync ? "activity_detail_save_and_send" : "activity_detail_send_now"
+                    Button(L10n.get(label)) {
                         Task { await save(send: true) }
                     }
                     .disabled(saving)
