@@ -46,7 +46,10 @@ targets:
     entitlements:
       path: App/NordicSportsCompanion.entitlements
       properties:
-        com.apple.developer.devicecheck.appattest-environment: production
+        # App Attest entitlement: add it (value production) together with the App Attest capability on the
+        # App ID, in the release that turns registration on. Left out while APP_ATTEST_REGISTRATION_ENABLED
+        # is NO, so the CI signing profile needs nothing new.
+        # com.apple.developer.devicecheck.appattest-environment: production
         com.apple.developer.associated-domains:
           - applinks:api.nordicsports.maddin.me
           - webcredentials:api.nordicsports.maddin.me
