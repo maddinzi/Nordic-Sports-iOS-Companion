@@ -844,7 +844,7 @@ struct AboutScreen: View {
         List {
             Section {
                 Text("Nordic Sports Companion").font(.title3.bold())
-                Text(Format.appVersion).foregroundStyle(.secondary)
+                Text(Format.appVersion + " [" + UserRoleKt.currentUserRoleName() + "]").foregroundStyle(.secondary)
             }
             Section {
                 NavigationLink(L10n.get("about_view_changelog")) { ChangelogScreen() }
