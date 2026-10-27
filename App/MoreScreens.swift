@@ -1544,14 +1544,14 @@ struct EditActivitySheet: View {
                             } label: {
                                 Image(systemName: "arrow.down")
                             }
-                            .disabled(!selectedPreview.canShrink.boolValue)
+                            .disabled(!selectedPreview.canShrink)
                             .accessibilityLabel(L10n.get("activity_detail_strava_description_shrink"))
                             Button {
                                 stravaDescriptionMode = stravaDescriptionMode == 3 ? 0 : min(2, stravaDescriptionMode + 1)
                             } label: {
                                 Image(systemName: "arrow.up")
                             }
-                            .disabled(!selectedPreview.canGrow.boolValue)
+                            .disabled(!selectedPreview.canGrow)
                             .accessibilityLabel(L10n.get("activity_detail_strava_description_grow"))
                         }
                         if !selectedPreview.description_.isEmpty {
