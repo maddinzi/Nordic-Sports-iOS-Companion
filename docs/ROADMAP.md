@@ -292,7 +292,7 @@ Diagnostics; Strava sign-in with ASWebAuthenticationSession and an https callbac
   `PRIVACY-SYNC:` spots, which now partly live in `shared`.
 - Entra, Dropbox and Google Cloud: register the iOS bundle id and redirect URIs.
 - Garmin: check whether the Connect IQ Store listing should mention the iOS Companion.
-- App Store listing (EN/DE) and screenshots (creative-agent).
+- App Store listing (EN/DE) and screenshots (creative-assets skill).
 - TestFlight replaces the Android sideload channel for testers.
 
 ### Step 7: Ongoing maintenance process
@@ -303,7 +303,7 @@ Diagnostics; Strava sign-in with ASWebAuthenticationSession and an https callbac
   watch version. One tag, one CHANGELOG.
 - **Rules move with the code:** language-consistency, Strava write-back review and the
   privacy sync check apply to `shared` once, and to each platform's UI and adapters.
-- An `ios-agent` in `.claude/agents/` and iOS skills (`ios-verify`, `ios-release`) once
+- An `ios-dev` skill in `.claude/skills/` and iOS skills (`ios-verify`, `ios-release`) once
   the Xcode project exists.
 
 ---
