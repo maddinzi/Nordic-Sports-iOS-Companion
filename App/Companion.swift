@@ -361,6 +361,9 @@ final class Companion: NSObject, ObservableObject {
         if let last = lastOpenSync, Date().timeIntervalSince(last) < 60 { return }
         lastOpenSync = Date()
         await checkOutdated()
+        await IOSAppAttestRegistration.shared.registerIfDue(core: core) { line in
+            WatchLinkSpike.shared.add(line)
+        }
         await reportUsage()
         guard !outdated else { return }
         await purgeExpiredStravaData()
