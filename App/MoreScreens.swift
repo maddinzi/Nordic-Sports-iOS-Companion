@@ -1519,6 +1519,13 @@ struct EditActivitySheet: View {
             .accessibilityLabel(label)
     }
 
+    /// The duration after the diary's rounding up to 5 minutes (when it rounds): the corrected one, else the measured one.
+    private var roundedSeconds: Int {
+        let entered = (Int(minutes) ?? 0) * 60
+        let seconds = entered > 0 ? entered : Int(item.elapsedSec)
+        return companion.diarySettings.roundDurationUp ? (seconds + 299) / 300 * 300 : seconds
+    }
+
     /// The tint of the rows the diary entry is built from (the same yellow as the review box on the detail screen).
     private static let diaryRow = Color.yellow.opacity(0.18)
 
@@ -1650,6 +1657,10 @@ struct EditActivitySheet: View {
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                         Text("min").foregroundStyle(.secondary)
+                        // What the diary books after its rounding (the shared DiaryEntryBuilder rounds the corrected duration too).
+                        Text("\(L10n.get("activity_detail_rounded_duration_label")) \(Format.duration(Int32(roundedSeconds)))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                     LabeledContent(L10n.get("activity_detail_distance_label")) {
                         TextField(item.distanceM > 0 ? String(format: "%.1f", Double(item.distanceM) / 1000) : "0", text: $kilometers)
