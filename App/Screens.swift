@@ -397,11 +397,21 @@ struct ActivityRow: View {
 struct SyncChip: View {
     let name: String
     let on: Bool
+    var tint: Color = .green
+
+    /// Android's colour code: Watch dark blue, Strava orange, diary yellow (lighter on dark backgrounds).
+    static let watch = Color(UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor(red: 108 / 255, green: 142 / 255, blue: 232 / 255, alpha: 1)
+        : UIColor(red: 13 / 255, green: 43 / 255, blue: 107 / 255, alpha: 1) })
+    static let strava = Color(red: 252 / 255, green: 76 / 255, blue: 2 / 255)
+    static let diary = Color(UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor(red: 1, green: 213 / 255, blue: 79 / 255, alpha: 1)
+        : UIColor(red: 217 / 255, green: 164 / 255, blue: 0, alpha: 1) })
 
     var body: some View {
         Label(name, systemImage: on ? "checkmark.circle.fill" : "circle")
             .font(.subheadline)
-            .foregroundStyle(on ? Color.green : Color.secondary)
+            .foregroundStyle(on ? tint : Color.secondary)
     }
 }
 
@@ -432,11 +442,11 @@ struct ActivityDetailScreen: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L10n.get("activity_detail_synced_to")).font(.caption).foregroundStyle(.secondary)
                     HStack(spacing: 16) {
-                        SyncChip(name: L10n.get("sync_presence_destination_watch"), on: current.origin == "watch")
-                        SyncChip(name: "Strava", on: !current.stravaActivityId.isEmpty)
+                        SyncChip(name: L10n.get("sync_presence_destination_watch"), on: current.origin == "watch", tint: SyncChip.watch)
+                        SyncChip(name: "Strava", on: !current.stravaActivityId.isEmpty, tint: SyncChip.strava)
                         if companion.diaryReceives {
                             SyncChip(name: L10n.get("settings_diary_short_name"),
-                                     on: current.diaryWritten && !current.diaryOutdated)
+                                     on: current.diaryWritten && !current.diaryOutdated, tint: SyncChip.diary)
                         }
                     }
                 }
@@ -538,8 +548,12 @@ struct ActivityDetailScreen: View {
             // same blocks the write uses (StravaWritePreview), so it is clear before anything is sent.
             if let preview = current.stravaPreview {
                 Section {
-                    LabeledContent(L10n.get("activity_detail_strava_preview_title"), value: preview.title)
-                    LabeledContent(L10n.get("activity_detail_strava_preview_sport_type"), value: preview.sportType)
+                    if !preview.title.isEmpty {
+                        LabeledContent(L10n.get("activity_detail_strava_preview_title"), value: preview.title)
+                    }
+                    if !preview.sportType.isEmpty {
+                        LabeledContent(L10n.get("activity_detail_strava_preview_sport_type"), value: preview.sportType)
+                    }
                     if !preview.description_.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(L10n.get("activity_detail_strava_preview_description"))

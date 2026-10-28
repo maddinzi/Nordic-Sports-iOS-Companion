@@ -1463,6 +1463,9 @@ struct EditActivitySheet: View {
     @State private var minutes: String
     @State private var kilometers: String
     @State private var stravaDescriptionMode: Int32
+    /// The Strava title and sport type the athlete chose; nil = not chosen (the rule's, or a renamed title).
+    @State private var stravaTitle: String?
+    @State private var stravaSportType: String?
     @State private var saving = false
 
     init(item: ActivityItem) {
@@ -1471,7 +1474,8 @@ struct EditActivitySheet: View {
         _trainingType = State(initialValue: item.trainingType)
         _rpe = State(initialValue: Int(item.rpe))
         _feeling = State(initialValue: Int(item.feeling))
-        _comment = State(initialValue: item.diaryComment)
+        // The diary description starts with the activity title, editable like the rest.
+        _comment = State(initialValue: Self.commentWithTitle(item.title, item.diaryComment))
         _minutes = State(initialValue: item.overrideElapsedSec > 0 ? String(item.overrideElapsedSec / 60) : "")
         _kilometers = State(initialValue: item.overrideDistanceM > 0 ? String(format: "%.1f", Double(item.overrideDistanceM) / 1000) : "")
         _stravaDescriptionMode = State(initialValue: Int32(item.stravaDescriptionMode))
@@ -1486,6 +1490,33 @@ struct EditActivitySheet: View {
                ("intervals", "activity_detail_training_option_intervals"),
                ("technique", "activity_detail_training_option_technique"),
                ("sprints", "activity_detail_training_option_sprints")]
+    }
+
+    /// [comment] with [title] as its beginning; [replacing] is the title it now starts with, swapped for [title].
+    static func commentWithTitle(_ title: String, _ comment: String, replacing: String? = nil) -> String {
+        let new = title.trimmingCharacters(in: .whitespaces)
+        let old = (replacing ?? title).trimmingCharacters(in: .whitespaces)
+        let rest: String
+        if !old.isEmpty && comment.hasPrefix(old) {
+            rest = String(comment.dropFirst(old.count))
+        } else {
+            rest = comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : "\n" + comment
+        }
+        return new.isEmpty ? String(rest.drop(while: { $0 == "\n" })) : new + rest
+    }
+
+    /// The title typed above, when it differs from the stored one: it becomes the Strava title proposal.
+    private var renamedTo: String? {
+        let new = title.trimmingCharacters(in: .whitespaces)
+        return !new.isEmpty && new != item.title.trimmingCharacters(in: .whitespaces) ? new : nil
+    }
+
+    /// The small trash button of a Strava field.
+    private func clearButton(_ label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Image(systemName: "trash") }
+            .buttonStyle(.borderless)
+            .disabled(!enabled)
+            .accessibilityLabel(label)
     }
 
     /// The tint of the rows the diary entry is built from (the same yellow as the review box on the detail screen).
@@ -1504,6 +1535,10 @@ struct EditActivitySheet: View {
                 Section {
                     Text(L10n.get("activity_detail_diary_card_intro")).font(.footnote).foregroundStyle(.secondary)
                     TextField(L10n.get("activity_detail_name_label"), text: $title)
+                        .onChange(of: title) { old, new in
+                            // The title leads the diary description: renaming it renames that part too.
+                            comment = Self.commentWithTitle(new, comment, replacing: old)
+                        }
                     Picker(L10n.get("activity_detail_training_type_label"), selection: $trainingType) {
                         ForEach(trainingOptions, id: \.0) { option in Text(L10n.get(option.1)).tag(option.0) }
                         if !trainingOptions.contains(where: { $0.0 == trainingType }) {
@@ -1523,47 +1558,83 @@ struct EditActivitySheet: View {
                 if let preview = item.stravaPreview {
                     // PRIVACY-SYNC: the athlete selects how much generated analysis to send, or removes our blocks.
                     let selectedPreview = preview.withMode(mode: stravaDescriptionMode)
+                    let shownTitle = stravaTitle ?? renamedTo ?? preview.title
+                    let shownSportType = stravaSportType ?? preview.sportType
+                    let sportTypes = (preview.sportTypeOptions as [Any]).compactMap { $0 as? String }
                     Section {
-                        if !selectedPreview.title.isEmpty {
-                            LabeledContent(L10n.get("activity_detail_strava_preview_title"), value: selectedPreview.title)
-                        }
-                        if !selectedPreview.sportType.isEmpty {
-                            LabeledContent(L10n.get("activity_detail_strava_preview_sport_type"), value: selectedPreview.sportType)
+                        // An emptied field means: not changed on Strava.
+                        HStack {
+                            TextField(L10n.get("activity_detail_strava_preview_title"),
+                                      text: Binding(get: { shownTitle }, set: { stravaTitle = $0 }))
+                            if shownTitle.trimmingCharacters(in: .whitespaces) != preview.generatedTitle {
+                                Button(L10n.get("activity_detail_strava_title_reset")) { stravaTitle = preview.generatedTitle }
+                                    .buttonStyle(.borderless)
+                            }
+                            clearButton(L10n.get("activity_detail_strava_field_clear"), enabled: !shownTitle.isEmpty) {
+                                stravaTitle = ""
+                            }
                         }
                         HStack {
-                            Spacer()
-                            Button {
-                                stravaDescriptionMode = 3
-                            } label: {
-                                Image(systemName: "trash")
+                            Picker(L10n.get("activity_detail_strava_preview_sport_type"),
+                                   selection: Binding(get: { shownSportType }, set: { stravaSportType = $0 })) {
+                                if !sportTypes.contains(shownSportType) {
+                                    Text(shownSportType.isEmpty ? "–" : shownSportType).tag(shownSportType)
+                                }
+                                ForEach(sportTypes, id: \.self) { Text($0).tag($0) }
                             }
-                            .disabled(stravaDescriptionMode == 3)
-                            .accessibilityLabel(L10n.get("activity_detail_strava_description_remove"))
-                            Button {
-                                stravaDescriptionMode = max(0, stravaDescriptionMode - 1)
-                            } label: {
-                                Image(systemName: "arrow.down")
+                            clearButton(L10n.get("activity_detail_strava_field_clear"), enabled: !shownSportType.isEmpty) {
+                                stravaSportType = ""
                             }
-                            .disabled(!selectedPreview.canShrink)
-                            .accessibilityLabel(L10n.get("activity_detail_strava_description_shrink"))
-                            Button {
-                                stravaDescriptionMode = stravaDescriptionMode == 3 ? 0 : min(2, stravaDescriptionMode + 1)
-                            } label: {
-                                Image(systemName: "arrow.up")
-                            }
-                            .disabled(!selectedPreview.canGrow)
-                            .accessibilityLabel(L10n.get("activity_detail_strava_description_grow"))
                         }
-                        if !selectedPreview.description_.isEmpty {
-                            Text(selectedPreview.description_)
-                                .textSelection(.enabled)
-                        } else if stravaDescriptionMode == 3 {
-                            Text(L10n.get("activity_detail_strava_description_removed"))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
+                        // The description sits in a thin grey frame like a text box, its buttons inside.
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text(L10n.get("activity_detail_strava_preview_description"))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Button {
+                                    stravaDescriptionMode = max(0, stravaDescriptionMode - 1)
+                                } label: {
+                                    Image(systemName: "arrow.down")
+                                }
+                                .buttonStyle(.borderless)
+                                .disabled(!selectedPreview.canShrink)
+                                .accessibilityLabel(L10n.get("activity_detail_strava_description_shrink"))
+                                Button {
+                                    stravaDescriptionMode = stravaDescriptionMode == 3 ? 0 : min(2, stravaDescriptionMode + 1)
+                                } label: {
+                                    Image(systemName: "arrow.up")
+                                }
+                                .buttonStyle(.borderless)
+                                .disabled(!selectedPreview.canGrow)
+                                .accessibilityLabel(L10n.get("activity_detail_strava_description_grow"))
+                                clearButton(L10n.get("activity_detail_strava_description_remove"), enabled: stravaDescriptionMode != 3) {
+                                    stravaDescriptionMode = 3
+                                }
+                            }
+                            if !selectedPreview.description_.isEmpty {
+                                Text(selectedPreview.description_)
+                                    .textSelection(.enabled)
+                            } else if stravaDescriptionMode == 3 {
+                                Text(L10n.get("activity_detail_strava_description_removed"))
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                        .padding(8)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.5), lineWidth: 1))
                     } header: {
-                        Text(L10n.get("activity_detail_strava_preview_heading"))
+                        HStack {
+                            Text(L10n.get("activity_detail_strava_preview_heading"))
+                            Spacer()
+                            // Empties title and description and puts the sport type back to the rule's.
+                            clearButton(L10n.get("activity_detail_strava_clear_all"), enabled: true) {
+                                stravaTitle = ""
+                                stravaSportType = nil
+                                stravaDescriptionMode = 3
+                            }
+                        }
                     } footer: {
                         Text(L10n.get("activity_detail_strava_preview_note"))
                     }
@@ -1621,7 +1692,9 @@ struct EditActivitySheet: View {
         let saved = await companion.saveActivity(
             item.id, title: title, trainingType: trainingType, rpe: rpe, feeling: feeling,
             comment: comment, minutes: Int(minutes) ?? 0, kilometers: km,
-            stravaDescriptionMode: stravaDescriptionMode
+            stravaDescriptionMode: stravaDescriptionMode,
+            stravaTitle: item.stravaPreview.map { stravaTitle ?? renamedTo ?? $0.title },
+            stravaSportType: item.stravaPreview.map { stravaSportType ?? $0.sportType }
         )
         if saved {
             if createOnStrava { await companion.createOnStrava(item.id) }
