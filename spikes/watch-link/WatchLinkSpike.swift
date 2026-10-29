@@ -18,7 +18,6 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
     /// Public listing and the Preview (Garmin Beta App) id, as in the Android `WATCH_APP_IDS`.
     static let watchApps: [(name: String, id: String)] = [
         ("public", "b6fcbabd-6cd5-4013-8316-b702464253ce"),
-        ("public2", "488daf32-490b-43b3-b2cc-ab0676498531"),
         ("preview", "fc04cefc-1273-4499-8430-16c50a611823"),
     ]
 
