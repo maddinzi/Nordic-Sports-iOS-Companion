@@ -146,6 +146,7 @@ struct ActivitiesScreen: View {
                     List {
                         if let status = companion.syncStatus {
                             Section { SyncStatusCard(status: status) }
+                                .listRowBackground(status.total == 0 ? CardTone.green.container : CardTone.orange.container)
                         }
                         if !companion.liveActivities.isEmpty || !companion.crashReports.isEmpty {
                             Section {
@@ -172,6 +173,7 @@ struct ActivitiesScreen: View {
                                     } label: {
                                         ActivityRow(item: item)
                                     }
+                                    .listRowBackground(CardTone.yellow.container)
                                 }
                             }
                         }
@@ -182,7 +184,7 @@ struct ActivitiesScreen: View {
                                 } label: {
                                     ActivityRow(item: item)
                                 }
-                                .listRowBackground(Color.green.opacity(0.18))
+                                .listRowBackground(CardTone.green.container)
                             }
                             ForEach(rest, id: \.id) { item in
                                 NavigationLink {
@@ -190,6 +192,7 @@ struct ActivitiesScreen: View {
                                 } label: {
                                     ActivityRow(item: item)
                                 }
+                                .listRowBackground(CardTone.blue.container)
                             }
                         }
                     }
@@ -275,7 +278,7 @@ struct WatchLiveCard: View {
             }
             .padding(.vertical, 4)
         }
-        .listRowBackground(live.discarded ? Color.gray.opacity(0.15) : Color.accentColor.opacity(0.15))
+        .listRowBackground(live.discarded ? CardTone.grey.container : CardTone.blue.container)
     }
 }
 
@@ -303,7 +306,7 @@ struct WatchCrashCard: View {
             }
         }
         .padding(.vertical, 4)
-        .listRowBackground(Color.red.opacity(0.12))
+        .listRowBackground(CardTone.red.container)
         .sheet(isPresented: $reviewing) {
             WatchCrashSheet(report: report).environmentObject(companion)
         }
@@ -440,7 +443,6 @@ struct ActivityDetailScreen: View {
             // Where this activity is synced to, as Android's header box.
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.get("activity_detail_synced_to")).font(.caption).foregroundStyle(.secondary)
                     HStack(spacing: 16) {
                         SyncChip(name: L10n.get("sync_presence_destination_watch"), on: current.origin == "watch", tint: SyncChip.watch)
                         SyncChip(name: "Strava", on: !current.stravaActivityId.isEmpty, tint: SyncChip.strava)
@@ -451,6 +453,7 @@ struct ActivityDetailScreen: View {
                     }
                 }
             }
+            .listRowBackground(CardTone.blue.container)
             if current.reviewPending {
                 Section(L10n.get("activity_detail_review_heading")) {
                     Text(companion.diarySettings.autoUpdate
@@ -464,7 +467,7 @@ struct ActivityDetailScreen: View {
                     }
                     .disabled(companion.syncing)
                 }
-                .listRowBackground(Color.yellow.opacity(0.18))
+                .listRowBackground(CardTone.yellow.container)
             }
             Section {
                 LabeledContent(L10n.get("activity_detail_started_label"), value: Format.date(current.startEpochSec))
@@ -479,7 +482,7 @@ struct ActivityDetailScreen: View {
                                    value: String(format: "%.1f / %.1f km/h", Double(current.avgSpeedMps) * 3.6, Double(current.maxSpeedMps) * 3.6))
                 }
                 // Poling metrics only for rollski and langlauf, as on Android.
-                if current.avgSpm > 0, current.preset.hasPrefix("rollski") || current.preset.hasPrefix("langlauf") {
+                if current.avgSpm > 0, current.enhancedMetrics == nil, current.preset.hasPrefix("rollski") || current.preset.hasPrefix("langlauf") {
                     LabeledContent(L10n.get("activity_detail_stroke_metrics_label"),
                                    value: String(format: "%lld / %.2f m / %.0f ms / %.0f %%", Int(current.avgSpm), Double(current.avgDpsM),
                                                  Double(current.avgApidMs), Double(current.avgAdcPercent)))
@@ -499,6 +502,12 @@ struct ActivityDetailScreen: View {
                 if let wrist = wristText(current) { LabeledContent(L10n.get("activity_detail_watch_wrist_label"), value: wrist) }
                 if !current.locationName.isEmpty { LabeledContent(L10n.get("activity_detail_location_label"), value: current.locationName) }
             }
+            .listRowBackground(CardTone.green.container)
+            // The watch's Enhanced Metrics (ski activity or run) as one collapsible card.
+            if let metrics = current.enhancedMetrics {
+                Section { EnhancedMetricsCard(view: metrics) }
+                    .listRowBackground(CardTone.blue.container)
+            }
             Section(L10n.get("activity_detail_training_type_label")) {
                 LabeledContent(L10n.get("activity_detail_sport_label"), value: Format.presetWord(current.preset))
                 if !current.trainingType.isEmpty, current.trainingType != "unknown" {
@@ -507,6 +516,7 @@ struct ActivityDetailScreen: View {
                 if current.rpe > 0 { LabeledContent(L10n.get("activity_detail_rpe_label"), value: "\(current.rpe)") }
                 if current.feeling > 0 { LabeledContent(L10n.get("activity_detail_feeling_label"), value: "\(current.feeling)") }
             }
+            .listRowBackground(CardTone.red.container)
             let zones = current.hrZonePercents.map { $0.floatValue }
             if zones.contains(where: { $0 > 0 }) {
                 Section(L10n.get("ios_hr_zones")) {
@@ -528,12 +538,13 @@ struct ActivityDetailScreen: View {
             }
             // The watch's analysis as the Strava description block says it (shared AnalysisDescription.body).
             let analysisLines = current.analysisLines
-            if !analysisLines.isEmpty {
+            if !analysisLines.isEmpty, current.enhancedMetrics == nil {
                 Section(current.analysisTitle) {
                     ForEach(Array(analysisLines.enumerated()), id: \.offset) { _, line in
                         Text(line)
                     }
                 }
+                .listRowBackground(CardTone.teal.container)
             }
             // Strength sets as the Strava description block says them (shared StrengthDescription.body).
             let setLines = current.strengthSetLines
@@ -543,6 +554,7 @@ struct ActivityDetailScreen: View {
                         Text(line)
                     }
                 }
+                .listRowBackground(CardTone.grey.container)
             }
             // What goes to Strava (title, sport type, description), built by the shared code from the
             // same blocks the write uses (StravaWritePreview), so it is clear before anything is sent.
