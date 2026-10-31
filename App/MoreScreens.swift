@@ -1527,7 +1527,7 @@ struct EditActivitySheet: View {
     }
 
     /// The tint of the rows the diary entry is built from (the same yellow as the review box on the detail screen).
-    private static let diaryRow = Color.yellow.opacity(0.18)
+    private static let diaryRow = CardTone.yellow.container
 
     private static let feelings = [
         "activity_detail_feeling_option_not_entered", "activity_detail_feeling_option_very_weak",
@@ -1540,7 +1540,6 @@ struct EditActivitySheet: View {
             Form {
                 // Everything the diary entry is built from is framed in yellow, as on Android.
                 Section {
-                    Text(L10n.get("activity_detail_diary_card_intro")).font(.footnote).foregroundStyle(.secondary)
                     TextField(L10n.get("activity_detail_name_label"), text: $title)
                         .onChange(of: title) { old, new in
                             // The title leads the diary description: renaming it renames that part too.
@@ -1556,7 +1555,7 @@ struct EditActivitySheet: View {
                     Text(L10n.get("activity_detail_diary_card_title"))
                 }
                 .listRowBackground(Self.diaryRow)
-                Section {
+                Section(L10n.get("detail_group_effort")) {
                     Picker(L10n.get("activity_detail_rpe_label"), selection: $rpe) {
                         ForEach(0...10, id: \.self) { value in Text(value == 0 ? "–" : "\(value)").tag(value) }
                     }
@@ -1645,7 +1644,7 @@ struct EditActivitySheet: View {
                     } footer: {
                         Text(L10n.get("activity_detail_strava_preview_note"))
                     }
-                    .listRowBackground(Self.diaryRow)
+                    .listRowBackground(CardTone.orange.container)
                 }
                 Section(L10n.get("activity_detail_diary_comment_label")) {
                     TextEditor(text: $comment).frame(minHeight: 80)
@@ -1668,15 +1667,18 @@ struct EditActivitySheet: View {
                             .multilineTextAlignment(.trailing)
                         Text("km").foregroundStyle(.secondary)
                     }
+                } header: {
+                    Text(L10n.get("detail_group_numbers"))
                 } footer: {
                     Text(L10n.get("ios_leave_empty_watch"))
                 }
                 .listRowBackground(Self.diaryRow)
-                Section {
+                Section(L10n.get("activity_detail_section_feeling")) {
                     Picker(L10n.get("activity_detail_feeling_label"), selection: $feeling) {
                         ForEach(Self.feelings.indices, id: \.self) { index in Text(L10n.get(Self.feelings[index])).tag(index) }
                     }
                 }
+                .listRowBackground(CardTone.red.container)
                 sendSection
             }
             .navigationTitle(L10n.get("activity_detail_review_heading"))
