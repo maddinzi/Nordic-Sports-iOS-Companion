@@ -1,3 +1,4 @@
+import NordicSportsShared
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -292,7 +293,8 @@ struct BoostDeclareView: View {
                         ForEach(options.techniques, id: \.self) { code in
                             choice(BoostText.code(code), on: d.technique == code) {
                                 var next = d
-                                next.technique = d.technique == code ? "" : code
+                                let same = d.technique == code
+                                next.technique = same ? "" : code
                                 declarations[candidate.key] = next
                             }
                         }
