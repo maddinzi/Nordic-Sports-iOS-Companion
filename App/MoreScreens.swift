@@ -1219,6 +1219,11 @@ struct FeedbackScreen: View {
     @State private var sending = false
     @State private var sent = false
     @State private var error: String?
+    /// Recording Boost files, kept in memory only (a CSV is large).
+    @State private var attached: [BoostAttached] = []
+    @State private var showBoostPicker = false
+    @State private var editingBoost: BoostAttached?
+    @State private var tooLargeFile: String?
 
     private var trimmedEmail: String { email.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var emailValid: Bool {
@@ -1324,6 +1329,10 @@ struct FeedbackScreen: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                if !wording {
+                    FeedbackBoostSection(attached: $attached, tooLargeFile: tooLargeFile,
+                                         showPicker: $showBoostPicker, editing: $editingBoost)
+                }
                 Section(L10n.get("feedback_email_label")) {
                     TextField("", text: $email)
                         .keyboardType(.emailAddress)
@@ -1362,6 +1371,24 @@ struct FeedbackScreen: View {
             }
         }
         .navigationTitle(L10n.get("feedback_title"))
+        .sheet(isPresented: $showBoostPicker) {
+            FeedbackBoostPickerSheet(
+                attachedKeys: Set(attached.map { $0.id }),
+                capacity: Int(companion.core.feedbackBoostMaxFiles) - attached.count
+            ) { done in
+                for item in done {
+                    if let index = attached.firstIndex(where: { $0.id == item.id }) { attached[index] = item } else { attached.append(item) }
+                }
+                tooLargeFile = nil
+            }
+            .environmentObject(companion)
+        }
+        .sheet(item: Binding(get: { editingBoost }, set: { editingBoost = $0 })) { item in
+            BoostEditSheet(attached: item) { changed in
+                if let index = attached.firstIndex(where: { $0.id == changed.id }) { attached[index] = changed }
+            }
+            .environmentObject(companion)
+        }
         .task {
             watches = await companion.feedbackWatches()
             if watches.isEmpty { watchIndex = -1 }
@@ -1389,9 +1416,14 @@ struct FeedbackScreen: View {
         }
         let result = await companion.sendFeedback(
             category: sendCategory, app: sendApp, text: sendText, email: trimmedEmail,
-            details: includeDetails ? detailLines : [], includeNickname: includeNickname, extraDetails: extra
+            details: includeDetails ? detailLines : [], includeNickname: includeNickname, extraDetails: extra,
+            attachments: wording ? [] : attached
         )
         sending = false
+        if result.hasPrefix("tooLarge:") {
+            tooLargeFile = String(result.dropFirst("tooLarge:".count))
+            return
+        }
         switch result {
         case "sent": sent = true
         case "tooMany": error = L10n.get("feedback_error_too_many")

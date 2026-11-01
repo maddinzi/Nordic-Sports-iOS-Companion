@@ -1224,7 +1224,7 @@ final class Companion: NSObject, ObservableObject {
     /// athlete switched them off; [extraDetails] (the wording proposal) is always sent.
     func sendFeedback(
         category: String, app: String, text: String, email: String, details: [FeedbackDetailLine],
-        includeNickname: Bool = false, extraDetails: [String: String] = [:]
+        includeNickname: Bool = false, extraDetails: [String: String] = [:], attachments: [BoostAttached] = []
     ) async -> String {
         var sent: [String: String] = [:]
         for line in details { sent[line.key] = line.value }
@@ -1233,11 +1233,35 @@ final class Companion: NSObject, ObservableObject {
         do {
             return try await core.sendFeedback(
                 category: category, app: app, message: text, contactEmail: email,
-                appVersion: Format.serverVersion, details: sent
+                appVersion: Format.serverVersion, details: sent,
+                attachments: attachments.map { a in
+                    FeedbackBoostSelection(
+                        id: a.candidate.view.id, fileName: a.candidate.view.fileName, content: a.candidate.content,
+                        activityType: a.declaration.activityType, technique: a.declaration.technique,
+                        terrain: a.declaration.terrain, poles: a.declaration.poles,
+                        note: a.declaration.note.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
             )
         } catch {
             return "failed"
         }
+    }
+
+    // MARK: - Recording Boost files in feedback
+
+    /// The bursts on this phone for the feedback form, the latest activity's first.
+    func feedbackBoostFiles() async -> [FeedbackBoostFileView] {
+        (try? await core.feedbackBoostFiles()) ?? []
+    }
+
+    /// The activity types a file can be declared as.
+    var feedbackBoostCatalogs: [String] { core.feedbackBoostCatalogs() }
+
+    func feedbackBoostOptions(_ catalog: String) -> BurstLabelOptions { core.feedbackBoostOptions(catalog: catalog) }
+
+    /// A picked CSV as a file view, or nil when it is not a Recording Boost file.
+    func feedbackBoostFromCsv(name: String, csv: String) -> FeedbackBoostFileView? {
+        core.feedbackBoostFromCsv(fileName: name, csv: csv)
     }
 
     /// The phone model ("iPhone13,2") and iOS version, as the feedback's technical details.
