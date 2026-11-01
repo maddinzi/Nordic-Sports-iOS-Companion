@@ -24,6 +24,8 @@ struct BoostDeclaration: Equatable {
     var terrain = ""
     var poles: Int32 = -1
     var note = ""
+    /// The athlete's own skill, self-declared: "beginner", "intermediate", "expert" or "" (not said).
+    var competence = ""
 }
 
 struct BoostAttached: Identifiable {
@@ -45,6 +47,17 @@ enum BoostText {
         }
     }
 
+    static let competenceLevels = ["beginner", "intermediate", "expert"]
+
+    static func competenceName(_ level: String) -> String {
+        switch level {
+        case "beginner": return L10n.get("feedback_boost_competence_beginner")
+        case "intermediate": return L10n.get("feedback_boost_competence_intermediate")
+        case "expert": return L10n.get("feedback_boost_competence_expert")
+        default: return level
+        }
+    }
+
     /// Technique and terrain codes are the coaches' codes; only "mixed" is translated.
     static func code(_ code: String) -> String {
         code == "MIXED" ? L10n.get("recording_boost_label_mixed") : code
@@ -56,6 +69,7 @@ enum BoostText {
         if !d.terrain.isEmpty { parts.append(d.terrain) }
         if d.poles == 1 { parts.append(L10n.get("recording_boost_label_poles_yes")) }
         if d.poles == 0 { parts.append(L10n.get("recording_boost_label_poles_no")) }
+        if !d.competence.isEmpty { parts.append(competenceName(d.competence)) }
         let note = d.note.trimmingCharacters(in: .whitespacesAndNewlines)
         if !note.isEmpty { parts.append(note) }
         return parts.joined(separator: " · ")
@@ -263,6 +277,14 @@ struct BoostDeclareView: View {
                             if type != "running" { next.terrain = "" }
                             if !allowed.askPoles { next.poles = -1 }
                             declarations[candidate.key] = next
+                        }
+                    }
+                    // About the athlete, not the file: choosing a level sets it on every file of this step.
+                    Text(L10n.get("feedback_boost_competence")).font(.caption).foregroundStyle(.secondary)
+                    ForEach(BoostText.competenceLevels, id: \.self) { level in
+                        choice(BoostText.competenceName(level), on: d.competence == level) {
+                            let next = d.competence == level ? "" : level
+                            for c in candidates { declarations[c.key, default: BoostDeclaration()].competence = next }
                         }
                     }
                     if !d.activityType.isEmpty {

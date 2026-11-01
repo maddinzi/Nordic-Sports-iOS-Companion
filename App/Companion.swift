@@ -1242,7 +1242,8 @@ final class Companion: NSObject, ObservableObject {
                         id: a.candidate.view.id, fileName: a.candidate.view.fileName, content: a.candidate.content,
                         activityType: a.declaration.activityType, technique: a.declaration.technique,
                         terrain: a.declaration.terrain, poles: a.declaration.poles,
-                        note: a.declaration.note.trimmingCharacters(in: .whitespacesAndNewlines))
+                        note: a.declaration.note.trimmingCharacters(in: .whitespacesAndNewlines),
+                        competence: a.declaration.competence)
                 }
             )
             if result == "sent", !attachments.isEmpty { refreshBoostReminders() }
