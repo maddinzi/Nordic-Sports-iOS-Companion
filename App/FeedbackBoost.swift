@@ -79,6 +79,8 @@ struct FeedbackBoostPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     let attachedKeys: Set<String>
     let capacity: Int
+    /// The activity whose files start out chosen (its reminder was accepted), "" for none.
+    var preselectActivityId = ""
     let onDone: ([BoostAttached]) -> Void
 
     @State private var stored: [BoostCandidate] = []
@@ -164,6 +166,10 @@ struct FeedbackBoostPickerSheet: View {
                 let files = await companion.feedbackBoostFiles()
                 stored = files.map { BoostCandidate(key: "burst:\($0.id)", view: $0, content: "") }
                 loaded = true
+                if !preselectActivityId.isEmpty, selected.isEmpty {
+                    selected = stored.filter { $0.view.activityId == preselectActivityId && !attachedKeys.contains($0.key) }
+                        .prefix(max(capacity, 0)).map { $0.key }
+                }
             }
         }
     }

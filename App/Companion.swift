@@ -43,6 +43,8 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var watchEverSeen = false
     @Published private(set) var watchSeenName = ""
     @Published private(set) var watchReminderVisible = false
+    /// Activities with Recording Boost files nobody decided about: a card each on the activity list.
+    @Published private(set) var boostReminders: [FeedbackBoostReminderView] = []
     @Published private(set) var nickname = ""
     @Published private(set) var placeNamesEnabled = true
     @Published private(set) var stravaUpdateMyActivities = true
@@ -994,6 +996,7 @@ final class Companion: NSObject, ObservableObject {
         liveActivities = core.liveActivities()
         crashReports = core.crashReports()
         refreshWatchLink()
+        refreshBoostReminders()
         // A discarded recording's card goes a few seconds after the watch's message (as Android).
         discardedCardTimer?.cancel()
         let wait = core.discardedCardExpiresInMillis()
@@ -1231,7 +1234,7 @@ final class Companion: NSObject, ObservableObject {
         if includeNickname, !nickname.isEmpty { sent["nickname"] = nickname }
         sent.merge(extraDetails) { _, new in new }
         do {
-            return try await core.sendFeedback(
+            let result = try await core.sendFeedback(
                 category: category, app: app, message: text, contactEmail: email,
                 appVersion: Format.serverVersion, details: sent,
                 attachments: attachments.map { a in
@@ -1242,12 +1245,25 @@ final class Companion: NSObject, ObservableObject {
                         note: a.declaration.note.trimmingCharacters(in: .whitespacesAndNewlines))
                 }
             )
+            if result == "sent", !attachments.isEmpty { refreshBoostReminders() }
+            return result
         } catch {
             return "failed"
         }
     }
 
     // MARK: - Recording Boost files in feedback
+
+    /// Reloads the reminder cards (also after files went out with a feedback message).
+    func refreshBoostReminders() {
+        Task { boostReminders = (try? await core.feedbackBoostReminders()) ?? [] }
+    }
+
+    /// The athlete discarded the reminder of an activity; its files stay on the phone.
+    func declineBoostReminder(_ activityId: String) {
+        core.declineBoostReminder(activityId: activityId)
+        refreshBoostReminders()
+    }
 
     /// The bursts on this phone for the feedback form, the latest activity's first.
     func feedbackBoostFiles() async -> [FeedbackBoostFileView] {

@@ -1191,9 +1191,14 @@ struct FeedbackScreen: View {
     @Environment(\.dismiss) private var dismiss
     @State private var category: String
 
+    /// The activity whose Recording Boost files start out chosen (its reminder was accepted): the form opens on the file picker.
+    private let preselectActivityId: String
+
     /// [startCategory] "wording" opens the form on "Wording / translation" (About > Help improve the translations).
-    init(startCategory: String = "error_report") {
+    init(startCategory: String = "error_report", preselectActivityId: String = "") {
         _category = State(initialValue: startCategory)
+        self.preselectActivityId = preselectActivityId
+        _showBoostPicker = State(initialValue: !preselectActivityId.isEmpty)
     }
 
     /// The server's limits (api/feedback.php): 3 to 4000 characters, as Android's form.
@@ -1374,7 +1379,8 @@ struct FeedbackScreen: View {
         .sheet(isPresented: $showBoostPicker) {
             FeedbackBoostPickerSheet(
                 attachedKeys: Set(attached.map { $0.id }),
-                capacity: Int(companion.core.feedbackBoostMaxFiles) - attached.count
+                capacity: Int(companion.core.feedbackBoostMaxFiles) - attached.count,
+                preselectActivityId: preselectActivityId
             ) { done in
                 for item in done {
                     if let index = attached.firstIndex(where: { $0.id == item.id }) { attached[index] = item } else { attached.append(item) }

@@ -151,13 +151,17 @@ struct ActivitiesScreen: View {
                             Section { SyncStatusCard(status: status) }
                                 .listRowBackground(status.total == 0 ? CardTone.green.container : CardTone.orange.container)
                         }
-                        if !companion.liveActivities.isEmpty || !companion.crashReports.isEmpty || companion.watchReminderVisible {
+                        if !companion.liveActivities.isEmpty || !companion.crashReports.isEmpty || companion.watchReminderVisible
+                            || !companion.boostReminders.isEmpty {
                             Section {
                                 ForEach(companion.liveActivities, id: \.deviceId) { live in
                                     WatchLiveCard(live: live)
                                 }
                                 if let report = companion.crashReports.first {
                                     WatchCrashCard(report: report)
+                                }
+                                ForEach(companion.boostReminders, id: \.activityId) { reminder in
+                                    BoostReminderCard(reminder: reminder)
                                 }
                                 if companion.watchReminderVisible {
                                     WatchReminderCard()
@@ -353,6 +357,38 @@ struct WatchStoreCard: View {
             }
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// "Send the Recording Boost files of this activity?": Choose files opens the feedback form with the
+/// activity's files chosen; Discard removes the card for good (the files stay on the phone). Neither sends anything.
+struct BoostReminderCard: View {
+    @EnvironmentObject var companion: Companion
+    let reminder: FeedbackBoostReminderView
+    @State private var openFeedback = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L10n.get("feedback_boost_reminder_title")).font(.headline)
+            Text(String(format: L10n.get("feedback_boost_reminder_body"), reminder.title, Int(reminder.fileCount)))
+                .font(.footnote)
+            if reminder.activityStartEpochSec > 0 {
+                Text(Date(timeIntervalSince1970: TimeInterval(reminder.activityStartEpochSec)).formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            HStack {
+                Spacer()
+                Button(L10n.get("feedback_boost_reminder_discard")) { companion.declineBoostReminder(reminder.activityId) }
+                    .buttonStyle(.borderless)
+                Button(L10n.get("feedback_boost_reminder_upload")) { openFeedback = true }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(.vertical, 4)
+        .listRowBackground(CardTone.blue.container)
+        .navigationDestination(isPresented: $openFeedback) {
+            FeedbackScreen(preselectActivityId: reminder.activityId)
+        }
     }
 }
 
