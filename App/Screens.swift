@@ -134,6 +134,8 @@ struct ActivitiesScreen: View {
         NavigationStack {
             Group {
                 if companion.activities.isEmpty && companion.liveActivities.isEmpty && companion.crashReports.isEmpty {
+                    VStack(spacing: 0) {
+                    if companion.watchReminderVisible { WatchReminderCard().padding() }
                     ContentUnavailableView {
                         Label(companion.nickname.isEmpty
                               ? L10n.get("activity_list_empty_no_activities")
@@ -142,19 +144,23 @@ struct ActivitiesScreen: View {
                     } description: {
                         Text(L10n.get("activity_list_empty_hint"))
                     }
+                    }
                 } else {
                     List {
                         if let status = companion.syncStatus {
                             Section { SyncStatusCard(status: status) }
                                 .listRowBackground(status.total == 0 ? CardTone.green.container : CardTone.orange.container)
                         }
-                        if !companion.liveActivities.isEmpty || !companion.crashReports.isEmpty {
+                        if !companion.liveActivities.isEmpty || !companion.crashReports.isEmpty || companion.watchReminderVisible {
                             Section {
                                 ForEach(companion.liveActivities, id: \.deviceId) { live in
                                     WatchLiveCard(live: live)
                                 }
                                 if let report = companion.crashReports.first {
                                     WatchCrashCard(report: report)
+                                }
+                                if companion.watchReminderVisible {
+                                    WatchReminderCard()
                                 }
                             }
                         }
@@ -282,6 +288,80 @@ struct WatchLiveCard: View {
     }
 }
 
+/// The Recording Boost bursts of one activity: when each was captured and the CSV file it was saved to
+/// (name and folder in the Files app). Labelling stays under Settings > Data logs.
+struct ActivityBoostsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let boosts: [RecordingBoostView]
+
+    var body: some View {
+        NavigationStack {
+            List(boosts, id: \.id) { burst in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Format.date(burst.burstId)).font(.subheadline.bold())
+                    if burst.fileName.isEmpty {
+                        Text(L10n.get("recording_boost_list_file_missing")).font(.footnote).foregroundStyle(.red)
+                    } else {
+                        Text(String(format: L10n.get("recording_boost_list_file_name"), burst.fileName))
+                            .font(.system(.footnote, design: .monospaced))
+                        Text(String(format: L10n.get("recording_boost_list_file_folder"), burst.location))
+                            .font(.system(.footnote, design: .monospaced))
+                    }
+                }
+            }
+            .navigationTitle(L10n.get("activity_detail_boosts_title"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L10n.get("activity_detail_boosts_close")) { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+/// The Connect IQ Store listing as a tappable card (Android's `WatchStoreCard`): blue, "NS" box, name, line, arrow.
+struct WatchStoreCard: View {
+    @EnvironmentObject var companion: Companion
+
+    var body: some View {
+        Button { companion.openWatchStore() } label: {
+            HStack(spacing: 12) {
+                Text("NS").font(.headline.bold()).foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.blue))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L10n.get("onboarding_guide_watch_store_name")).font(.headline)
+                    Text(L10n.get("onboarding_guide_watch_store_sub")).font(.footnote).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text("\u{2197}").font(.title3).foregroundStyle(.blue)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// "Your watch is missing": until a watch has talked to the app, a daily reminder on the activity list.
+struct WatchReminderCard: View {
+    @EnvironmentObject var companion: Companion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L10n.get("watch_reminder_title")).font(.headline)
+            Text(L10n.get("watch_reminder_body")).font(.footnote)
+            HStack(alignment: .center) {
+                WatchStoreCard()
+                Button { companion.closeWatchReminder() } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(L10n.get("watch_reminder_close"))
+            }
+        }
+        .padding(.vertical, 4)
+        .listRowBackground(CardTone.blue.container)
+    }
+}
+
 /// "Your watch app closed unexpectedly", with Dismiss and Review; Review shows exactly what
 /// would be sent and sends only on Send (asked each time).
 struct WatchCrashCard: View {
@@ -291,9 +371,11 @@ struct WatchCrashCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(L10n.get("watch_crash_title")).font(.headline)
+            Text(L10n.get(report.startError.isEmpty ? "watch_crash_title" : "watch_start_error_title")).font(.headline)
             let at = Date(timeIntervalSince1970: TimeInterval(report.lastSignEpochSec)).formatted(date: .omitted, time: .shortened)
-            Text(report.rebooted
+            Text(!report.startError.isEmpty
+                 ? String(format: L10n.get("watch_start_error_detail"), report.watchName, at)
+                 : report.rebooted
                  ? String(format: L10n.get("watch_crash_detail_rebooted"), report.watchName, at)
                  : String(format: L10n.get("watch_crash_detail"), report.watchName, at, report.screen))
                 .font(.footnote)
@@ -301,7 +383,7 @@ struct WatchCrashCard: View {
                 Spacer()
                 Button(L10n.get("watch_crash_dismiss")) { companion.dismissCrashReport(report.id) }
                     .buttonStyle(.borderless)
-                Button(L10n.get("watch_crash_review")) { reviewing = true }
+                Button(L10n.get(report.startError.isEmpty ? "watch_crash_review" : "watch_start_error_report")) { reviewing = true }
                     .buttonStyle(.borderedProminent)
             }
         }
@@ -425,6 +507,8 @@ struct ActivityDetailScreen: View {
     @State private var confirmingDelete = false
     @State private var editing = false
     @State private var stravaRemovedAt: Int64 = 0
+    @State private var boosts: [RecordingBoostView] = []
+    @State private var showBoosts = false
 
     /// The row as the list has it now, so a push shows its result here too.
     private var current: ActivityItem { companion.activities.first { $0.id == item.id } ?? item }
@@ -468,6 +552,12 @@ struct ActivityDetailScreen: View {
                     .disabled(companion.syncing)
                 }
                 .listRowBackground(CardTone.yellow.container)
+            }
+            // The Recording Boost captures of this activity: a count, a tap lists them with their CSV files.
+            if !boosts.isEmpty {
+                Section {
+                    Button(String(format: L10n.get("activity_detail_boosts"), boosts.count)) { showBoosts = true }
+                }
             }
             Section {
                 LabeledContent(L10n.get("activity_detail_started_label"), value: Format.date(current.startEpochSec))
@@ -664,6 +754,8 @@ struct ActivityDetailScreen: View {
         }
         .sheet(isPresented: $editing) { EditActivitySheet(item: current).environmentObject(companion) }
         .task(id: current.stravaActivityId) { stravaRemovedAt = await companion.stravaDataRemovedAt(item.id) }
+        .task(id: item.id) { boosts = await companion.recordingBoosts(of: item.id) }
+        .sheet(isPresented: $showBoosts) { ActivityBoostsSheet(boosts: boosts) }
     }
 }
 

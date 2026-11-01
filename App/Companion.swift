@@ -39,6 +39,10 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var watchSettings: [WatchSettingsView] = []
     @Published private(set) var liveActivities: [LiveActivityView] = []
     @Published private(set) var crashReports: [CrashReportView] = []
+    /// Whether a watch has ever talked to this app, and the reminder to install the watch app until it has.
+    @Published private(set) var watchEverSeen = false
+    @Published private(set) var watchSeenName = ""
+    @Published private(set) var watchReminderVisible = false
     @Published private(set) var nickname = ""
     @Published private(set) var placeNamesEnabled = true
     @Published private(set) var stravaUpdateMyActivities = true
@@ -968,6 +972,7 @@ final class Companion: NSObject, ObservableObject {
     func refreshWatchCards() {
         liveActivities = core.liveActivities()
         crashReports = core.crashReports()
+        refreshWatchLink()
         // A discarded recording's card goes a few seconds after the watch's message (as Android).
         discardedCardTimer?.cancel()
         let wait = core.discardedCardExpiresInMillis()
@@ -980,6 +985,37 @@ final class Companion: NSObject, ObservableObject {
     }
 
     private var discardedCardTimer: Task<Void, Never>?
+
+    // MARK: - Your watch (onboarding step and reminder)
+
+    func refreshWatchLink() {
+        watchEverSeen = core.watchEverSeen()
+        watchSeenName = core.watchSeenName()
+        watchReminderVisible = core.watchReminderVisible(today: Self.todayISO())
+    }
+
+    /// The reminder is hidden for the rest of today.
+    func closeWatchReminder() {
+        core.closeWatchReminder(today: Self.todayISO())
+        refreshWatchLink()
+    }
+
+    /// The watch app's Connect IQ Store page (the public listing).
+    func openWatchStore() {
+        if let url = URL(string: core.watchStoreUrl()) { UIApplication.shared.open(url) }
+    }
+
+    private static func todayISO() -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: Date())
+    }
+
+    /// The Recording Boost bursts captured during an activity (the detail's count and list).
+    func recordingBoosts(of activityId: String) async -> [RecordingBoostView] {
+        (try? await core.recordingBoostsOfActivity(activityId: activityId)) ?? []
+    }
 
     func dismissCrashReport(_ id: String) {
         core.dismissCrashReport(id: id)

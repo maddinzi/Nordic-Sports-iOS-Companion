@@ -783,8 +783,10 @@ struct OnboardingScreen: View {
     @State private var step = 0
     @State private var nickname = ""
     @State private var diaryShown = false
+    /// "Your watch": 0 asks whether the athlete has the watch app, 1 waits for the watch to talk to this app.
+    @State private var watchPhase = 0
 
-    private let steps = 3
+    private let steps = 4
 
     var body: some View {
         NavigationStack {
@@ -806,6 +808,37 @@ struct OnboardingScreen: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(nickname.trimmingCharacters(in: .whitespaces).isEmpty)
                 case 1:
+                    // The watch app: ask, then wait until the watch has sent a message (the app sends its
+                    // settings at every start). "Next" works only after that.
+                    if watchPhase == 0 {
+                        Text(L10n.get("onboarding_guide_watch_ask_title")).font(.title2.bold())
+                        Text(L10n.get("onboarding_guide_watch_ask_body"))
+                        WatchStoreCard()
+                        Text(L10n.get("onboarding_guide_watch_store_hint")).font(.footnote).foregroundStyle(.secondary)
+                        Button(L10n.get("onboarding_guide_watch_have_it")) { watchPhase = 1 }
+                            .buttonStyle(.borderedProminent)
+                    } else {
+                        Text(L10n.get("onboarding_guide_watch_check_title")).font(.title2.bold())
+                        Text(L10n.get("onboarding_guide_watch_check_body"))
+                        if companion.watchEverSeen {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(L10n.get("onboarding_guide_watch_ok_title")).font(.headline)
+                                if !companion.watchSeenName.isEmpty { Text(companion.watchSeenName).font(.subheadline) }
+                                Text(L10n.get("onboarding_guide_watch_ok_body")).font(.footnote)
+                            }
+                            .padding().frame(maxWidth: .infinity, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: 12).fill(Color.green.opacity(0.15)))
+                        } else {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                Text(L10n.get("onboarding_guide_watch_waiting")).foregroundStyle(.secondary)
+                            }
+                        }
+                        Button(L10n.get("onboarding_guide_watch_next")) { step += 1 }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!companion.watchEverSeen)
+                    }
+                case 2:
                     Text(L10n.get("onboarding_guide_strava_title")).font(.title2.bold())
                     Text(L10n.get("onboarding_guide_strava_body"))
                     Text(L10n.get("onboarding_guide_strava_how")).font(.footnote).foregroundStyle(.secondary)
