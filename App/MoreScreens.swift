@@ -786,7 +786,14 @@ struct OnboardingScreen: View {
     /// "Your watch": 0 asks whether the athlete has the watch app, 1 waits for the watch to talk to this app.
     @State private var watchPhase = 0
 
-    private let steps = 4
+    private let steps = 5
+
+    /// A watch that reported its settings with the wrist not set (value 0); the wrist step asks for it.
+    private var wristUnsetWatch: WatchSettingsView? {
+        companion.watchSettings.first { watch in
+            watch.groups.contains { $0.items.contains { $0.key == "WatchWrist" && $0.value == 0 } }
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -839,6 +846,23 @@ struct OnboardingScreen: View {
                             .disabled(!companion.watchEverSeen)
                     }
                 case 2:
+                    // Which wrist the watch is worn on; skipped when no watch reports it as not set.
+                    if let watch = wristUnsetWatch {
+                        Text(L10n.get("onboarding_guide_wrist_title")).font(.title2.bold())
+                        Text(L10n.get("onboarding_guide_wrist_body"))
+                        HStack(spacing: 12) {
+                            ForEach([("watch_option_wrist_left", Int32(1)), ("watch_option_wrist_right", Int32(2))], id: \.1) { label, value in
+                                Button(L10n.get(label)) {
+                                    companion.changeWatchSetting(deviceId: watch.deviceId, key: "WatchWrist", value: value)
+                                    step += 1
+                                }
+                                .buttonStyle(.borderedProminent)
+                            }
+                        }
+                    } else {
+                        Color.clear.frame(height: 1).onAppear { step += 1 }
+                    }
+                case 3:
                     Text(L10n.get("onboarding_guide_strava_title")).font(.title2.bold())
                     Text(L10n.get("onboarding_guide_strava_body"))
                     Text(L10n.get("onboarding_guide_strava_how")).font(.footnote).foregroundStyle(.secondary)
