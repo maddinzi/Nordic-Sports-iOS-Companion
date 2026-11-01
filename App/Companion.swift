@@ -564,6 +564,27 @@ final class Companion: NSObject, ObservableObject {
         (try? await core.stravaDataRemovedAt(activityId: activityId))?.int64Value ?? 0
     }
 
+    // MARK: - Strava title conflict
+
+    /// What Strava shows now and what this app would write, while an update conflict is open.
+    func stravaConflict(of activityId: String) async -> StravaTitleConflict? {
+        try? await core.stravaConflictOf(activityId: activityId)
+    }
+
+    /// "Keep Strava's version": nothing is written, Strava's title becomes the baseline.
+    func keepStravaVersion(_ activityId: String) async {
+        do { try await core.keepStravaVersion(activityId: activityId) } catch { report(error) }
+        await refresh()
+    }
+
+    /// "Overwrite with this app's version": writes the captured title and type to Strava.
+    func overwriteStrava(_ activityId: String) async {
+        do { try await core.overwriteStravaWithCompanion(activityId: activityId) } catch {
+            if !error.isCancellation { report(error) }
+        }
+        await refresh()
+    }
+
     // MARK: - Diary
 
     var diaryConnected: Bool { !diaryName.isEmpty }

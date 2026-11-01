@@ -9,6 +9,8 @@ import UserNotifications
 struct NordicSportsCompanionApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var companion = Companion.shared
+    /// Settings > App > Appearance: "" = system, "light", "dark".
+    @AppStorage("themeChoice") private var themeChoice = ""
 
     init() {
         // Before launch finishes, so a tap on a notification that started the app is delivered.
@@ -25,6 +27,7 @@ struct NordicSportsCompanionApp: App {
                 // Built again when the app language changes, so every text is in the new one.
                 .id(companion.language)
                 .environmentObject(companion)
+                .preferredColorScheme(themeChoice == "light" ? .light : themeChoice == "dark" ? .dark : nil)
                 // Garmin Connect Mobile returns the device selection through our URL scheme.
                 .onOpenURL { url in WatchLinkSpike.shared.handle(url: url) }
         }

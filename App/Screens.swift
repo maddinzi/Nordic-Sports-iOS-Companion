@@ -523,6 +523,8 @@ struct ActivityDetailScreen: View {
     @State private var stravaRemovedAt: Int64 = 0
     @State private var boosts: [RecordingBoostView] = []
     @State private var showBoosts = false
+    @State private var conflictDetail: StravaTitleConflict?
+    @State private var showConflict = false
 
     /// The row as the list has it now, so a push shows its result here too.
     private var current: ActivityItem { companion.activities.first { $0.id == item.id } ?? item }
@@ -703,6 +705,12 @@ struct ActivityDetailScreen: View {
                     if current.stravaConflict {
                         Text(L10n.get("ios_strava_changed"))
                             .foregroundStyle(.red)
+                        Button(L10n.get("main_strava_conflict_dialog_title")) {
+                            Task {
+                                conflictDetail = await companion.stravaConflict(of: item.id)
+                                showConflict = conflictDetail != nil
+                            }
+                        }
                     }
                 }
                 if current.conflict {
@@ -770,6 +778,15 @@ struct ActivityDetailScreen: View {
         .task(id: current.stravaActivityId) { stravaRemovedAt = await companion.stravaDataRemovedAt(item.id) }
         .task(id: item.id) { boosts = await companion.recordingBoosts(of: item.id) }
         .sheet(isPresented: $showBoosts) { ActivityBoostsSheet(boosts: boosts) }
+        .alert(L10n.get("main_strava_conflict_dialog_title"), isPresented: $showConflict, presenting: conflictDetail) { _ in
+            Button(L10n.get("main_strava_conflict_overwrite")) { Task { await companion.overwriteStrava(item.id) } }
+            Button(L10n.get("main_strava_conflict_keep_strava")) { Task { await companion.keepStravaVersion(item.id) } }
+            Button(L10n.get("common_cancel"), role: .cancel) {}
+        } message: { c in
+            Text(L10n.get("main_strava_conflict_dialog_body") + "\n\n"
+                 + String(format: L10n.get("main_strava_conflict_current_format"), c.currentName, c.currentType) + "\n"
+                 + String(format: L10n.get("main_strava_conflict_proposed_format"), c.proposedName, c.proposedType))
+        }
     }
 }
 
@@ -809,7 +826,7 @@ struct SettingsScreen: View {
                  words: ["sync_mode_option_automated", "sync_mode_option_manual", "ios_last_sync"].map(L10n.get),
                  destination: AnyView(SettingsSyncPage())),
             Page(id: "app", title: L10n.get("settings_group_app"),
-                 words: ["nickname_label", "settings_review_new_activities", "status_place_names_switch", "language_section_title"].map(L10n.get),
+                 words: ["nickname_label", "settings_review_new_activities", "status_place_names_switch", "language_section_title", "theme_section_title"].map(L10n.get),
                  destination: AnyView(SettingsAppPage())),
             Page(id: "privacy", title: L10n.get("settings_page_privacy"),
                  words: ["status_download_my_data", "status_delete_my_data", "feedback_title"].map(L10n.get),
@@ -913,9 +930,22 @@ struct SettingsAppPage: View {
     @State private var languageChoice = AppLanguage.chosen
     /// A language picked while a watch could switch too: waits for "Both" / "Only the Companion".
     @State private var pendingLanguage: String?
+    /// "" follows the system, else "light" / "dark"; read by the app's root (`preferredColorScheme`).
+    @AppStorage("themeChoice") private var themeChoice = ""
 
     var body: some View {
         Form {
+                Section {
+                    Picker(L10n.get("theme_section_title"), selection: $themeChoice) {
+                        Text(L10n.get("theme_option_system_default")).tag("")
+                        Text(L10n.get("theme_option_light")).tag("light")
+                        Text(L10n.get("theme_option_dark")).tag("dark")
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                } header: {
+                    Text(L10n.get("theme_section_title"))
+                }
                 Section {
                     Picker(L10n.get("language_section_title"), selection: $languageChoice) {
                         Text(String(format: L10n.get("language_option_system_with_language"),
