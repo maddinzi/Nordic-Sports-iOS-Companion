@@ -294,6 +294,13 @@ struct ActivityBoostsSheet: View {
     @Environment(\.dismiss) private var dismiss
     let boosts: [RecordingBoostView]
 
+    /// The CSV in the app's Documents folder (`Companion.exportBoostFiles`), nil while it is not there.
+    private static func fileURL(_ burst: RecordingBoostView) -> URL? {
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
+        let url = docs.appendingPathComponent(Companion.boostFolder, isDirectory: true).appendingPathComponent(burst.fileName)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
     var body: some View {
         NavigationStack {
             List(boosts, id: \.id) { burst in
@@ -306,6 +313,13 @@ struct ActivityBoostsSheet: View {
                             .font(.system(.footnote, design: .monospaced))
                         Text(String(format: L10n.get("recording_boost_list_file_folder"), burst.location))
                             .font(.system(.footnote, design: .monospaced))
+                        // Android's "Open file": the share sheet hands the CSV to another app or Files.
+                        if let url = Self.fileURL(burst) {
+                            ShareLink(item: url) {
+                                Label(L10n.get("recording_boost_list_open_file"), systemImage: "square.and.arrow.up")
+                            }
+                            .font(.footnote)
+                        }
                     }
                 }
             }
