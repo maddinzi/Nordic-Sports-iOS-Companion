@@ -591,6 +591,24 @@ final class Companion: NSObject, ObservableObject {
         await refresh()
     }
 
+    /// The Strava box as it would read with [edit] saved; nil when nothing is written to Strava or the lookup fails.
+    func stravaPreview(_ activityId: String, edit: ActivityEdit) async -> StravaWritePreview? {
+        try? await core.stravaPreviewFor(activityId: activityId, edit: edit)
+    }
+
+    /// "Looks fine" on a data-conflict marker: the marker goes, nothing is changed.
+    func dismissDataConflict(_ activityId: String) async {
+        do { try await core.dismissDataConflict(activityId: activityId) } catch { report(error) }
+        await refresh()
+    }
+
+    /// "Retry" for a Strava activity that was not found: clears the flag, then a sync checks it again.
+    func retryStravaAvailability(_ activityId: String) async {
+        do { try await core.retryStravaAvailability(activityId: activityId) } catch { report(error) }
+        _ = await sync()
+        await refresh()
+    }
+
     // MARK: - Diary
 
     var diaryConnected: Bool { !diaryName.isEmpty }
@@ -1332,17 +1350,11 @@ final class Companion: NSObject, ObservableObject {
     /// Saves the athlete's edits (saving is the review), then lets the next sync write the
     /// diary: iOS has no background job for that yet, so it runs right away.
     func saveActivity(
-        _ activityId: String, title: String, trainingType: String, rpe: Int, feeling: Int,
-        comment: String, minutes: Int, kilometers: Double, stravaDescriptionMode: Int32,
-        stravaTitle: String? = nil, stravaSportType: String? = nil
+        _ activityId: String, edit: ActivityEdit, stravaTitle: String? = nil, stravaSportType: String? = nil
     ) async -> Bool {
         do {
             let saved = try await core.saveActivity(
-                activityId: activityId, title: title, trainingType: trainingType,
-                rpe: Int32(rpe), feeling: Int32(feeling), diaryComment: comment,
-                overrideElapsedSec: Self.seconds(minutes), overrideDistanceM: Float(max(0, kilometers) * 1000),
-                stravaDescriptionMode: stravaDescriptionMode,
-                stravaTitle: stravaTitle, stravaSportType: stravaSportType
+                activityId: activityId, edit: edit, stravaTitle: stravaTitle, stravaSportType: stravaSportType
             )
             guard saved.boolValue else { return false }
             post(L10n.get("main_toast_activity_updated"))
