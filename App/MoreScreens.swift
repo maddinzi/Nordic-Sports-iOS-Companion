@@ -775,114 +775,207 @@ struct OutdatedScreen: View {
     }
 }
 
-/// Android's first-start guide: three steps (nickname, online repository, diary), each skippable;
-/// shown once (also left out when the app is already set up).
+/// Android's first-start guide: six steps (nickname, demo or own data, watch, wrist, online repository, diary),
+/// each skippable; shown once (also left out when the app is already set up). The step counter stays on top and the
+/// buttons at the bottom, so the screen does not change size from step to step; long content scrolls.
 struct OnboardingScreen: View {
     @EnvironmentObject var companion: Companion
     let finish: () -> Void
     @State private var step = 0
     @State private var nickname = ""
+    /// Step 2 (demo): true = work with demo data (sample activities and a simulated watch).
+    @State private var useDemo = false
     @State private var diaryShown = false
     /// "Your watch": 0 asks whether the athlete has the watch app, 1 waits for the watch to talk to this app.
     @State private var watchPhase = 0
 
-    private let steps = 5
+    private let steps = 6
 
-    /// A watch that reported its settings with the wrist not set (value 0); the wrist step asks for it.
+    /// A watch that reported its settings with the wrist not set (value 0); the wrist is asked for it.
     private var wristUnsetWatch: WatchSettingsView? {
         companion.watchSettings.first { watch in
             watch.groups.contains { $0.items.contains { $0.key == "WatchWrist" && $0.value == 0 } }
         }
     }
 
+    private func next() { step += 1 }
+
+    private func chooseWrist(_ watch: WatchSettingsView, _ value: Int32) {
+        companion.changeWatchSetting(deviceId: watch.deviceId, key: "WatchWrist", value: value)
+    }
+
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                Text(String(format: L10n.get("onboarding_guide_step"), step + 1, steps))
-                    .font(.footnote).foregroundStyle(.secondary)
-                switch step {
-                case 0:
-                    Text(L10n.get("onboarding_guide_nickname_title")).font(.title2.bold())
-                    Text(L10n.get("onboarding_guide_nickname_body"))
-                    TextField("", text: $nickname)
-                        .textFieldStyle(.roundedBorder)
-                        .onChange(of: nickname) { _, value in nickname = String(value.prefix(20)) }
-                    Text(L10n.get("onboarding_guide_nickname_later")).font(.footnote).foregroundStyle(.secondary)
-                    Button(L10n.get("onboarding_guide_nickname_save")) {
-                        companion.setNickname(nickname)
-                        step += 1
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(nickname.trimmingCharacters(in: .whitespaces).isEmpty)
-                case 1:
-                    // The watch app: ask, then wait until the watch has sent a message (the app sends its
-                    // settings at every start). "Next" works only after that.
-                    if watchPhase == 0 {
-                        Text(L10n.get("onboarding_guide_watch_ask_title")).font(.title2.bold())
-                        Text(L10n.get("onboarding_guide_watch_ask_body"))
-                        WatchStoreCard()
-                        Text(L10n.get("onboarding_guide_watch_store_hint")).font(.footnote).foregroundStyle(.secondary)
-                        Button(L10n.get("onboarding_guide_watch_have_it")) { watchPhase = 1 }
-                            .buttonStyle(.borderedProminent)
-                    } else {
-                        Text(L10n.get("onboarding_guide_watch_check_title")).font(.title2.bold())
-                        Text(L10n.get("onboarding_guide_watch_check_body"))
-                        if companion.watchEverSeen {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(L10n.get("onboarding_guide_watch_ok_title")).font(.headline)
-                                if !companion.watchSeenName.isEmpty { Text(companion.watchSeenName).font(.subheadline) }
-                                Text(L10n.get("onboarding_guide_watch_ok_body")).font(.footnote)
-                            }
-                            .padding().frame(maxWidth: .infinity, alignment: .leading)
-                            .background(RoundedRectangle(cornerRadius: 12).fill(Color.green.opacity(0.15)))
-                        } else {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                Text(L10n.get("onboarding_guide_watch_waiting")).foregroundStyle(.secondary)
-                            }
-                        }
-                        Button(L10n.get("onboarding_guide_watch_next")) { step += 1 }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(!companion.watchEverSeen)
-                    }
-                case 2:
-                    // Which wrist the watch is worn on; skipped when no watch reports it as not set.
-                    if let watch = wristUnsetWatch {
-                        Text(L10n.get("onboarding_guide_wrist_title")).font(.title2.bold())
-                        Text(L10n.get("onboarding_guide_wrist_body"))
-                        HStack(spacing: 12) {
-                            ForEach([("watch_option_wrist_left", Int32(1)), ("watch_option_wrist_right", Int32(2))], id: \.1) { label, value in
-                                Button(L10n.get(label)) {
-                                    companion.changeWatchSetting(deviceId: watch.deviceId, key: "WatchWrist", value: value)
-                                    step += 1
-                                }
-                                .buttonStyle(.borderedProminent)
-                            }
-                        }
-                    } else {
-                        Color.clear.frame(height: 1).onAppear { step += 1 }
-                    }
-                case 3:
-                    Text(L10n.get("onboarding_guide_strava_title")).font(.title2.bold())
-                    Text(L10n.get("onboarding_guide_strava_body"))
-                    Text(L10n.get("onboarding_guide_strava_how")).font(.footnote).foregroundStyle(.secondary)
-                    StravaConnectButton { companion.connectStrava() }
-                    Text(L10n.get("onboarding_guide_place_names_notice")).font(.footnote).foregroundStyle(.secondary)
-                default:
-                    Text(L10n.get("onboarding_guide_diary_title")).font(.title2.bold())
-                    Text(L10n.get("onboarding_guide_diary_body"))
-                    Text(L10n.get("onboarding_guide_diary_how")).font(.footnote).foregroundStyle(.secondary)
-                    Button(L10n.get("onboarding_guide_choose_diary")) { diaryShown = true }
-                        .buttonStyle(.borderedProminent)
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(String(format: L10n.get("onboarding_guide_step"), step + 1, steps))
+                        .font(.footnote).foregroundStyle(.secondary)
+                    ProgressView(value: Double(step + 1), total: Double(steps))
                 }
-                Text(L10n.get("onboarding_guide_later")).font(.footnote).foregroundStyle(.secondary)
-                Spacer()
-                Button(L10n.get(step == steps - 1 ? "common_ok" : "onboarding_guide_not_now")) {
-                    if step == steps - 1 { finish() } else { step += 1 }
+                .padding([.horizontal, .top])
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) { content }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                }
+                Divider()
+                footer.padding()
+            }
+            .navigationDestination(isPresented: $diaryShown) { DiaryLocationsScreen() }
+        }
+    }
+
+    @ViewBuilder private var content: some View {
+        switch step {
+        case 0:
+            Text(L10n.get("onboarding_guide_nickname_title")).font(.title2.bold())
+            Text(L10n.get("onboarding_guide_nickname_body"))
+            TextField("", text: $nickname)
+                .textFieldStyle(.roundedBorder)
+                .onChange(of: nickname) { _, value in nickname = String(value.prefix(20)) }
+            Text(L10n.get("onboarding_guide_nickname_later")).font(.footnote).foregroundStyle(.secondary)
+        case 1:
+            // Demo data or the athlete's own; either can be changed later in Settings > App.
+            Text(L10n.get("onboarding_guide_demo_title")).font(.title2.bold())
+            Text(L10n.get("onboarding_guide_demo_body"))
+            demoChoice(demo: false, title: "onboarding_guide_demo_option_real", subtitle: "onboarding_guide_demo_option_real_sub")
+            demoChoice(demo: true, title: "onboarding_guide_demo_option_demo", subtitle: "onboarding_guide_demo_option_demo_sub")
+            Text(L10n.get("onboarding_guide_demo_later")).font(.footnote).foregroundStyle(.secondary)
+        case 2:
+            // The watch app: ask, then wait until the watch has sent a message (the app sends its
+            // settings at every start). "Next" works only after that. The wrist is asked right there.
+            if watchPhase == 0 {
+                Text(L10n.get("onboarding_guide_watch_ask_title")).font(.title2.bold())
+                Text(L10n.get("onboarding_guide_watch_ask_body"))
+                WatchStoreCard()
+                Text(L10n.get("onboarding_guide_watch_store_hint")).font(.footnote).foregroundStyle(.secondary)
+            } else {
+                Text(L10n.get("onboarding_guide_watch_check_title")).font(.title2.bold())
+                Text(L10n.get("onboarding_guide_watch_check_body"))
+                if companion.watchEverSeen {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(L10n.get("onboarding_guide_watch_ok_title")).font(.headline)
+                        if !companion.watchSeenName.isEmpty { Text(companion.watchSeenName).font(.subheadline) }
+                        Text(L10n.get("onboarding_guide_watch_ok_body")).font(.footnote)
+                    }
+                    .padding().frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.green.opacity(0.15)))
+                    if let watch = wristUnsetWatch {
+                        wristQuestion(watch)
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text(L10n.get("onboarding_guide_watch_waiting")).foregroundStyle(.secondary)
+                    }
                 }
             }
+        case 3:
+            // Which wrist the watch is worn on; skipped when no watch reports it as not set.
+            if let watch = wristUnsetWatch {
+                wristQuestion(watch)
+            } else {
+                Color.clear.frame(height: 1).onAppear { next() }
+            }
+        case 4:
+            Text(L10n.get("onboarding_guide_strava_title")).font(.title2.bold())
+            Text(L10n.get("onboarding_guide_strava_body"))
+            Text(L10n.get("onboarding_guide_strava_how")).font(.footnote).foregroundStyle(.secondary)
+            StravaConnectButton { companion.connectStrava() }
+            Text(L10n.get("onboarding_guide_place_names_notice")).font(.footnote).foregroundStyle(.secondary)
+        default:
+            Text(L10n.get("onboarding_guide_diary_title")).font(.title2.bold())
+            Text(L10n.get("onboarding_guide_diary_body"))
+            Text(L10n.get("onboarding_guide_diary_how")).font(.footnote).foregroundStyle(.secondary)
+        }
+        if step == 4 || step == 5 {
+            Text(L10n.get("onboarding_guide_later")).font(.footnote).foregroundStyle(.secondary)
+        }
+    }
+
+    /// The buttons at the bottom: "not now" on the left, the step's main action on the right.
+    @ViewBuilder private var footer: some View {
+        HStack {
+            switch step {
+            case 0:
+                Button(L10n.get("onboarding_guide_not_now")) { next() }
+                Spacer()
+                Button(L10n.get("onboarding_guide_nickname_save")) {
+                    companion.setNickname(nickname)
+                    next()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(nickname.trimmingCharacters(in: .whitespaces).isEmpty)
+            case 1:
+                Spacer()
+                Button(L10n.get("onboarding_guide_watch_continue")) {
+                    if useDemo {
+                        // The simulated watch stands in for the real one: the watch step is skipped.
+                        Task { await companion.loadDemoData(); step += 2 }
+                    } else {
+                        next()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+            case 2:
+                if watchPhase == 0 {
+                    Button(L10n.get("onboarding_guide_not_now")) { next() }
+                    Spacer()
+                    Button(L10n.get("onboarding_guide_watch_have_it")) { watchPhase = 1 }
+                        .buttonStyle(.borderedProminent)
+                } else {
+                    if !companion.watchEverSeen {
+                        Button(L10n.get("onboarding_guide_not_now")) { next() }
+                    }
+                    Spacer()
+                    Button(L10n.get(companion.watchEverSeen ? "onboarding_guide_watch_continue" : "onboarding_guide_watch_next")) { next() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!companion.watchEverSeen)
+                }
+            case 3:
+                Button(L10n.get("onboarding_guide_not_now")) { next() }
+                Spacer()
+            case 4:
+                Button(L10n.get("onboarding_guide_not_now")) { next() }
+                Spacer()
+            default:
+                Button(L10n.get("onboarding_guide_not_now")) { finish() }
+                Spacer()
+                Button(L10n.get("onboarding_guide_choose_diary")) { diaryShown = true }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+    }
+
+    private func demoChoice(demo: Bool, title: String, subtitle: String) -> some View {
+        let selected = useDemo == demo
+        return Button { useDemo = demo } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L10n.get(title)).font(.headline).foregroundStyle(.primary)
+                    Text(L10n.get(subtitle)).font(.footnote).foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
             .padding()
-            .navigationDestination(isPresented: $diaryShown) { DiaryLocationsScreen() }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(selected ? Color.accentColor : Color.secondary.opacity(0.4), lineWidth: selected ? 2 : 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func wristQuestion(_ watch: WatchSettingsView) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L10n.get("onboarding_guide_wrist_title")).font(.title3.bold())
+            Text(L10n.get("onboarding_guide_wrist_body"))
+            HStack(spacing: 12) {
+                ForEach([("watch_option_wrist_left", Int32(1)), ("watch_option_wrist_right", Int32(2))], id: \.1) { label, value in
+                    Button(L10n.get(label)) { chooseWrist(watch, value) }
+                        .buttonStyle(.borderedProminent)
+                }
+            }
         }
     }
 }

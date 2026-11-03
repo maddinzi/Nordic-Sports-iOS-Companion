@@ -338,16 +338,19 @@ struct ActivityBoostsSheet: View {
     }
 }
 
-/// The Connect IQ Store listing as a tappable card (Android's `WatchStoreCard`): blue, "NS" box, name, line, arrow.
+/// The Connect IQ Store listing as a tappable card (Android's `WatchStoreCard`): the watch app's icon, name, line, arrow.
 struct WatchStoreCard: View {
     @EnvironmentObject var companion: Companion
 
     var body: some View {
         Button { companion.openWatchStore() } label: {
             HStack(spacing: 12) {
-                Text("NS").font(.headline.bold()).foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.blue))
+                // The watch app's store icon (the skater with "WATCH").
+                Image("WatchStoreIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 56, height: 56)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(L10n.get("onboarding_guide_watch_store_name")).font(.headline)
                     Text(L10n.get("onboarding_guide_watch_store_sub")).font(.footnote).foregroundStyle(.secondary)
