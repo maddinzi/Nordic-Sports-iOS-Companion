@@ -190,7 +190,12 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         if let dict, type == "activity" || type == "recordingBoostBurst" {
             let variant = variantName(app)
             Task { @MainActor in
-                let startTime = await Companion.shared.receive(message: dict, variant: variant)
+                let (startTime, burstId) = await Companion.shared.receive(message: dict, variant: variant)
+                // A stored Recording Boost burst: the watch holds it, and allows no next boost, until this arrives.
+                if burstId > 0 {
+                    let burst = NSNumber(value: Int32(truncatingIfNeeded: burstId))
+                    self.send(["type": "burstReceipt", "burstId": burst], to: app, what: "burst receipt \(burstId)")
+                }
                 if startTime > 0 {
                     let receiptTime = NSNumber(value: Int32(truncatingIfNeeded: startTime))
                     self.send(["type": "receipt", "startTime": receiptTime], to: app, what: "receipt \(startTime)") { result in
