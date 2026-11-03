@@ -509,9 +509,13 @@ struct WatchPlanEditScreen: View {
                 ForEach(Array(view.sections.enumerated()), id: \.offset) { _, section in
                     Section {
                         ForEach(section.rows, id: \.id) { row in
-                            PlanRow(row: row) { option in
+                            PlanRow(row: row, pick: { option in
                                 self.view = companion.editWatchPlan(view, deviceId: deviceId, key: key, rowId: row.id, option: option)
-                            }
+                            }, custom: { entry, text in
+                                guard let next = companion.editWatchPlanCustom(view, deviceId: deviceId, key: key, rowId: row.id, kind: entry.kind, text: text) else { return false }
+                                self.view = next
+                                return true
+                            })
                         }
                         if !section.removeId.isEmpty {
                             Button(L10n.get("watch_strength_remove_exercise"), role: .destructive) {
@@ -554,13 +558,19 @@ struct WatchPlanEditScreen: View {
     }
 }
 
-/// A picker for a row with a selection; a menu for an action row ("Start from", "Add exercise")
-/// or a value outside the watch's list.
+/// A picker for a row with a selection; a menu for an action row ("Start from", "Add exercise"),
+/// a value outside the watch's list, or a row that also takes a typed custom value (the
+/// menu lists the choices, then "Custom…", which asks for the value in an alert).
 private struct PlanRow: View {
     let row: PlanEditRow
     let pick: (Int32) -> Void
+    /// Applies typed text for a custom entry; false when the text is no value in range.
+    let custom: (PlanCustomEntry, String) -> Bool
     @State private var showingExerciseSearch = false
     @State private var searchText = ""
+    @State private var typing: PlanCustomEntry?
+    @State private var typed = ""
+    @State private var rejected = false
 
     private var isExerciseSearch: Bool {
         row.id == "add" || row.id.hasSuffix(".exercise")
@@ -603,7 +613,7 @@ private struct PlanRow: View {
                     }
                 }
             }
-        } else if row.selected >= 0 {
+        } else if row.selected >= 0 && row.customs.isEmpty {
             Picker(row.label, selection: Binding(get: { row.selected }, set: { pick($0) })) {
                 ForEach(Array(row.options.enumerated()), id: \.offset) { index, option in
                     Text(option).tag(Int32(index))
@@ -612,7 +622,21 @@ private struct PlanRow: View {
         } else {
             Menu {
                 ForEach(Array(row.options.enumerated()), id: \.offset) { index, option in
-                    Button(option) { pick(Int32(index)) }
+                    if Int32(index) == row.selected {
+                        Button { pick(Int32(index)) } label: { Label(option, systemImage: "checkmark") }
+                    } else {
+                        Button(option) { pick(Int32(index)) }
+                    }
+                }
+                if !row.customs.isEmpty {
+                    Divider()
+                    ForEach(row.customs, id: \.kind) { entry in
+                        Button(entry.label) {
+                            typed = ""
+                            rejected = false
+                            typing = entry
+                        }
+                    }
                 }
             } label: {
                 HStack {
@@ -620,6 +644,23 @@ private struct PlanRow: View {
                     Spacer()
                     Text(row.value.isEmpty ? "…" : row.value).foregroundStyle(.secondary)
                 }
+            }
+            .alert(
+                typing?.label.replacingOccurrences(of: "…", with: "") ?? "",
+                isPresented: Binding(get: { typing != nil }, set: { if !$0 { typing = nil } }),
+                presenting: typing
+            ) { entry in
+                TextField(entry.hint, text: $typed)
+                Button(L10n.get("common_cancel"), role: .cancel) {}
+                Button(L10n.get("common_ok")) {
+                    if !custom(entry, typed) {
+                        // Not a value in range: ask again, with the range marked.
+                        rejected = true
+                        DispatchQueue.main.async { typing = entry }
+                    }
+                }
+            } message: { entry in
+                Text(rejected ? "⚠︎ " + entry.hint : entry.hint)
             }
         }
     }
