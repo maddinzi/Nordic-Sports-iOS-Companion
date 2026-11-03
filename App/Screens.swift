@@ -505,6 +505,13 @@ struct ActivityRow: View {
                 Text(item.title.isEmpty ? L10n.get("activity_detail_title_fallback") : item.title)
                     .font(.headline)
                 Spacer()
+                if item.isDemo {
+                    Text(L10n.get("demo_badge"))
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.purple.opacity(0.2), in: Capsule())
+                }
                 if item.origin == "watch" {
                     Image(systemName: "applewatch").foregroundStyle(.primary)
                 }
@@ -590,6 +597,12 @@ struct ActivityDetailScreen: View {
                 }
             }
             .listRowBackground(CardTone.blue.container)
+            if current.isDemo {
+                Section {
+                    Label(L10n.get("demo_badge"), systemImage: "testtube.2")
+                    Text(L10n.get("demo_nothing_sent")).font(.footnote).foregroundStyle(.secondary)
+                }
+            }
             if current.reviewPending {
                 Section(L10n.get("activity_detail_review_heading")) {
                     Text(companion.diarySettings.autoUpdate
@@ -1057,6 +1070,20 @@ struct SettingsAppPage: View {
                     Text(L10n.get("settings_group_app"))
                 }
                 .onAppear { nicknameDraft = companion.nickname }
+                Section {
+                    Button(L10n.get(companion.demoCount > 0 ? "demo_reload" : "demo_load")) {
+                        Task { await companion.loadDemoData() }
+                    }
+                    if companion.demoCount > 0 {
+                        Button(L10n.get("demo_remove"), role: .destructive) {
+                            Task { await companion.removeDemoData() }
+                        }
+                    }
+                } header: {
+                    Text(L10n.get("demo_section_title"))
+                } footer: {
+                    Text(L10n.get("demo_section_body"))
+                }
                 .onDisappear { if nicknameDraft != companion.nickname { companion.setNickname(nicknameDraft) } }
         }
         .navigationTitle(L10n.get("settings_group_app"))

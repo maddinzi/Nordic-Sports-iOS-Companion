@@ -47,6 +47,8 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var boostReminders: [FeedbackBoostReminderView] = []
     @Published private(set) var nickname = ""
     @Published private(set) var placeNamesEnabled = true
+    /// How many demo-mode sample activities are stored (Settings > App > Demo mode).
+    @Published private(set) var demoCount = 0
     @Published private(set) var stravaUpdateMyActivities = true
     @Published private(set) var stravaIncludeOtherDevices = true
     @Published private(set) var reviewNewActivities = true
@@ -170,6 +172,7 @@ final class Companion: NSObject, ObservableObject {
         await refreshFolderDestinations()
         do {
             activities = try await core.activities(limit: 300)
+            demoCount = (try? await core.demoCount())?.intValue ?? 0
             syncStatus = try await core.syncStatus(nowEpochMillis: Int64(Date().timeIntervalSince1970 * 1000))
         } catch {
             report(error)
@@ -1063,6 +1066,17 @@ final class Companion: NSObject, ObservableObject {
     func setNickname(_ value: String) {
         nickname = core.setNickname(value: value)
         refreshWatchSettings()
+    }
+
+    /// Demo mode: stores the sample activities (a reload refreshes their dates), for anyone without a Garmin watch.
+    func loadDemoData() async {
+        do { _ = try await core.loadDemoData() } catch { report(error) }
+        await refresh()
+    }
+
+    func removeDemoData() async {
+        do { try await core.removeDemoData() } catch { report(error) }
+        await refresh()
     }
 
     func setReviewNewActivities(_ on: Bool) {
