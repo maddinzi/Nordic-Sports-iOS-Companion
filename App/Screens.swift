@@ -885,8 +885,9 @@ struct ActivityDetailScreen: View {
                 }
             }
         } message: {
-            Text(L10n.get("activity_detail_delete_confirm_body") + (item.stravaActivityId.isEmpty
-                ? "" : "\n\n" + L10n.get("activity_detail_delete_confirm_strava_note")))
+            Text(L10n.get("activity_detail_delete_confirm_body")
+                + (item.stravaActivityId.isEmpty ? "" : "\n\n" + L10n.get("activity_detail_delete_confirm_strava_note"))
+                + (current.diaryWritten ? "\n\n" + L10n.get("activity_detail_delete_confirm_diary_note") : ""))
         }
         // Long-press copies a value (SPM, DPS, ...), as on Android.
         .textSelection(.enabled)
@@ -1506,19 +1507,25 @@ struct SyncStatusCard: View {
     @EnvironmentObject var companion: Companion
     let status: SyncStatusView
 
-    private var lines: [String] {
-        var parts: [String] = []
-        if status.pendingStrava > 0 { parts.append(String(format: L10n.get("sync_status_pending_strava"), status.pendingStrava)) }
-        if status.pendingDiary > 0 { parts.append(String(format: L10n.get("sync_status_pending_diary"), status.pendingDiary)) }
-        if status.pendingDocs > 0 { parts.append(String(format: L10n.get("sync_status_pending_docs"), status.pendingDocs)) }
-        if status.stravaConflicts > 0 { parts.append(String(format: L10n.get("sync_status_pending_strava_conflicts"), status.stravaConflicts)) }
-        if status.stravaUnavailable > 0 { parts.append(String(format: L10n.get("sync_status_strava_unavailable"), status.stravaUnavailable)) }
+    /// One open category; [activityId] is the activity a tap opens (the first one it counts).
+    private struct Line: Hashable {
+        let text: String
+        var activityId = ""
+    }
+
+    private var lines: [Line] {
+        var parts: [Line] = []
+        if status.pendingStrava > 0 { parts.append(Line(text: String(format: L10n.get("sync_status_pending_strava"), status.pendingStrava), activityId: status.firstPendingStravaId)) }
+        if status.pendingDiary > 0 { parts.append(Line(text: String(format: L10n.get("sync_status_pending_diary"), status.pendingDiary), activityId: status.firstPendingDiaryId)) }
+        if status.pendingDocs > 0 { parts.append(Line(text: String(format: L10n.get("sync_status_pending_docs"), status.pendingDocs), activityId: status.firstPendingDocsId)) }
+        if status.stravaConflicts > 0 { parts.append(Line(text: String(format: L10n.get("sync_status_pending_strava_conflicts"), status.stravaConflicts), activityId: status.firstConflictId)) }
+        if status.stravaUnavailable > 0 { parts.append(Line(text: String(format: L10n.get("sync_status_strava_unavailable"), status.stravaUnavailable))) }
         if !status.stravaIssue.isEmpty {
-            parts.append(status.stravaIssueStandalone
-                         ? status.stravaIssue
-                         : String(format: L10n.get("sync_status_strava_issue"), status.stravaIssue))
+            parts.append(Line(text: status.stravaIssueStandalone
+                              ? status.stravaIssue
+                              : String(format: L10n.get("sync_status_strava_issue"), status.stravaIssue)))
         }
-        if !status.diaryIssue.isEmpty { parts.append(String(format: L10n.get("sync_status_diary_issue"), status.diaryIssue)) }
+        if !status.diaryIssue.isEmpty { parts.append(Line(text: String(format: L10n.get("sync_status_diary_issue"), status.diaryIssue))) }
         return parts
     }
 
@@ -1546,7 +1553,15 @@ struct SyncStatusCard: View {
         } else {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(lines, id: \.self) { line in
-                    Label(line, systemImage: "exclamationmark.circle").font(.subheadline).foregroundStyle(.orange)
+                    if let item = companion.activities.first(where: { $0.id == line.activityId }) {
+                        NavigationLink {
+                            ActivityDetailScreen(item: item)
+                        } label: {
+                            Label(line.text, systemImage: "exclamationmark.circle").font(.subheadline).foregroundStyle(.orange)
+                        }
+                    } else {
+                        Label(line.text, systemImage: "exclamationmark.circle").font(.subheadline).foregroundStyle(.orange)
+                    }
                 }
             }
         }
