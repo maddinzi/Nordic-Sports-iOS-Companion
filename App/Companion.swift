@@ -295,14 +295,15 @@ final class Companion: NSObject, ObservableObject {
     }
 
     /// One message from the watch app [variant] (a Connect IQ dictionary). Returns the start
-    /// time to confirm to the watch, or 0.
-    func receive(message dict: [String: Any], variant: String) async -> Int64 {
-        guard !outdated else { return 0 }
+    /// time of the activity and the id of the Recording Boost burst to confirm to the watch
+    /// (0 = none of that kind).
+    func receive(message dict: [String: Any], variant: String) async -> (startTime: Int64, burstId: Int64) {
+        guard !outdated else { return (0, 0) }
         guard JSONSerialization.isValidJSONObject(dict),
               let data = try? JSONSerialization.data(withJSONObject: dict),
               let json = String(data: data, encoding: .utf8) else {
             WatchLinkSpike.shared.add("watch message could not be read as JSON")
-            return 0
+            return (0, 0)
         }
         do {
             let now = Int64(Date().timeIntervalSince1970 * 1000)
@@ -310,7 +311,7 @@ final class Companion: NSObject, ObservableObject {
             storeFailures = 0
             WatchLinkSpike.shared.add("activity from \(variant): \(result.summary)")
             // A burst arrives in dozens of chunks: only the last one (stored) changes anything.
-            if result.summary == "Recording Boost chunk" { return 0 }
+            if result.summary == "Recording Boost chunk" { return (0, 0) }
             await refresh()
             // The saved recording's "running on the watch" card was removed in the core.
             refreshWatchCards()
@@ -322,9 +323,9 @@ final class Companion: NSObject, ObservableObject {
                     Task { await sync() }
                 }
             }
-            return result.receiptStartTime
+            return (result.receiptStartTime, result.burstReceiptId)
         } catch {
-            if error.isCancellation { return 0 }
+            if error.isCancellation { return (0, 0) }
             storeFailures += 1
             let started = (dict["startTime"] as? NSNumber)?.int64Value ?? 0
             WatchLinkSpike.shared.add(
@@ -335,7 +336,7 @@ final class Companion: NSObject, ObservableObject {
             if storeFailures % 3 == 0 {
                 post(String(format: L10n.get("ios_store_failures"), storeFailures, error.localizedDescription))
             }
-            return 0
+            return (0, 0)
         }
     }
 
