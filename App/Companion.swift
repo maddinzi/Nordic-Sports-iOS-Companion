@@ -591,6 +591,24 @@ final class Companion: NSObject, ObservableObject {
         await refresh()
     }
 
+    /// The Strava box as it would read with [edit] saved; nil when nothing is written to Strava or the lookup fails.
+    func stravaPreview(_ activityId: String, edit: ActivityEdit) async -> StravaWritePreview? {
+        try? await core.stravaPreviewFor(activityId: activityId, edit: edit)
+    }
+
+    /// "Looks fine" on a data-conflict marker: the marker goes, nothing is changed.
+    func dismissDataConflict(_ activityId: String) async {
+        do { try await core.dismissDataConflict(activityId: activityId) } catch { report(error) }
+        await refresh()
+    }
+
+    /// "Retry" for a Strava activity that was not found: clears the flag, then a sync checks it again.
+    func retryStravaAvailability(_ activityId: String) async {
+        do { try await core.retryStravaAvailability(activityId: activityId) } catch { report(error) }
+        _ = await sync()
+        await refresh()
+    }
+
     // MARK: - Diary
 
     var diaryConnected: Bool { !diaryName.isEmpty }

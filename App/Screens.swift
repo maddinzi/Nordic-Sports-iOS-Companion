@@ -817,9 +817,25 @@ struct ActivityDetailScreen: View {
                             }
                         }
                     }
+                    if current.stravaUnavailable {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(L10n.get("activity_detail_unavailable_title")).font(.subheadline.bold()).foregroundStyle(.orange)
+                            Text(L10n.get("activity_detail_unavailable_body")).font(.footnote)
+                            Button(L10n.get("activity_detail_retry_button")) {
+                                Task { await companion.retryStravaAvailability(item.id) }
+                            }
+                            .disabled(companion.syncing)
+                        }
+                    }
                 }
                 if current.conflict {
-                    Text(L10n.get("data_conflict_title")).foregroundStyle(.red)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(L10n.get("data_conflict_title")).font(.subheadline.bold()).foregroundStyle(.red)
+                        Text(L10n.get(current.conflictMessageKey)).font(.footnote)
+                        Button(L10n.get("data_conflict_dismiss")) {
+                            Task { await companion.dismissDataConflict(item.id) }
+                        }
+                    }
                 }
             }
             if companion.diaryConnected {

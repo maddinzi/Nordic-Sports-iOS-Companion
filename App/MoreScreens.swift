@@ -1830,6 +1830,8 @@ struct EditActivitySheet: View {
     @State private var waxType: Int
     @State private var stravaDescriptionMode: Int32
     /// The Strava title and sport type the athlete chose; nil = not chosen (the rule's, or a renamed title).
+    @State private var livePreview: StravaWritePreview?
+    @State private var splitsSpread = false
     @State private var stravaTitle: String?
     @State private var stravaSportType: String?
     @State private var saving = false
@@ -1969,7 +1971,20 @@ struct EditActivitySheet: View {
     private func resetDisciplineForPair() {
         let stored = item.disciplineMinutes.count == 2 && disciplinePair == initialPair
         disciplineEdited = stored
-        disciplineTexts = stored ? item.disciplineMinutes.map { String(Int($0.floatValue.rounded())) } : ["", ""]
+        disciplineTexts = stored ? spread(item.disciplineMinutes) : ["", ""]
+    }
+
+    /// A stored split fitted to today's rounded duration (the diary rounding may have changed since it was saved).
+    private func spread(_ stored: [KotlinFloat]) -> [String] {
+        DiaryFields.shared.distribute(shares: stored, total: Int32(totalMinutes)).map { String($0.intValue) }
+    }
+
+    /// Once, when the sheet opens: the stored splits show as they fit the current duration.
+    private func spreadStoredSplits() {
+        guard !splitsSpread else { return }
+        splitsSpread = true
+        if !item.intensityMinutes.isEmpty { intensityTexts = spread(item.intensityMinutes) }
+        if item.disciplineMinutes.count == 2 && disciplinePair == initialPair { disciplineTexts = spread(item.disciplineMinutes) }
     }
 
     // MARK: Pieces
@@ -2276,7 +2291,7 @@ struct EditActivitySheet: View {
                     }
                     .listRowBackground(CardTone.purple.container)
                 }
-                if let preview = item.stravaPreview {
+                if let preview = activePreview {
                     // PRIVACY-SYNC: the athlete selects how much generated analysis to send, or removes our blocks.
                     let selectedPreview = preview.withMode(mode: stravaDescriptionMode)
                     let shownTitle = stravaTitle ?? renamedTo ?? preview.title
@@ -2363,6 +2378,14 @@ struct EditActivitySheet: View {
                 }
                 sendSection
             }
+            .onAppear { spreadStoredSplits() }
+            .task(id: previewKey) {
+                guard item.stravaPreview != nil else { return }
+                // Typing settles first; a newer change cancels this task.
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                guard !Task.isCancelled else { return }
+                livePreview = await companion.stravaPreview(item.id, edit: currentEdit)
+            }
             .navigationTitle(L10n.get("activity_detail_review_heading"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -2380,11 +2403,9 @@ struct EditActivitySheet: View {
         }
     }
 
-    /// Every button saves the screen's values first, so nothing sent is older than what is shown.
-    private func save(send: Bool, createOnStrava: Bool = false) async {
-        guard !inputInvalid else { return }
-        saving = true
-        let edit = ActivityEdit(
+    /// The screen's values as the row Save writes.
+    private var currentEdit: ActivityEdit {
+        ActivityEdit(
             title: title, trainingType: trainingType, sport: sport, style: style,
             rpe: Int32(rpe), feeling: Int32(feeling), diaryComment: comment, note: note,
             overrideElapsedSec: Int32(clamping: durationOverride), overrideDistanceM: distanceOverrideM,
@@ -2392,10 +2413,28 @@ struct EditActivitySheet: View {
             intensityMinutes: intensityCheck.overrideMinutes ?? [], disciplineMinutes: disciplineCheck.overrideMinutes ?? [],
             wheelType: Int32(wheelType), waxType: Int32(waxType), stravaDescriptionMode: stravaDescriptionMode
         )
+    }
+
+    /// The Strava box follows the unsaved values; the stored item's preview until the first recompute.
+    private var activePreview: StravaWritePreview? { livePreview ?? item.stravaPreview }
+
+    /// Changes whenever a value that feeds the Strava title, sport type or description changes.
+    private var previewKey: String {
+        let edit = currentEdit
+        return [edit.title, edit.trainingType, "\(sport)", "\(style)", "\(edit.rpe)", "\(edit.feeling)", edit.diaryComment, edit.note,
+                "\(edit.overrideElapsedSec)", "\(edit.overrideDistanceM)", "\(edit.overrideAvgHeartRate)",
+                "\(edit.intensityMinutes)", "\(edit.disciplineMinutes)", "\(edit.wheelType)", "\(edit.waxType)"]
+            .joined(separator: "|")
+    }
+
+    /// Every button saves the screen's values first, so nothing sent is older than what is shown.
+    private func save(send: Bool, createOnStrava: Bool = false) async {
+        guard !inputInvalid else { return }
+        saving = true
         let saved = await companion.saveActivity(
-            item.id, edit: edit,
-            stravaTitle: item.stravaPreview.map { stravaTitle ?? renamedTo ?? $0.title },
-            stravaSportType: item.stravaPreview.map { stravaSportType ?? $0.sportType }
+            item.id, edit: currentEdit,
+            stravaTitle: activePreview.map { stravaTitle ?? renamedTo ?? $0.title },
+            stravaSportType: activePreview.map { stravaSportType ?? $0.sportType }
         )
         if saved {
             if createOnStrava { await companion.createOnStrava(item.id) }
