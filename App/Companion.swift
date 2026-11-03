@@ -605,7 +605,7 @@ final class Companion: NSObject, ObservableObject {
     /// "Retry" for a Strava activity that was not found: clears the flag, then a sync checks it again.
     func retryStravaAvailability(_ activityId: String) async {
         do { try await core.retryStravaAvailability(activityId: activityId) } catch { report(error) }
-        _ = await sync()
+        await syncNewActivity(activityId)
         await refresh()
     }
 

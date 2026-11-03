@@ -2384,7 +2384,7 @@ struct EditActivitySheet: View {
                 // Typing settles first; a newer change cancels this task.
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 guard !Task.isCancelled else { return }
-                livePreview = await companion.stravaPreview(item.id, edit: currentEdit)
+                if let fresh = await companion.stravaPreview(item.id, edit: currentEdit) { livePreview = fresh }
             }
             .navigationTitle(L10n.get("activity_detail_review_heading"))
             .navigationBarTitleDisplayMode(.inline)
@@ -2431,10 +2431,12 @@ struct EditActivitySheet: View {
     private func save(send: Bool, createOnStrava: Bool = false) async {
         guard !inputInvalid else { return }
         saving = true
+        // The box as these exact values make it, not a debounced one; nil keeps the stored choice.
+        let fresh = item.stravaPreview == nil ? nil : await companion.stravaPreview(item.id, edit: currentEdit)
         let saved = await companion.saveActivity(
             item.id, edit: currentEdit,
-            stravaTitle: activePreview.map { stravaTitle ?? renamedTo ?? $0.title },
-            stravaSportType: activePreview.map { stravaSportType ?? $0.sportType }
+            stravaTitle: fresh.map { stravaTitle ?? renamedTo ?? $0.title },
+            stravaSportType: fresh.map { stravaSportType ?? $0.sportType }
         )
         if saved {
             if createOnStrava { await companion.createOnStrava(item.id) }

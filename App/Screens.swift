@@ -824,6 +824,7 @@ struct ActivityDetailScreen: View {
                             Button(L10n.get("activity_detail_retry_button")) {
                                 Task { await companion.retryStravaAvailability(item.id) }
                             }
+                            .buttonStyle(.borderless)
                             .disabled(companion.syncing)
                         }
                     }
@@ -835,6 +836,7 @@ struct ActivityDetailScreen: View {
                         Button(L10n.get("data_conflict_dismiss")) {
                             Task { await companion.dismissDataConflict(item.id) }
                         }
+                            .buttonStyle(.borderless)
                     }
                 }
             }
