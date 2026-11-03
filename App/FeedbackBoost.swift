@@ -27,6 +27,8 @@ struct BoostDeclaration: Equatable {
     var note = ""
     /// The athlete's own skill, self-declared: "beginner", "intermediate", "expert" or "" (not said).
     var competence = ""
+    /// The ground under the feet (a BurstLabelOptions.SURFACES code), "" not said.
+    var surface = ""
 }
 
 struct BoostAttached: Identifiable {
@@ -64,9 +66,15 @@ enum BoostText {
         code == "MIXED" ? L10n.get("recording_boost_label_mixed") : code
     }
 
+    /// The ground surface code in the athlete's language (the keys the Android strings use).
+    static func surface(_ code: String) -> String {
+        L10n.get("recording_boost_surface_\(code.lowercased())")
+    }
+
     static func summary(_ d: BoostDeclaration) -> String {
         var parts = [typeName(d.activityType)]
         if !d.technique.isEmpty { parts.append(code(d.technique)) }
+        if !d.surface.isEmpty { parts.append(surface(d.surface)) }
         if !d.terrain.isEmpty { parts.append(d.terrain) }
         if d.poles == 1 { parts.append(L10n.get("recording_boost_label_poles_yes")) }
         if d.poles == 0 { parts.append(L10n.get("recording_boost_label_poles_no")) }
@@ -83,7 +91,8 @@ enum BoostText {
             technique: c.view.labelTechnique,
             terrain: c.view.labelTerrain,
             poles: c.view.labelPoles,
-            note: c.view.labelNote
+            note: c.view.labelNote,
+            surface: c.view.labelSurface
         )
     }
 }
@@ -275,7 +284,7 @@ struct BoostDeclareView: View {
                             next.activityType = type
                             let allowed = companion.feedbackBoostOptions(type)
                             if !allowed.techniques.contains(next.technique) { next.technique = "" }
-                            if type != "running" { next.terrain = "" }
+                            if type != "running" { next.terrain = ""; next.surface = "" }
                             if !allowed.askPoles { next.poles = -1 }
                             declarations[candidate.key] = next
                         }
@@ -299,6 +308,14 @@ struct BoostDeclareView: View {
                             }
                         }
                         if d.activityType == "running" {
+                            Text(L10n.get("recording_boost_label_surface")).font(.caption).foregroundStyle(.secondary)
+                            ForEach(options.surfaces, id: \.self) { code in
+                                choice(BoostText.surface(code), on: d.surface == code) {
+                                    var next = d
+                                    next.surface = d.surface == code ? "" : code
+                                    declarations[candidate.key] = next
+                                }
+                            }
                             Text(L10n.get("recording_boost_label_terrain")).font(.caption).foregroundStyle(.secondary)
                             ForEach(options.terrains, id: \.self) { code in
                                 choice(code, on: d.terrain == code) {
