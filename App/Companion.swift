@@ -189,8 +189,8 @@ final class Companion: NSObject, ObservableObject {
 
     /// Android's WatchEventRepository.labelBurst: stores the label (the shared core marks the file
     /// for writing again) and rewrites the CSV with it. Poles: 1 with, 0 without, -1 not said.
-    func labelBoost(id: String, technique: String, terrain: String, poles: Int32, note: String) async throws {
-        _ = try await core.setRecordingBoostLabel(id: id, technique: technique, terrain: terrain, poles: poles, note: note)
+    func labelBoost(id: String, technique: String, terrain: String, poles: Int32, note: String, surface: String) async throws {
+        _ = try await core.setRecordingBoostLabel(id: id, technique: technique, terrain: terrain, poles: poles, note: note, surface: surface)
         await exportBoostFiles()
     }
 
@@ -1266,7 +1266,7 @@ final class Companion: NSObject, ObservableObject {
                         activityType: a.declaration.activityType, technique: a.declaration.technique,
                         terrain: a.declaration.terrain, poles: a.declaration.poles,
                         note: a.declaration.note.trimmingCharacters(in: .whitespacesAndNewlines),
-                        competence: a.declaration.competence)
+                        competence: a.declaration.competence, surface: a.declaration.surface)
                 }
             )
             if result == "sent", !attachments.isEmpty { refreshBoostReminders() }

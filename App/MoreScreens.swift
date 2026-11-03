@@ -1157,11 +1157,11 @@ struct RecordingBoostScreen: View {
         .task { await load() }
         .refreshable { await load() }
         .sheet(item: $labelling) { burst in
-            BurstLabelSheet(burst: burst) { technique, terrain, poles, note in
+            BurstLabelSheet(burst: burst) { technique, terrain, poles, note, surface in
                 labelling = nil
                 Task {
                     do {
-                        try await companion.labelBoost(id: burst.id, technique: technique, terrain: terrain, poles: poles, note: note)
+                        try await companion.labelBoost(id: burst.id, technique: technique, terrain: terrain, poles: poles, note: note, surface: surface)
                     } catch {
                         if !error.isCancellation { WatchLinkSpike.shared.add("Recording Boost label not saved: \(error.localizedDescription)") }
                     }
@@ -1194,10 +1194,11 @@ extension RecordingBoostView: Identifiable {}
 /// poles for running and unknown sports, and a note. Tapping a selected choice again clears it.
 struct BurstLabelSheet: View {
     let burst: RecordingBoostView
-    let onSave: (String, String, Int32, String) -> Void
+    let onSave: (String, String, Int32, String, String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var technique = ""
     @State private var terrain = ""
+    @State private var surface = ""
     @State private var poles: Int32 = -1
     @State private var note = ""
 
@@ -1211,6 +1212,13 @@ struct BurstLabelSheet: View {
                 Section(L10n.get("recording_boost_label_terrain")) {
                     choices(burst.terrainOptions, selected: $terrain)
                 }
+                if !burst.surfaceOptions.isEmpty {
+                    Section(L10n.get("recording_boost_label_surface")) {
+                        ForEach(burst.surfaceOptions, id: \.self) { code in
+                            row(BoostText.surface(code), on: surface == code) { surface = surface == code ? "" : code }
+                        }
+                    }
+                }
                 if burst.askPoles {
                     Section(L10n.get("recording_boost_label_poles")) {
                         row(L10n.get("recording_boost_label_poles_yes"), on: poles == 1) { poles = poles == 1 ? -1 : 1 }
@@ -1222,7 +1230,7 @@ struct BurstLabelSheet: View {
                 }
                 if !burst.labelSummary.isEmpty {
                     Section {
-                        Button(L10n.get("recording_boost_label_clear"), role: .destructive) { onSave("", "", -1, "") }
+                        Button(L10n.get("recording_boost_label_clear"), role: .destructive) { onSave("", "", -1, "", "") }
                     }
                 }
             }
@@ -1232,13 +1240,14 @@ struct BurstLabelSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button(L10n.get("common_cancel")) { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L10n.get("recording_boost_label_save")) {
-                        onSave(technique, terrain, burst.askPoles ? poles : -1, String(note.prefix(200)))
+                        onSave(technique, terrain, burst.askPoles ? poles : -1, String(note.prefix(200)), burst.surfaceOptions.isEmpty ? "" : surface)
                     }
                 }
             }
             .onAppear {
                 technique = burst.labelTechnique
                 terrain = burst.labelTerrain
+                surface = burst.labelSurface
                 poles = burst.labelPoles
                 note = burst.labelNote
             }
