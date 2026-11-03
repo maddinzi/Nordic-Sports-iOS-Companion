@@ -221,7 +221,7 @@ Done in small, separately released steps, with `testSideloadDebugUnitTest` green
    and `StravaLinking` (SupportSQLite / `openHelper`).
    Not yet verified: Room KSP for the iOS targets (runs on macOS only; first CI run).
 6. Define platform interfaces for everything that stays native: `WatchEventSource`,
-   `DiaryProvider`, `TrainingsplanProvider`, token stores, schedulers, notifications,
+   `DiaryProvider`, token stores, schedulers, notifications,
    location.
 
 ### Step 3: iOS project shell (this repo, on a Mac)
@@ -279,8 +279,8 @@ Diagnostics; Strava sign-in with ASWebAuthenticationSession and an https callbac
    editors (shared `WatchPlanEditor` turns the watch editor's choices into rows; SwiftUI
    only shows them). Remaining builds until parity: `docs/feature-parity.md`.
 4. Add activity by hand, delete with tombstone
-5. Place names, Recording Boost export, data export / deletion (Trainingsplan only if
-   switched back on on Android; the diary backport is not ported, see step 2)
+5. Place names, Recording Boost export, data export / deletion (the Trainingsplan
+   was removed from Android in 0.9.117; the diary backport is not ported, see step 2)
 6. Worklog transparency log, JSON export, app log, feedback / crash reports
 7. Localization: en, de, fr, it, rm, gsw from one shared source (generate iOS
    `.xcstrings` from the Android strings, or move both to shared resources)
