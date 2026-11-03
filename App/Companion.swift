@@ -1015,6 +1015,12 @@ final class Companion: NSObject, ObservableObject {
         core.editWatchPlan(deviceId: deviceId, key: key, draft: view.draft, canClear: view.canClear, rowId: rowId, option: option) ?? view
     }
 
+    /// [view] with [text] typed as a custom value of [kind] (a `PlanCustomEntry.kind`) in row [rowId];
+    /// nil when [text] is no value in range.
+    func editWatchPlanCustom(_ view: PlanEditView, deviceId: Int64, key: String, rowId: String, kind: String, text: String) -> PlanEditView? {
+        core.editWatchPlanCustom(deviceId: deviceId, key: key, draft: view.draft, canClear: view.canClear, rowId: rowId, kind: kind, text: text)
+    }
+
     /// Sends [draft] to the watch; an empty draft clears the slot.
     func saveWatchPlan(deviceId: Int64, key: String, draft: [KotlinInt]) {
         core.saveWatchPlan(deviceId: deviceId, key: key, draft: draft)
