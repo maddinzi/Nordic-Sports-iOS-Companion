@@ -107,7 +107,7 @@ Build 20 also carries every build 19 row (build 19 was never tested on its own).
 | App | Onboarding guide, about, changelog, settings search | part | build 22 (untested) | | Guide (nickname, watch, wrist, Strava, diary; once, skipped when already set up; the wrist step asks Left/Right when a watch reports it as not set and is skipped otherwise, new in 0.9.115, untested), About (version, what's new, Help improve the translations, privacy, imprint) and a changelog that starts with the first iOS version are in; settings search lists the pages whose title or labels match (next build, untested) |
 | App | Two tabs, Activities and Settings, as Android's bottom bar; no Diagnostics tab (the spike screens are gone) | yes | next build (untested) | 0.9.100 | The watch is chosen under Settings › Watch; the developer log (watch link, diary, background runs; share and clear) moved to Settings › Data logs › Developer log. Removed: the shared-module probe, the second diary file spike, "Check watch app versions" |
 | App | Theme (light / dark / system) | yes | next build (untested, not compiled) | | Settings > App > Appearance (`themeChoice` in `@AppStorage`, applied with `preferredColorScheme` at the root); default follows the system |
-| Trainingsplan | Plan annotation | part | - | - | Off on Android; not in iOS scope until re-enabled |
+| Trainingsplan | Plan annotation | - | - | - | Removed from Android (database 40); not in iOS scope |
 
 ## Builds until parity
 

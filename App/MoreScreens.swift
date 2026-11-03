@@ -1805,6 +1805,45 @@ struct AddActivitySheet: View {
 /// Android's review screen, field for field (the same shared rules, `ReviewFields`): name, sport
 /// and style, training type, the numbers and their corrections, both splits, effort, comment,
 /// feeling, note and equipment. Saving is the review.
+/// A field label with a small info button that explains the field in an alert (Android's `LabelWithInfo`).
+private struct InfoLabel: View {
+    let text: String
+    let info: String
+    var font: Font = .body
+    @State private var shown = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(text).font(font)
+            Button { shown = true } label: { Image(systemName: "info.circle").imageScale(.small) }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(String(format: L10n.get("activity_detail_info_content_description"), text))
+        }
+        .alert(text, isPresented: $shown) {
+            Button(L10n.get("activity_detail_info_got_it"), role: .cancel) {}
+        } message: {
+            Text(info)
+        }
+    }
+}
+
+/// A picker row whose label carries an info button.
+private struct InfoPicker<Selection: Hashable, Content: View>: View {
+    let label: String
+    let info: String
+    @Binding var selection: Selection
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        HStack {
+            InfoLabel(text: label, info: info)
+            Spacer()
+            Picker(label, selection: $selection, content: content).labelsHidden()
+        }
+    }
+}
+
 struct EditActivitySheet: View {
     @EnvironmentObject var companion: Companion
     @Environment(\.dismiss) private var dismiss
@@ -2053,10 +2092,10 @@ struct EditActivitySheet: View {
     /// One corrected number: its field, the measured value it falls back to, and what the value is.
     private func overrideRow(
         _ label: String, text: Binding<String>, suffix: String, keyboard: UIKeyboardType,
-        measured: String, overridden: Bool, invalid: Bool, reset: @escaping () -> Void
+        measured: String, overridden: Bool, invalid: Bool, info: String? = nil, reset: @escaping () -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            LabeledContent(label) {
+            LabeledContent {
                 TextField(measured, text: text)
                     .keyboardType(keyboard)
                     .multilineTextAlignment(.trailing)
@@ -2067,6 +2106,8 @@ struct EditActivitySheet: View {
                         .buttonStyle(.borderless)
                         .accessibilityLabel(L10n.get("activity_detail_override_reset"))
                 }
+            } label: {
+                if let info { InfoLabel(text: label, info: info) } else { Text(label) }
             }
             Text(invalid ? L10n.get("activity_detail_override_invalid")
                  : overridden ? String(format: L10n.get("activity_detail_override_changed"), measured.isEmpty ? "-" : measured)
@@ -2189,7 +2230,7 @@ struct EditActivitySheet: View {
                             // The title leads the diary description: renaming it renames that part too.
                             comment = Self.commentWithTitle(new, comment, replacing: old)
                         }
-                    Picker(L10n.get("activity_detail_sport_label"), selection: $sport) {
+                    InfoPicker(label: L10n.get("activity_detail_sport_label"), info: L10n.get("activity_detail_sport_info"), selection: $sport) {
                         ForEach(Self.sports, id: \.self) { Text(L10n.get($0.optionKey)).tag($0) }
                     }
                     .onChange(of: sport) { _, _ in resetDisciplineForPair() }
@@ -2198,14 +2239,14 @@ struct EditActivitySheet: View {
                     Text(String(format: L10n.get("activity_detail_sport_strava_hint"), L10n.get(sport.stravaKey)))
                         .font(.caption).foregroundStyle(.secondary)
                     if sport.hasStyle {
-                        Picker(L10n.get("activity_detail_style_label"), selection: $style) {
+                        InfoPicker(label: L10n.get("activity_detail_style_label"), info: L10n.get("activity_detail_style_info"), selection: $style) {
                             ForEach(Self.styles, id: \.self) { Text(L10n.get($0.optionKey)).tag($0) }
                         }
                         .onChange(of: style) { _, _ in resetDisciplineForPair() }
                         Text(String(format: L10n.get("activity_detail_style_garmin_hint"), L10n.get(style.garminKey)))
                             .font(.caption).foregroundStyle(.secondary)
                     }
-                    Picker(L10n.get("activity_detail_training_type_label"), selection: $trainingType) {
+                    InfoPicker(label: L10n.get("activity_detail_training_type_label"), info: L10n.get("activity_detail_training_type_info"), selection: $trainingType) {
                         ForEach(trainingOptions, id: \.0) { option in Text(L10n.get(option.1)).tag(option.0) }
                         if !trainingOptions.contains(where: { $0.0 == trainingType }) {
                             Text(Format.trainingTypeWord(trainingType)).tag(trainingType)
@@ -2219,7 +2260,8 @@ struct EditActivitySheet: View {
                 Section {
                     overrideRow(L10n.get("activity_detail_duration_label"), text: $durationText, suffix: "", keyboard: .numbersAndPunctuation,
                                 measured: DiaryFields.shared.formatDuration(totalSeconds: item.elapsedSec),
-                                overridden: durationOverride != 0, invalid: durationInvalid) {
+                                overridden: durationOverride != 0, invalid: durationInvalid,
+                                info: L10n.get("activity_detail_duration_info")) {
                         durationText = DiaryFields.shared.formatDuration(totalSeconds: item.elapsedSec)
                     }
                     // What the diary books after its rounding; the splits below add up to it.
@@ -2248,7 +2290,7 @@ struct EditActivitySheet: View {
                     if disciplineEdited, let sub = Int(disciplineTexts[1]), sub <= total { disciplineTexts[0] = String(total - sub) }
                 }
                 Section {
-                    Picker(L10n.get("activity_detail_rpe_label"), selection: $rpe) {
+                    InfoPicker(label: L10n.get("activity_detail_rpe_label"), info: L10n.get("activity_detail_rpe_info"), selection: $rpe) {
                         ForEach(0...10, id: \.self) { value in Text(value == 0 ? "–" : "\(value)").tag(value) }
                     }
                     if let load = DiaryFields.shared.fosterLoad(rpe: Int32(rpe), elapsedTimeSec: roundedSeconds)?.intValue {
@@ -2256,7 +2298,7 @@ struct EditActivitySheet: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(L10n.get("activity_detail_diary_comment_label")).font(.caption).foregroundStyle(.secondary)
+                        InfoLabel(text: L10n.get("activity_detail_diary_comment_label"), info: L10n.get("activity_detail_diary_comment_info"), font: .caption)
                         TextEditor(text: $comment).frame(minHeight: 80)
                     }
                 } header: {
@@ -2264,11 +2306,11 @@ struct EditActivitySheet: View {
                 }
                 .listRowBackground(Self.diaryRow)
                 Section(L10n.get("activity_detail_section_feeling")) {
-                    Picker(L10n.get("activity_detail_feeling_label"), selection: $feeling) {
+                    InfoPicker(label: L10n.get("activity_detail_feeling_label"), info: L10n.get("activity_detail_feeling_info"), selection: $feeling) {
                         ForEach(Self.feelings.indices, id: \.self) { index in Text(L10n.get(Self.feelings[index])).tag(index) }
                     }
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(L10n.get("activity_detail_note_label")).font(.caption).foregroundStyle(.secondary)
+                        InfoLabel(text: L10n.get("activity_detail_note_label"), info: L10n.get("activity_detail_note_info"), font: .caption)
                         TextEditor(text: $note).frame(minHeight: 70)
                     }
                 }
@@ -2279,12 +2321,12 @@ struct EditActivitySheet: View {
                 if showWheel || showWax {
                     Section(L10n.get("activity_detail_section_equipment")) {
                         if showWheel {
-                            Picker(L10n.get("activity_detail_wheel_label"), selection: $wheelType) {
+                            InfoPicker(label: L10n.get("activity_detail_wheel_label"), info: L10n.get("activity_detail_wheel_info"), selection: $wheelType) {
                                 ForEach(Self.wheelOptions.indices, id: \.self) { Text(L10n.get(Self.wheelOptions[$0])).tag($0) }
                             }
                         }
                         if showWax {
-                            Picker(L10n.get("activity_detail_wax_label"), selection: $waxType) {
+                            InfoPicker(label: L10n.get("activity_detail_wax_label"), info: L10n.get("activity_detail_wax_info"), selection: $waxType) {
                                 ForEach(Self.waxOptions.indices, id: \.self) { Text(L10n.get(Self.waxOptions[$0])).tag($0) }
                             }
                         }
