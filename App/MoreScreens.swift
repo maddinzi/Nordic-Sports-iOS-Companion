@@ -2049,7 +2049,7 @@ struct EditActivitySheet: View {
 
     /// A pair change (another sport, style or training type) starts the split afresh; the stored one applies to its own pair only.
     private func resetDisciplineForPair() {
-        let stored = item.disciplineMinutes.count == 2 && disciplinePair == initialPair
+        let stored = storedDisciplineApplies
         disciplineEdited = stored
         disciplineTexts = stored ? spread(item.disciplineMinutes) : ["", ""]
     }
@@ -2064,7 +2064,12 @@ struct EditActivitySheet: View {
         guard !splitsSpread else { return }
         splitsSpread = true
         if !item.intensityMinutes.isEmpty { intensityTexts = spread(item.intensityMinutes) }
-        if item.disciplineMinutes.count == 2 && disciplinePair == initialPair { disciplineTexts = spread(item.disciplineMinutes) }
+        if storedDisciplineApplies { disciplineTexts = spread(item.disciplineMinutes) }
+    }
+
+    /// A stored Trainingsmittel split only applies to the pair it was made for.
+    private var storedDisciplineApplies: Bool {
+        item.disciplineMinutes.count == 2 && disciplinePair == initialPair
     }
 
     // MARK: Pieces
@@ -2462,7 +2467,7 @@ struct EditActivitySheet: View {
                 sendSection
             }
             .onAppear { spreadStoredSplits() }
-            .task(id: previewKey) {
+            .task(id: currentEdit) {
                 guard item.stravaPreview != nil else { return }
                 // Typing settles first; a newer change cancels this task.
                 try? await Task.sleep(nanoseconds: 300_000_000)
@@ -2500,15 +2505,6 @@ struct EditActivitySheet: View {
 
     /// The Strava box follows the unsaved values; the stored item's preview until the first recompute.
     private var activePreview: StravaWritePreview? { livePreview ?? item.stravaPreview }
-
-    /// Changes whenever a value that feeds the Strava title, sport type or description changes.
-    private var previewKey: String {
-        let edit = currentEdit
-        return [edit.title, edit.trainingType, "\(sport)", "\(style)", "\(edit.rpe)", "\(edit.feeling)", edit.diaryComment, edit.note,
-                "\(edit.overrideElapsedSec)", "\(edit.overrideDistanceM)", "\(edit.overrideAvgHeartRate)",
-                "\(edit.intensityMinutes)", "\(edit.disciplineMinutes)", "\(edit.wheelType)", "\(edit.waxType)"]
-            .joined(separator: "|")
-    }
 
     /// Every button saves the screen's values first, so nothing sent is older than what is shown.
     private func save(send: Bool, createOnStrava: Bool = false) async {
