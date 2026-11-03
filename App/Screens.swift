@@ -135,7 +135,7 @@ struct ActivitiesScreen: View {
             Group {
                 if companion.activities.isEmpty && companion.liveActivities.isEmpty && companion.crashReports.isEmpty {
                     VStack(spacing: 0) {
-                    if companion.watchReminderVisible { WatchReminderCard().padding() }
+                    if companion.showSetupTip { SetupTips().padding() }
                     ContentUnavailableView {
                         Label(companion.nickname.isEmpty
                               ? L10n.get("activity_list_empty_no_activities")
@@ -151,7 +151,8 @@ struct ActivitiesScreen: View {
                             Section { SyncStatusCard(status: status) }
                                 .listRowBackground(status.total == 0 ? CardTone.green.container : CardTone.orange.container)
                         }
-                        if !companion.liveActivities.isEmpty || !companion.crashReports.isEmpty || companion.watchReminderVisible
+                        // What runs now, then the decisions asked of the athlete (one Boost card at a time).
+                        if !companion.liveActivities.isEmpty || !companion.crashReports.isEmpty
                             || !companion.boostReminders.isEmpty {
                             Section {
                                 ForEach(companion.liveActivities, id: \.deviceId) { live in
@@ -160,13 +161,14 @@ struct ActivitiesScreen: View {
                                 if let report = companion.crashReports.first {
                                     WatchCrashCard(report: report)
                                 }
-                                ForEach(companion.boostReminders, id: \.activityId) { reminder in
-                                    BoostReminderCard(reminder: reminder)
-                                }
-                                if companion.watchReminderVisible {
-                                    WatchReminderCard()
+                                if let reminder = companion.boostReminders.first {
+                                    BoostReminderCard(reminder: reminder, more: companion.boostReminders.count - 1)
                                 }
                             }
+                        }
+                        // Optional setup hints: slim, neutral, one at a time, dismissed for good.
+                        if companion.showSetupTip {
+                            Section { SetupTips() }
                         }
                         // As Android: activities still to review on top, oldest first (the order the
                         // diary fills a day's slots in), then the rest under "Done".
@@ -368,6 +370,8 @@ struct WatchStoreCard: View {
 struct BoostReminderCard: View {
     @EnvironmentObject var companion: Companion
     let reminder: FeedbackBoostReminderView
+    /// How many other activities with Boost files wait behind this one.
+    var more: Int = 0
     @State private var openFeedback = false
 
     var body: some View {
@@ -380,6 +384,9 @@ struct BoostReminderCard: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             HStack {
+                if more > 0 {
+                    Text(String(format: L10n.get("home_more_waiting"), more)).font(.caption).foregroundStyle(.secondary)
+                }
                 Spacer()
                 Button(L10n.get("feedback_boost_reminder_discard")) { companion.declineBoostReminder(reminder.activityId) }
                     .buttonStyle(.borderless)
@@ -395,23 +402,69 @@ struct BoostReminderCard: View {
     }
 }
 
-/// "Your watch is missing": until a watch has talked to the app, a daily reminder on the activity list.
-struct WatchReminderCard: View {
-    @EnvironmentObject var companion: Companion
+/// One optional setup hint on the activity list: a slim neutral row (icon, title, one line), tapping it opens
+/// the target, the cross dismisses it for good (Android's `SetupTipRow`).
+struct SetupTipCard<Icon: View>: View {
+    let title: String
+    let detail: String
+    let action: () -> Void
+    let dismiss: () -> Void
+    @ViewBuilder let icon: () -> Icon
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.get("watch_reminder_title")).font(.headline)
-            Text(L10n.get("watch_reminder_body")).font(.footnote)
-            HStack(alignment: .center) {
-                WatchStoreCard()
-                Button { companion.closeWatchReminder() } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel(L10n.get("watch_reminder_close"))
+        HStack(spacing: 12) {
+            Button(action: action) {
+                HStack(spacing: 12) {
+                    icon()
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title).font(.subheadline.bold())
+                        Text(detail).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    Spacer(minLength: 0)
+                }
             }
+            .buttonStyle(.plain)
+            Button(action: dismiss) { Image(systemName: "xmark") }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(L10n.get("watch_reminder_close"))
         }
-        .padding(.vertical, 4)
-        .listRowBackground(CardTone.blue.container)
+        .listRowBackground(CardTone.grey.container)
+    }
+}
+
+/// The setup tip to show: the watch first, else the diary (one at a time).
+struct SetupTips: View {
+    @EnvironmentObject var companion: Companion
+    @State private var openDiary = false
+
+    var body: some View {
+        if companion.showWatchTip {
+            SetupTipCard(
+                title: L10n.get("watch_reminder_title"),
+                detail: L10n.get("watch_reminder_body"),
+                action: { companion.openWatchStore() },
+                dismiss: { companion.dismissWatchReminder() }
+            ) {
+                Image("WatchStoreIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 40, height: 40)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+        } else if companion.showDiaryTip {
+            SetupTipCard(
+                title: L10n.get("diary_tip_title"),
+                detail: L10n.get("diary_tip_body"),
+                action: { openDiary = true },
+                dismiss: { companion.dismissDiaryTip() }
+            ) {
+                Image(systemName: "calendar")
+                    .font(.title)
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 40, height: 40)
+            }
+            .navigationDestination(isPresented: $openDiary) { DiaryLocationsScreen() }
+        }
     }
 }
 

@@ -43,6 +43,7 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var watchEverSeen = false
     @Published private(set) var watchSeenName = ""
     @Published private(set) var watchReminderVisible = false
+    @Published private(set) var diaryTipVisible = false
     /// Activities with Recording Boost files nobody decided about: a card each on the activity list.
     @Published private(set) var boostReminders: [FeedbackBoostReminderView] = []
     @Published private(set) var nickname = ""
@@ -1018,25 +1019,30 @@ final class Companion: NSObject, ObservableObject {
     func refreshWatchLink() {
         watchEverSeen = core.watchEverSeen()
         watchSeenName = core.watchSeenName()
-        watchReminderVisible = core.watchReminderVisible(today: Self.todayISO())
+        watchReminderVisible = core.watchReminderVisible()
+        diaryTipVisible = core.diaryTipVisible()
     }
 
-    /// The reminder is hidden for the rest of today.
-    func closeWatchReminder() {
-        core.closeWatchReminder(today: Self.todayISO())
+    /// The setup tips on the activity list (a watch never seen, a diary never connected): the demo
+    /// mode's simulated watch stands in for both, so none shows then.
+    var showWatchTip: Bool { watchReminderVisible && !demoOn }
+    var showDiaryTip: Bool { diaryTipVisible && !demoOn }
+    var showSetupTip: Bool { showWatchTip || showDiaryTip }
+
+    /// The athlete dismissed the watch tip: it stays away.
+    func dismissWatchReminder() {
+        core.dismissWatchReminder()
+        refreshWatchLink()
+    }
+
+    func dismissDiaryTip() {
+        core.dismissDiaryTip()
         refreshWatchLink()
     }
 
     /// The watch app's Connect IQ Store page (the public listing).
     func openWatchStore() {
         if let url = URL(string: core.watchStoreUrl()) { UIApplication.shared.open(url) }
-    }
-
-    private static func todayISO() -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: Date())
     }
 
     /// The Recording Boost bursts captured during an activity (the detail's count and list).
