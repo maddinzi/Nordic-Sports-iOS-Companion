@@ -1071,13 +1071,12 @@ struct SettingsAppPage: View {
                 }
                 .onAppear { nicknameDraft = companion.nickname }
                 Section {
-                    Button(L10n.get(companion.demoCount > 0 ? "demo_reload" : "demo_load")) {
-                        Task { await companion.loadDemoData() }
-                    }
-                    if companion.demoCount > 0 {
-                        Button(L10n.get("demo_remove"), role: .destructive) {
-                            Task { await companion.removeDemoData() }
-                        }
+                    Toggle(L10n.get("demo_switch"), isOn: Binding(
+                        get: { companion.demoOn },
+                        set: { on in Task { if on { await companion.loadDemoData() } else { await companion.removeDemoData() } } }
+                    ))
+                    if companion.demoOn {
+                        Button(L10n.get("demo_reload")) { Task { await companion.loadDemoData() } }
                     }
                 } header: {
                     Text(L10n.get("demo_section_title"))
