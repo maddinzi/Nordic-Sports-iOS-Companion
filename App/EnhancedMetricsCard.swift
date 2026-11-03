@@ -94,22 +94,31 @@ struct ToneGroup<Content: View>: View {
 }
 
 private extension Color {
-    static let techniqueBlue = Color(red: 0x1F / 255, green: 0x6F / 255, blue: 0xB5 / 255)
+    // Blue, green, grey by intensity (Companion `design/colour-scheme.md`, `TechniqueCatalogs.COLOR_RGB`).
+    static let techniqueBlue = Color(red: 0x2A / 255, green: 0x6D / 255, blue: 0xBD / 255)
+    static let techniqueMidBlue = Color(red: 0x5B / 255, green: 0x9B / 255, blue: 0xE0 / 255)
+    static let techniqueLightBlue = Color(red: 0x9C / 255, green: 0xC7 / 255, blue: 0xF2 / 255)
+    static let techniqueGreen = Color(red: 0x3F / 255, green: 0xA0 / 255, blue: 0x64 / 255)
+    static let runBlue = Color(red: 0x1F / 255, green: 0x6F / 255, blue: 0xB5 / 255)
     static let techniqueOrange = Color(red: 0xE0 / 255, green: 0x8A / 255, blue: 0x1E / 255)
     static let techniquePurple = Color(red: 0x7B / 255, green: 0x4F / 255, blue: 0xA8 / 255)
     static let techniqueTeal = Color(red: 0x1E / 255, green: 0x9A / 255, blue: 0x8A / 255)
     static let techniqueGrey = Color(red: 0x8D / 255, green: 0x99 / 255, blue: 0xA6 / 255)
-    static let techniqueLight = Color(red: 0xCF / 255, green: 0xD6 / 255, blue: 0xDD / 255)
+    static let techniqueLight = Color(red: 0xC9 / 255, green: 0xD0 / 255, blue: 0xD8 / 255)
     static let terrainRed = Color(red: 0xC0 / 255, green: 0x39 / 255, blue: 0x2B / 255)
 }
 
 /// Colour per catalog state: techniques (V2, V1, ...) and terrain (UP, FLAT, ...).
 private func stateColor(_ key: String) -> Color {
     switch key {
-    case "V2", "DIA", "RUN": return .techniqueBlue
-    case "V1", "KDP", "UP": return .techniqueOrange
-    case "DP", "DOWN": return .techniquePurple
-    case "V2A", "FLAT": return .techniqueTeal
+    case "V2", "DIA": return .techniqueBlue
+    case "V2A", "KDP": return .techniqueMidBlue
+    case "V1": return .techniqueLightBlue
+    case "DP": return .techniqueGreen
+    case "RUN": return .runBlue
+    case "UP": return .techniqueOrange
+    case "DOWN": return .techniquePurple
+    case "FLAT": return .techniqueTeal
     case "GLIDE", "WALK": return .techniqueGrey
     case "STEEP": return .terrainRed
     default: return .techniqueLight

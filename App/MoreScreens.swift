@@ -775,114 +775,210 @@ struct OutdatedScreen: View {
     }
 }
 
-/// Android's first-start guide: three steps (nickname, online repository, diary), each skippable;
-/// shown once (also left out when the app is already set up).
+/// Android's first-start guide: six steps (nickname, demo or own data, watch, wrist, online repository, diary),
+/// each skippable; shown once (also left out when the app is already set up). The step counter stays on top and the
+/// buttons at the bottom, so the screen does not change size from step to step; long content scrolls.
 struct OnboardingScreen: View {
     @EnvironmentObject var companion: Companion
     let finish: () -> Void
     @State private var step = 0
     @State private var nickname = ""
+    /// Step 2 (demo): true = work with demo data (sample activities and a simulated watch).
+    @State private var useDemo = false
     @State private var diaryShown = false
     /// "Your watch": 0 asks whether the athlete has the watch app, 1 waits for the watch to talk to this app.
     @State private var watchPhase = 0
 
-    private let steps = 5
+    private let steps = 6
 
-    /// A watch that reported its settings with the wrist not set (value 0); the wrist step asks for it.
+    /// A watch that reported its settings with the wrist not set (value 0); the wrist is asked for it.
     private var wristUnsetWatch: WatchSettingsView? {
         companion.watchSettings.first { watch in
             watch.groups.contains { $0.items.contains { $0.key == "WatchWrist" && $0.value == 0 } }
         }
     }
 
+    private func next() { step += 1 }
+
+    private func chooseWrist(_ watch: WatchSettingsView, _ value: Int32) {
+        companion.changeWatchSetting(deviceId: watch.deviceId, key: "WatchWrist", value: value)
+    }
+
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                Text(String(format: L10n.get("onboarding_guide_step"), step + 1, steps))
-                    .font(.footnote).foregroundStyle(.secondary)
-                switch step {
-                case 0:
-                    Text(L10n.get("onboarding_guide_nickname_title")).font(.title2.bold())
-                    Text(L10n.get("onboarding_guide_nickname_body"))
-                    TextField("", text: $nickname)
-                        .textFieldStyle(.roundedBorder)
-                        .onChange(of: nickname) { _, value in nickname = String(value.prefix(20)) }
-                    Text(L10n.get("onboarding_guide_nickname_later")).font(.footnote).foregroundStyle(.secondary)
-                    Button(L10n.get("onboarding_guide_nickname_save")) {
-                        companion.setNickname(nickname)
-                        step += 1
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(nickname.trimmingCharacters(in: .whitespaces).isEmpty)
-                case 1:
-                    // The watch app: ask, then wait until the watch has sent a message (the app sends its
-                    // settings at every start). "Next" works only after that.
-                    if watchPhase == 0 {
-                        Text(L10n.get("onboarding_guide_watch_ask_title")).font(.title2.bold())
-                        Text(L10n.get("onboarding_guide_watch_ask_body"))
-                        WatchStoreCard()
-                        Text(L10n.get("onboarding_guide_watch_store_hint")).font(.footnote).foregroundStyle(.secondary)
-                        Button(L10n.get("onboarding_guide_watch_have_it")) { watchPhase = 1 }
-                            .buttonStyle(.borderedProminent)
-                    } else {
-                        Text(L10n.get("onboarding_guide_watch_check_title")).font(.title2.bold())
-                        Text(L10n.get("onboarding_guide_watch_check_body"))
-                        if companion.watchEverSeen {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(L10n.get("onboarding_guide_watch_ok_title")).font(.headline)
-                                if !companion.watchSeenName.isEmpty { Text(companion.watchSeenName).font(.subheadline) }
-                                Text(L10n.get("onboarding_guide_watch_ok_body")).font(.footnote)
-                            }
-                            .padding().frame(maxWidth: .infinity, alignment: .leading)
-                            .background(RoundedRectangle(cornerRadius: 12).fill(Color.green.opacity(0.15)))
-                        } else {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                Text(L10n.get("onboarding_guide_watch_waiting")).foregroundStyle(.secondary)
-                            }
-                        }
-                        Button(L10n.get("onboarding_guide_watch_next")) { step += 1 }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(!companion.watchEverSeen)
-                    }
-                case 2:
-                    // Which wrist the watch is worn on; skipped when no watch reports it as not set.
-                    if let watch = wristUnsetWatch {
-                        Text(L10n.get("onboarding_guide_wrist_title")).font(.title2.bold())
-                        Text(L10n.get("onboarding_guide_wrist_body"))
-                        HStack(spacing: 12) {
-                            ForEach([("watch_option_wrist_left", Int32(1)), ("watch_option_wrist_right", Int32(2))], id: \.1) { label, value in
-                                Button(L10n.get(label)) {
-                                    companion.changeWatchSetting(deviceId: watch.deviceId, key: "WatchWrist", value: value)
-                                    step += 1
-                                }
-                                .buttonStyle(.borderedProminent)
-                            }
-                        }
-                    } else {
-                        Color.clear.frame(height: 1).onAppear { step += 1 }
-                    }
-                case 3:
-                    Text(L10n.get("onboarding_guide_strava_title")).font(.title2.bold())
-                    Text(L10n.get("onboarding_guide_strava_body"))
-                    Text(L10n.get("onboarding_guide_strava_how")).font(.footnote).foregroundStyle(.secondary)
-                    StravaConnectButton { companion.connectStrava() }
-                    Text(L10n.get("onboarding_guide_place_names_notice")).font(.footnote).foregroundStyle(.secondary)
-                default:
-                    Text(L10n.get("onboarding_guide_diary_title")).font(.title2.bold())
-                    Text(L10n.get("onboarding_guide_diary_body"))
-                    Text(L10n.get("onboarding_guide_diary_how")).font(.footnote).foregroundStyle(.secondary)
-                    Button(L10n.get("onboarding_guide_choose_diary")) { diaryShown = true }
-                        .buttonStyle(.borderedProminent)
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(String(format: L10n.get("onboarding_guide_step"), step + 1, steps))
+                        .font(.footnote).foregroundStyle(.secondary)
+                    ProgressView(value: Double(step + 1), total: Double(steps))
                 }
-                Text(L10n.get("onboarding_guide_later")).font(.footnote).foregroundStyle(.secondary)
-                Spacer()
-                Button(L10n.get(step == steps - 1 ? "common_ok" : "onboarding_guide_not_now")) {
-                    if step == steps - 1 { finish() } else { step += 1 }
+                .padding([.horizontal, .top])
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) { content }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                }
+                Divider()
+                footer.padding()
+            }
+            .navigationDestination(isPresented: $diaryShown) { DiaryLocationsScreen() }
+        }
+    }
+
+    @ViewBuilder private var content: some View {
+        switch step {
+        case 0:
+            Text(L10n.get("onboarding_guide_nickname_title")).font(.title2.bold())
+            Text(L10n.get("onboarding_guide_nickname_body"))
+            TextField("", text: $nickname)
+                .textFieldStyle(.roundedBorder)
+                .onChange(of: nickname) { _, value in nickname = String(value.prefix(20)) }
+            Text(L10n.get("onboarding_guide_nickname_later")).font(.footnote).foregroundStyle(.secondary)
+        case 1:
+            // Demo data or the athlete's own; either can be changed later in Settings > App.
+            Text(L10n.get("onboarding_guide_demo_title")).font(.title2.bold())
+            Text(L10n.get("onboarding_guide_demo_body"))
+            demoChoice(demo: false, title: "onboarding_guide_demo_option_real", subtitle: "onboarding_guide_demo_option_real_sub")
+            demoChoice(demo: true, title: "onboarding_guide_demo_option_demo", subtitle: "onboarding_guide_demo_option_demo_sub")
+            Text(L10n.get("onboarding_guide_demo_later")).font(.footnote).foregroundStyle(.secondary)
+        case 2:
+            // The watch app: ask, then wait until the watch has sent a message (the app sends its
+            // settings at every start). "Next" works only after that. The wrist is asked right there.
+            if watchPhase == 0 {
+                Text(L10n.get("onboarding_guide_watch_ask_title")).font(.title2.bold())
+                Text(L10n.get("onboarding_guide_watch_ask_body"))
+                WatchStoreCard()
+                Text(L10n.get("onboarding_guide_watch_store_hint")).font(.footnote).foregroundStyle(.secondary)
+            } else {
+                Text(L10n.get("onboarding_guide_watch_check_title")).font(.title2.bold())
+                Text(L10n.get("onboarding_guide_watch_check_body"))
+                if companion.watchEverSeen {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(L10n.get("onboarding_guide_watch_ok_title")).font(.headline)
+                        if !companion.watchSeenName.isEmpty { Text(companion.watchSeenName).font(.subheadline) }
+                        Text(L10n.get("onboarding_guide_watch_ok_body")).font(.footnote)
+                    }
+                    .padding().frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.green.opacity(0.15)))
+                    if let watch = wristUnsetWatch {
+                        wristQuestion(watch)
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text(L10n.get("onboarding_guide_watch_waiting")).foregroundStyle(CardTone.blue.title)
+                    }
+                    .padding().frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(CardTone.blue.container))
                 }
             }
+        case 3:
+            // Which wrist the watch is worn on; skipped when no watch reports it as not set.
+            if let watch = wristUnsetWatch {
+                wristQuestion(watch)
+            } else {
+                Color.clear.frame(height: 1).onAppear { next() }
+            }
+        case 4:
+            Text(L10n.get("onboarding_guide_strava_title")).font(.title2.bold())
+            Text(L10n.get("onboarding_guide_strava_body"))
+            Text(L10n.get("onboarding_guide_strava_how")).font(.footnote).foregroundStyle(.secondary)
+            StravaConnectButton { companion.connectStrava() }
+            Text(L10n.get("onboarding_guide_place_names_notice")).font(.footnote).foregroundStyle(.secondary)
+        default:
+            Text(L10n.get("onboarding_guide_diary_title")).font(.title2.bold())
+            Text(L10n.get("onboarding_guide_diary_body"))
+            Text(L10n.get("onboarding_guide_diary_how")).font(.footnote).foregroundStyle(.secondary)
+        }
+        if step == 4 || step == 5 {
+            Text(L10n.get("onboarding_guide_later")).font(.footnote).foregroundStyle(.secondary)
+        }
+    }
+
+    /// The buttons at the bottom: "not now" on the left, the step's main action on the right.
+    @ViewBuilder private var footer: some View {
+        HStack {
+            switch step {
+            case 0:
+                Button(L10n.get("onboarding_guide_not_now")) { next() }
+                Spacer()
+                Button(L10n.get("onboarding_guide_nickname_save")) {
+                    companion.setNickname(nickname)
+                    next()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(nickname.trimmingCharacters(in: .whitespaces).isEmpty)
+            case 1:
+                Spacer()
+                Button(L10n.get("onboarding_guide_watch_continue")) {
+                    if useDemo {
+                        // The simulated watch stands in for the real one: the watch step is skipped.
+                        Task { await companion.loadDemoData(); step += 2 }
+                    } else {
+                        next()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+            case 2:
+                if watchPhase == 0 {
+                    Button(L10n.get("onboarding_guide_not_now")) { next() }
+                    Spacer()
+                    Button(L10n.get("onboarding_guide_watch_have_it")) { watchPhase = 1 }
+                        .buttonStyle(.borderedProminent)
+                } else {
+                    if !companion.watchEverSeen {
+                        Button(L10n.get("onboarding_guide_not_now")) { next() }
+                    }
+                    Spacer()
+                    Button(L10n.get(companion.watchEverSeen ? "onboarding_guide_watch_continue" : "onboarding_guide_watch_next")) { next() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!companion.watchEverSeen)
+                }
+            case 3:
+                Button(L10n.get("onboarding_guide_not_now")) { next() }
+                Spacer()
+            case 4:
+                Button(L10n.get("onboarding_guide_not_now")) { next() }
+                Spacer()
+            default:
+                Button(L10n.get("onboarding_guide_not_now")) { finish() }
+                Spacer()
+                Button(L10n.get("onboarding_guide_choose_diary")) { diaryShown = true }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+    }
+
+    private func demoChoice(demo: Bool, title: String, subtitle: String) -> some View {
+        let selected = useDemo == demo
+        return Button { useDemo = demo } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L10n.get(title)).font(.headline).foregroundStyle(.primary)
+                    Text(L10n.get(subtitle)).font(.footnote).foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
             .padding()
-            .navigationDestination(isPresented: $diaryShown) { DiaryLocationsScreen() }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 12).fill(CardTone.blue.container))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(selected ? Color.accentColor : CardTone.blue.border, lineWidth: selected ? 2 : 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func wristQuestion(_ watch: WatchSettingsView) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L10n.get("onboarding_guide_wrist_title")).font(.title3.bold())
+            Text(L10n.get("onboarding_guide_wrist_body"))
+            HStack(spacing: 12) {
+                ForEach([("watch_option_wrist_left", Int32(1)), ("watch_option_wrist_right", Int32(2))], id: \.1) { label, value in
+                    Button(L10n.get(label)) { chooseWrist(watch, value) }
+                        .buttonStyle(.borderedProminent)
+                }
+            }
         }
     }
 }
@@ -1213,16 +1309,18 @@ private struct LogList: View {
 struct FeedbackScreen: View {
     @EnvironmentObject var companion: Companion
     @Environment(\.dismiss) private var dismiss
-    @State private var category: String
+    private let category: String
 
     /// The activity whose Recording Boost files start out chosen (its reminder was accepted): the form opens on the file picker.
     private let preselectActivityId: String
 
-    /// [startCategory] "wording" opens the form on "Wording / translation" (About > Help improve the translations).
+    /// One form per kind ([FeedbackHubScreen] picks it): [startCategory] "error_report", "feature_request",
+    /// "other", "wording" (About > Help improve the translations) or "boost" (Recording Boost data, which opens on
+    /// the file picker).
     init(startCategory: String = "error_report", preselectActivityId: String = "") {
-        _category = State(initialValue: startCategory)
+        category = startCategory
         self.preselectActivityId = preselectActivityId
-        _showBoostPicker = State(initialValue: !preselectActivityId.isEmpty)
+        _showBoostPicker = State(initialValue: !preselectActivityId.isEmpty || startCategory == "boost")
     }
 
     /// The server's limits (api/feedback.php): 3 to 4000 characters, as Android's form.
@@ -1253,13 +1351,16 @@ struct FeedbackScreen: View {
     @State private var showBoostPicker = false
     @State private var editingBoost: BoostAttached?
     @State private var tooLargeFile: String?
+    @State private var extrasOpen = false
+    /// Whether the form's own Send row is on screen; when it is not, a pinned copy shows at the bottom.
+    @State private var sendVisible = true
 
     private var trimmedEmail: String { email.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var emailValid: Bool {
         trimmedEmail.isEmpty || trimmedEmail.range(of: Self.emailPattern, options: .regularExpression) != nil
     }
     private var wording: Bool { category == "wording" }
-    private var aboutWatch: Bool { !wording && app != "companion" }
+    private var aboutWatch: Bool { !wording && !boost && app != "companion" }
     private var pickedWatch: FeedbackWatchView? {
         aboutWatch && watchIndex >= 0 && watches.indices.contains(watchIndex) ? watches[watchIndex] : nil
     }
@@ -1269,6 +1370,7 @@ struct FeedbackScreen: View {
             otherWatch: otherWatch.trimmingCharacters(in: .whitespacesAndNewlines), latestWatch: latestWatch)
     }
     private var canSend: Bool {
+        if boost { return !attached.isEmpty }
         if wording { return wordingPicked != nil && !wordingProposed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         let length = text.trimmingCharacters(in: .whitespacesAndNewlines).count
         return length >= Self.minMessage && length <= Self.maxMessage
@@ -1281,6 +1383,41 @@ struct FeedbackScreen: View {
         }
     }
 
+    /// The Recording Boost form: its files, an optional note, then the same extras and Send.
+    private var boost: Bool { category == "boost" }
+    /// Error, idea and "something else" ask which app; wording and Boost do not.
+    private var problemForm: Bool { !wording && !boost }
+    private var formTitleKey: String {
+        switch category {
+        case "feature_request": return "feedback_hub_feature"
+        case "other": return "feedback_hub_other"
+        case "wording": return "feedback_category_wording"
+        case "boost": return "feedback_hub_boost"
+        default: return "feedback_hub_error"
+        }
+    }
+    private var extrasSummary: String {
+        String(format: L10n.get("feedback_extras_summary"),
+               L10n.get(includeDetails ? "feedback_extras_on" : "feedback_extras_off"),
+               L10n.get(trimmedEmail.isEmpty ? "feedback_extras_off" : "feedback_extras_on"))
+    }
+
+    /// Send, the last row of the form; the pinned copy below shows only while this one is scrolled out of view.
+    private var sendButton: some View {
+        Button {
+            Task { await send() }
+        } label: {
+            if sending {
+                ProgressView().frame(maxWidth: .infinity)
+            } else {
+                Text(boost ? String(format: L10n.get("feedback_boost_send"), attached.count) : L10n.get("feedback_send"))
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(sending || !canSend || !emailValid)
+    }
+
     var body: some View {
         Form {
             if sent {
@@ -1290,25 +1427,19 @@ struct FeedbackScreen: View {
                     Button(L10n.get("feedback_thanks_done")) { dismiss() }
                 }
             } else {
-                Section { Text(L10n.get("feedback_intro")).font(.footnote) }
-                Section {
-                    Picker(L10n.get("feedback_category_label"), selection: $category) {
-                        Text(L10n.get("feedback_category_error")).tag("error_report")
-                        Text(L10n.get("feedback_category_feature")).tag("feature_request")
-                        Text(L10n.get("feedback_category_other")).tag("other")
-                        Text(L10n.get("feedback_category_wording")).tag("wording")
-                    }
-                    if !wording {
+                if wording {
+                    WordingPicker(entries: wordingEntries, appLanguage: companion.language,
+                                  picked: $wordingPicked, lang: $wordingLang, proposed: $wordingProposed)
+                }
+                if problemForm {
+                    Section {
                         Picker(L10n.get("feedback_app_label"), selection: $app) {
                             Text(L10n.get("feedback_app_watch")).tag("watch")
                             Text(L10n.get("feedback_app_companion")).tag("companion")
                             Text(L10n.get("feedback_app_both")).tag("both")
                         }
+                        .pickerStyle(.segmented)
                     }
-                }
-                if wording {
-                    WordingPicker(entries: wordingEntries, appLanguage: companion.language,
-                                  picked: $wordingPicked, lang: $wordingLang, proposed: $wordingProposed)
                 }
                 if aboutWatch {
                     // "Which watch?": the watches seen so far plus "Other watch" with a model field,
@@ -1331,16 +1462,20 @@ struct FeedbackScreen: View {
                         }
                     }
                 }
+                if boost {
+                    FeedbackBoostSection(attached: $attached, tooLargeFile: tooLargeFile,
+                                         showPicker: $showBoostPicker, editing: $editingBoost)
+                }
                 Section {
                     ZStack(alignment: .topLeading) {
-                        if text.isEmpty && !wording {
+                        if text.isEmpty && problemForm {
                             Text(L10n.get(hintKey))
                                 .foregroundStyle(.tertiary)
                                 .padding(.top, 8)
                                 .padding(.leading, 5)
                                 .allowsHitTesting(false)
                         }
-                        TextEditor(text: $text).frame(minHeight: 140)
+                        TextEditor(text: $text).frame(minHeight: boost ? 80 : 140)
                     }
                     .onChange(of: text) { _, value in
                         if value.count > Self.maxMessage { text = String(value.prefix(Self.maxMessage)) }
@@ -1348,58 +1483,63 @@ struct FeedbackScreen: View {
                 } header: {
                     Text(L10n.get(wording ? "feedback_wording_reason" : "feedback_message_label"))
                 } footer: {
-                    if !wording { Text("\(text.count) / \(Self.maxMessage)") }
+                    if problemForm { Text("\(text.count) / \(Self.maxMessage)") }
                 }
-                if !companion.nickname.isEmpty {
-                    Section {
-                        Toggle(L10n.get("feedback_nickname_switch"), isOn: $includeNickname)
-                        Text(String(format: L10n.get(includeNickname ? "feedback_nickname_on" : "feedback_nickname_off"), companion.nickname))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                if !wording {
-                    FeedbackBoostSection(attached: $attached, tooLargeFile: tooLargeFile,
-                                         showPicker: $showBoostPicker, editing: $editingBoost)
-                }
-                Section(L10n.get("feedback_email_label")) {
-                    TextField("", text: $email)
-                        .keyboardType(.emailAddress)
-                        .textContentType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .onChange(of: email) { _, value in
-                            if value.count > 254 { email = String(value.prefix(254)) }
-                        }
-                    Text(L10n.get(emailValid ? "feedback_email_hint" : "feedback_email_invalid"))
-                        .font(.footnote)
-                        .foregroundStyle(emailValid ? Color.secondary : Color.red)
-                }
+                // Technical details, reply e-mail and nickname: folded away, one line says what is on.
                 Section {
-                    Toggle(L10n.get("feedback_details_switch"), isOn: $includeDetails)
-                    // Listed in full, so the athlete sees exactly what would be sent.
-                    if includeDetails {
-                        ForEach(detailLines, id: \.self) { line in
-                            Text("\(line.label): \(line.value)").font(.footnote).foregroundStyle(.secondary)
+                    DisclosureGroup(isExpanded: $extrasOpen) {
+                        if !companion.nickname.isEmpty {
+                            Toggle(L10n.get("feedback_nickname_switch"), isOn: $includeNickname)
+                            Text(String(format: L10n.get(includeNickname ? "feedback_nickname_on" : "feedback_nickname_off"), companion.nickname))
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
-                    } else {
-                        Text(L10n.get("feedback_details_off")).font(.footnote).foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(L10n.get("feedback_email_label")).font(.subheadline.weight(.semibold))
+                            TextField("", text: $email)
+                                .keyboardType(.emailAddress)
+                                .textContentType(.emailAddress)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .onChange(of: email) { _, value in
+                                    if value.count > 254 { email = String(value.prefix(254)) }
+                                }
+                            Text(L10n.get(emailValid ? "feedback_email_hint" : "feedback_email_invalid"))
+                                .font(.footnote)
+                                .foregroundStyle(emailValid ? Color.secondary : Color.red)
+                        }
+                        Toggle(L10n.get("feedback_details_switch"), isOn: $includeDetails)
+                        // Listed in full, so the athlete sees exactly what would be sent.
+                        if includeDetails {
+                            ForEach(detailLines, id: \.self) { line in
+                                Text("\(line.label): \(line.value)").font(.footnote).foregroundStyle(.secondary)
+                            }
+                        } else {
+                            Text(L10n.get("feedback_details_off")).font(.footnote).foregroundStyle(.secondary)
+                        }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L10n.get("feedback_extras_title"))
+                            Text(extrasSummary).font(.footnote).foregroundStyle(.secondary)
+                        }
                     }
                 }
                 if let error {
                     Section { Text(error).foregroundStyle(.red) }
                 }
                 Section {
-                    Button {
-                        Task { await send() }
-                    } label: {
-                        if sending { ProgressView() } else { Text(L10n.get("feedback_send")) }
-                    }
-                    .disabled(sending || !canSend || !emailValid)
+                    sendButton
+                        .onAppear { sendVisible = true }
+                        .onDisappear { sendVisible = false }
                 }
             }
         }
-        .navigationTitle(L10n.get("feedback_title"))
+        .safeAreaInset(edge: .bottom) {
+            if !sent && !sendVisible {
+                sendButton.padding().background(.bar)
+            }
+        }
+        .navigationTitle(L10n.get(formTitleKey))
         .sheet(isPresented: $showBoostPicker) {
             FeedbackBoostPickerSheet(
                 attachedKeys: Set(attached.map { $0.id }),
@@ -1434,6 +1574,13 @@ struct FeedbackScreen: View {
         var sendCategory = category
         var sendText = text
         var extra: [String: String] = [:]
+        if boost {
+            // Like Android: the server wants 3 to 4000 characters, so the message says what is attached.
+            let note = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            sendApp = "watch"
+            sendCategory = "other"
+            sendText = "Recording Boost data: \(attached.count) \(attached.count == 1 ? "file" : "files")" + (note.isEmpty ? "" : "\n" + note)
+        }
         if wording, let entry = wordingPicked {
             let composed = WordingFeedback.compose(
                 entry: entry, lang: wordingLang, current: entry.texts[wordingLang] ?? "",
@@ -1447,7 +1594,7 @@ struct FeedbackScreen: View {
         let result = await companion.sendFeedback(
             category: sendCategory, app: sendApp, text: sendText, email: trimmedEmail,
             details: includeDetails ? detailLines : [], includeNickname: includeNickname, extraDetails: extra,
-            attachments: wording ? [] : attached
+            attachments: boost ? attached : []
         )
         sending = false
         if result.hasPrefix("tooLarge:") {
@@ -1459,6 +1606,48 @@ struct FeedbackScreen: View {
         case "tooMany": error = L10n.get("feedback_error_too_many")
         default: error = L10n.get("feedback_error_failed")
         }
+    }
+}
+
+/// "What do you want to tell us?": one row per kind of feedback, each opening its own short form
+/// (Android's FeedbackHub). Recording Boost data is its own top-level kind, with the number of
+/// activities waiting for a decision.
+struct FeedbackHubScreen: View {
+    @EnvironmentObject var companion: Companion
+
+    private func row(_ symbol: String, _ key: String, badge: String? = nil) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol).frame(width: 28).foregroundStyle(CardTone.blue.title)
+            Text(L10n.get(key))
+            Spacer()
+            if let badge { Text(badge).font(.footnote).foregroundStyle(.secondary) }
+        }
+    }
+
+    var body: some View {
+        List {
+            Section { Text(L10n.get("feedback_intro")).font(.footnote) }
+            Section {
+                NavigationLink { FeedbackScreen(startCategory: "error_report") } label: {
+                    row("exclamationmark.triangle", "feedback_hub_error")
+                }
+                NavigationLink { FeedbackScreen(startCategory: "feature_request") } label: {
+                    row("lightbulb", "feedback_hub_feature")
+                }
+                NavigationLink { FeedbackScreen(startCategory: "boost") } label: {
+                    row("waveform.path.ecg", "feedback_hub_boost",
+                        badge: companion.boostReminders.isEmpty ? nil
+                            : String(format: L10n.get("feedback_hub_waiting"), companion.boostReminders.count))
+                }
+                NavigationLink { FeedbackScreen(startCategory: "wording") } label: {
+                    row("character.bubble", "feedback_category_wording")
+                }
+                NavigationLink { FeedbackScreen(startCategory: "other") } label: {
+                    row("envelope", "feedback_hub_other")
+                }
+            }
+        }
+        .navigationTitle(L10n.get("feedback_title"))
     }
 }
 

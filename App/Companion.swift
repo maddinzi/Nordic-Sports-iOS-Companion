@@ -43,10 +43,13 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var watchEverSeen = false
     @Published private(set) var watchSeenName = ""
     @Published private(set) var watchReminderVisible = false
+    @Published private(set) var diaryTipVisible = false
     /// Activities with Recording Boost files nobody decided about: a card each on the activity list.
     @Published private(set) var boostReminders: [FeedbackBoostReminderView] = []
     @Published private(set) var nickname = ""
     @Published private(set) var placeNamesEnabled = true
+    /// The demo mode is on (Settings > App > Demo mode): sample activities and a simulated watch.
+    @Published private(set) var demoOn = false
     @Published private(set) var stravaUpdateMyActivities = true
     @Published private(set) var stravaIncludeOtherDevices = true
     @Published private(set) var reviewNewActivities = true
@@ -170,6 +173,7 @@ final class Companion: NSObject, ObservableObject {
         await refreshFolderDestinations()
         do {
             activities = try await core.activities(limit: 300)
+            demoOn = core.demoEnabled()
             syncStatus = try await core.syncStatus(nowEpochMillis: Int64(Date().timeIntervalSince1970 * 1000))
         } catch {
             report(error)
@@ -1015,25 +1019,30 @@ final class Companion: NSObject, ObservableObject {
     func refreshWatchLink() {
         watchEverSeen = core.watchEverSeen()
         watchSeenName = core.watchSeenName()
-        watchReminderVisible = core.watchReminderVisible(today: Self.todayISO())
+        watchReminderVisible = core.watchReminderVisible()
+        diaryTipVisible = core.diaryTipVisible()
     }
 
-    /// The reminder is hidden for the rest of today.
-    func closeWatchReminder() {
-        core.closeWatchReminder(today: Self.todayISO())
+    /// The setup tips on the activity list (a watch never seen, a diary never connected): the demo
+    /// mode's simulated watch stands in for both, so none shows then.
+    var showWatchTip: Bool { watchReminderVisible && !demoOn }
+    var showDiaryTip: Bool { diaryTipVisible && !demoOn }
+    var showSetupTip: Bool { showWatchTip || showDiaryTip }
+
+    /// The athlete dismissed the watch tip: it stays away.
+    func dismissWatchReminder() {
+        core.dismissWatchReminder()
+        refreshWatchLink()
+    }
+
+    func dismissDiaryTip() {
+        core.dismissDiaryTip()
         refreshWatchLink()
     }
 
     /// The watch app's Connect IQ Store page (the public listing).
     func openWatchStore() {
         if let url = URL(string: core.watchStoreUrl()) { UIApplication.shared.open(url) }
-    }
-
-    private static func todayISO() -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: Date())
     }
 
     /// The Recording Boost bursts captured during an activity (the detail's count and list).
@@ -1063,6 +1072,20 @@ final class Companion: NSObject, ObservableObject {
     func setNickname(_ value: String) {
         nickname = core.setNickname(value: value)
         refreshWatchSettings()
+    }
+
+    /// Demo mode on: the sample activities and the simulated watch (a reload refreshes their dates), for anyone without a Garmin watch.
+    func loadDemoData() async {
+        do { _ = try await core.loadDemoData() } catch { report(error) }
+        refreshWatchSettings()
+        await refresh()
+    }
+
+    /// Demo mode off: both are removed again.
+    func removeDemoData() async {
+        do { try await core.removeDemoData() } catch { report(error) }
+        refreshWatchSettings()
+        await refresh()
     }
 
     func setReviewNewActivities(_ on: Bool) {
