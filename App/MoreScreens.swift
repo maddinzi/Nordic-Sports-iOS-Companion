@@ -1802,40 +1802,180 @@ struct AddActivitySheet: View {
 
 // MARK: - Edit an activity
 
-/// Android's detail-screen edits that matter most on the go: name, training type, RPE,
-/// feeling, diary comment and corrected duration/distance. Saving is the review.
+/// Android's review screen, field for field (the same shared rules, `ReviewFields`): name, sport
+/// and style, training type, the numbers and their corrections, both splits, effort, comment,
+/// feeling, note and equipment. Saving is the review.
 struct EditActivitySheet: View {
     @EnvironmentObject var companion: Companion
     @Environment(\.dismiss) private var dismiss
     let item: ActivityItem
     @State private var title: String
     @State private var trainingType: String
+    @State private var sport: SportArt
+    @State private var style: SportStyle
     @State private var rpe: Int
     @State private var feeling: Int
     @State private var comment: String
-    @State private var minutes: String
-    @State private var kilometers: String
+    @State private var note: String
+    @State private var durationText: String
+    @State private var distanceText: String
+    @State private var hrText: String
+    /// The seven intensity fields (HR zones 1 to 5, Wettkampf, Schnelligkeit); the measured split shows until edited.
+    @State private var intensityTexts: [String]
+    @State private var intensityEdited: Bool
+    /// The Trainingsmittel fields [main, sub]; the whole session in one row shows until edited.
+    @State private var disciplineTexts: [String]
+    @State private var disciplineEdited: Bool
+    @State private var wheelType: Int
+    @State private var waxType: Int
     @State private var stravaDescriptionMode: Int32
     /// The Strava title and sport type the athlete chose; nil = not chosen (the rule's, or a renamed title).
     @State private var stravaTitle: String?
     @State private var stravaSportType: String?
     @State private var saving = false
+    /// The Trainingsmittel pair the stored split was made for: it applies only while the pair stays the same.
+    private let initialPair: [String]
 
     init(item: ActivityItem) {
         self.item = item
         _title = State(initialValue: item.title)
         _trainingType = State(initialValue: item.trainingType)
+        _sport = State(initialValue: item.sportArt)
+        _style = State(initialValue: item.sportStyle)
         _rpe = State(initialValue: Int(item.rpe))
         _feeling = State(initialValue: Int(item.feeling))
         // The diary description starts with the activity title, editable like the rest.
         _comment = State(initialValue: Self.commentWithTitle(item.title, item.diaryComment))
-        _minutes = State(initialValue: item.overrideElapsedSec > 0 ? String(item.overrideElapsedSec / 60) : "")
-        _kilometers = State(initialValue: item.overrideDistanceM > 0 ? String(format: "%.1f", Double(item.overrideDistanceM) / 1000) : "")
+        _note = State(initialValue: item.note)
+        let measured = item.elapsedSec
+        _durationText = State(initialValue: DiaryFields.shared.formatDuration(totalSeconds: item.overrideElapsedSec > 0 ? item.overrideElapsedSec : measured))
+        _distanceText = State(initialValue: Self.km(item.overrideDistanceM > 0 ? item.overrideDistanceM : item.distanceM))
+        _hrText = State(initialValue: Self.bpm(item.overrideAvgHeartRate > 0 ? item.overrideAvgHeartRate : item.avgHeartRate))
+        _intensityEdited = State(initialValue: !item.intensityMinutes.isEmpty)
+        _intensityTexts = State(initialValue: item.intensityMinutes.isEmpty
+            ? Array(repeating: "", count: 7) : item.intensityMinutes.map { String(Int($0.floatValue.rounded())) })
+        let pair = ReviewFields.shared.disciplinePair(preset: Self.livePreset(item, item.sportArt, item.sportStyle), trainingType: item.trainingType)
+        initialPair = pair
+        _disciplineEdited = State(initialValue: !item.disciplineMinutes.isEmpty)
+        _disciplineTexts = State(initialValue: item.disciplineMinutes.count == 2
+            ? item.disciplineMinutes.map { String(Int($0.floatValue.rounded())) } : ["", ""])
+        _wheelType = State(initialValue: Int(item.wheelType))
+        _waxType = State(initialValue: Int(item.waxType))
         _stravaDescriptionMode = State(initialValue: Int32(item.stravaDescriptionMode))
     }
 
+    // MARK: Values
+
+    /// The preset the chosen Sportart and Sportstil make; a row without a preset (Strava origin) keeps none.
+    private static func livePreset(_ item: ActivityItem, _ sport: SportArt, _ style: SportStyle) -> String {
+        item.preset.isEmpty ? item.preset : sport.presetFor(style: style)
+    }
+
+    private static func km(_ meters: Float) -> String { meters <= 0 ? "" : String(format: "%.2f", Double(meters) / 1000) }
+    private static func bpm(_ value: Int32) -> String { value > 0 ? String(value) : "" }
+    private static func blank(_ text: String) -> Bool { text.trimmingCharacters(in: .whitespaces).isEmpty }
+    private static func digits(_ text: String, max: Int) -> String { String(text.filter(\.isNumber).prefix(max)) }
+
+    private var livePreset: String { Self.livePreset(item, sport, style) }
+
+    private var measuredSeconds: Int { Int(item.elapsedSec) }
+    private var durationSeconds: Int? { DiaryFields.shared.parseDuration(text: durationText)?.intValue }
+    private var durationInvalid: Bool { !Self.blank(durationText) && durationSeconds == nil }
+    /// 0 = as measured.
+    private var durationOverride: Int {
+        if let seconds = durationSeconds, seconds != measuredSeconds { return seconds }
+        return 0
+    }
+
+    private var distanceChanged: Bool { !Self.blank(distanceText) && distanceText != Self.km(item.distanceM) }
+    private var distanceOverrideM: Float {
+        distanceChanged ? (DiaryFields.shared.parseDistanceKm(text: distanceText)?.floatValue ?? 0) : 0
+    }
+    private var distanceInvalid: Bool { distanceChanged && distanceOverrideM == 0 }
+
+    private var hrChanged: Bool { !Self.blank(hrText) && hrText != Self.bpm(item.avgHeartRate) }
+    private var hrOverride: Int32 {
+        guard hrChanged, let value = Int32(hrText), Int(value) >= 30, Int(value) <= 250 else { return 0 }
+        return value
+    }
+    private var hrInvalid: Bool { hrChanged && hrOverride == 0 }
+
+    /// The duration after the diary's rounding up to 5 minutes (when it rounds): the corrected one, else the measured one.
+    private var roundedSeconds: Int32 {
+        DiaryFields.shared.diaryDurationSec(durationSec: Int32(durationSeconds ?? measuredSeconds),
+                                            roundUp: companion.diarySettings.roundDurationUp)
+    }
+    /// The minutes both splits add up to.
+    private var totalMinutes: Int { Int(DiaryFields.shared.diaryMinutes(elapsedTimeSec: roundedSeconds)) }
+
+    // Intensity split
+    private var measuredSplit: [Int] {
+        DiaryFields.shared.distribute(shares: item.measuredIntensityShares, total: Int32(totalMinutes)).map { $0.intValue }
+    }
+    private var shownIntensityTexts: [String] {
+        if intensityEdited { return intensityTexts }
+        return measuredSplit.reduce(0, +) > 0 ? measuredSplit.map { String($0) } : Array(repeating: "", count: 7)
+    }
+    private var intensityCheck: SplitCheck {
+        ReviewFields.shared.intensityCheck(texts: shownIntensityTexts, edited: intensityEdited, totalMinutes: Int32(totalMinutes),
+                                           measured: measuredSplit.map { KotlinInt(int: Int32($0)) })
+    }
+
+    // Trainingsmittel split
+    private var disciplinePair: [String] {
+        ReviewFields.shared.disciplinePair(preset: livePreset, trainingType: trainingType)
+    }
+    private var defaultDiscipline: [Int] {
+        ReviewFields.shared.defaultDisciplineMinutes(preset: livePreset, trainingType: trainingType, totalMinutes: Int32(totalMinutes)).map { $0.intValue }
+    }
+    private var shownDisciplineTexts: [String] { disciplineEdited ? disciplineTexts : defaultDiscipline.map { String($0) } }
+    private var disciplineCheck: SplitCheck {
+        ReviewFields.shared.disciplineCheck(texts: shownDisciplineTexts, edited: disciplineEdited, hasPair: !disciplinePair.isEmpty,
+                                            totalMinutes: Int32(totalMinutes), default: defaultDiscipline.map { KotlinInt(int: Int32($0)) })
+    }
+    /// The watch's own guess for the sub-row, offered with one tap.
+    private var suggestedSub: Int? {
+        guard disciplinePair.count == 2 else { return nil }
+        let suggested = DiaryFields.shared.suggestedSubMinutes(
+            subKey: disciplinePair[1], techniqueCatalog: item.techniqueCatalog,
+            techniqueSharePercent: item.techniqueSharePercent, totalMinutes: Int32(totalMinutes))?.intValue
+        return suggested == disciplineCheck.values[1].intValue ? nil : suggested
+    }
+
+    private var inputInvalid: Bool {
+        durationInvalid || distanceInvalid || hrInvalid || intensityCheck.invalid || disciplineCheck.invalid
+    }
+
+    private func setIntensity(_ index: Int, _ text: String) {
+        if !intensityEdited {
+            intensityTexts = shownIntensityTexts
+            intensityEdited = true
+        }
+        intensityTexts[index] = Self.digits(text, max: 4)
+    }
+
+    private func setDiscipline(_ index: Int, _ text: String) {
+        if !disciplineEdited {
+            disciplineTexts = shownDisciplineTexts
+            disciplineEdited = true
+        }
+        let clean = Self.digits(text, max: 4)
+        disciplineTexts[index] = clean
+        // The other field takes the rest of the duration.
+        if let value = Int(clean) { disciplineTexts[1 - index] = String(max(0, totalMinutes - value)) }
+    }
+
+    /// A pair change (another sport, style or training type) starts the split afresh; the stored one applies to its own pair only.
+    private func resetDisciplineForPair() {
+        let stored = item.disciplineMinutes.count == 2 && disciplinePair == initialPair
+        disciplineEdited = stored
+        disciplineTexts = stored ? item.disciplineMinutes.map { String(Int($0.floatValue.rounded())) } : ["", ""]
+    }
+
+    // MARK: Pieces
+
     private var trainingOptions: [(String, String)] {
-        item.preset == "strength"
+        sport == .strength
             ? [("hypertrophy", "activity_detail_training_option_hypertrophy"),
                ("speedStrength", "activity_detail_training_option_speed_strength"),
                ("strengthEndurance", "activity_detail_training_option_strength_endurance")]
@@ -1844,6 +1984,11 @@ struct EditActivitySheet: View {
                ("technique", "activity_detail_training_option_technique"),
                ("sprints", "activity_detail_training_option_sprints")]
     }
+
+    private static let sports: [SportArt] = [
+        .langlauf, .rollski, .laufen, .stocklauf, .inlineskaten, .cycling, .mtb, .swimming, .sup, .strength, .training, .other,
+    ]
+    private static let styles: [SportStyle] = [.skating, .klassisch, .doppelstock]
 
     /// [comment] with [title] as its beginning; [replacing] is the title it now starts with, swapped for [title].
     static func commentWithTitle(_ title: String, _ comment: String, replacing: String? = nil) -> String {
@@ -1872,13 +2017,6 @@ struct EditActivitySheet: View {
             .accessibilityLabel(label)
     }
 
-    /// The duration after the diary's rounding up to 5 minutes (when it rounds): the corrected one, else the measured one.
-    private var roundedSeconds: Int {
-        let entered = (Int(minutes) ?? 0) * 60
-        let seconds = entered > 0 ? entered : Int(item.elapsedSec)
-        return companion.diarySettings.roundDurationUp ? (seconds + 299) / 300 * 300 : seconds
-    }
-
     /// The tint of the rows the diary entry is built from (the same yellow as the review box on the detail screen).
     private static let diaryRow = CardTone.yellow.container
 
@@ -1887,6 +2025,144 @@ struct EditActivitySheet: View {
         "activity_detail_feeling_option_weak", "activity_detail_feeling_option_normal",
         "activity_detail_feeling_option_good", "activity_detail_feeling_option_very_good",
     ]
+
+    private static let wheelOptions = [
+        "activity_detail_wheel_option_na", "activity_detail_wheel_option_fast", "activity_detail_wheel_option_standard",
+        "activity_detail_wheel_option_slow", "activity_detail_wheel_option_super_slow",
+    ]
+    private static let waxOptions = [
+        "activity_detail_wax_option_na", "activity_detail_wax_option_klister",
+        "activity_detail_wax_option_trockenwachs", "activity_detail_wax_option_nowax",
+    ]
+
+    /// One corrected number: its field, the measured value it falls back to, and what the value is.
+    private func overrideRow(
+        _ label: String, text: Binding<String>, suffix: String, keyboard: UIKeyboardType,
+        measured: String, overridden: Bool, invalid: Bool, reset: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            LabeledContent(label) {
+                TextField(measured, text: text)
+                    .keyboardType(keyboard)
+                    .multilineTextAlignment(.trailing)
+                    .foregroundStyle(invalid ? Color.red : Color.primary)
+                if !suffix.isEmpty { Text(suffix).foregroundStyle(.secondary) }
+                if overridden || invalid {
+                    Button(action: reset) { Image(systemName: "arrow.counterclockwise") }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel(L10n.get("activity_detail_override_reset"))
+                }
+            }
+            Text(invalid ? L10n.get("activity_detail_override_invalid")
+                 : overridden ? String(format: L10n.get("activity_detail_override_changed"), measured.isEmpty ? "-" : measured)
+                 : !measured.isEmpty ? L10n.get("activity_detail_override_measured")
+                 : L10n.get("activity_detail_override_not_measured"))
+                .font(.caption)
+                .foregroundStyle(invalid ? Color.red : Color.secondary)
+        }
+    }
+
+    /// A small minutes box of a split.
+    private func minutesBox(_ label: String, text: Binding<String>, invalid: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            TextField("0", text: text)
+                .keyboardType(.numberPad)
+                .textFieldStyle(.roundedBorder)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(invalid ? Color.red : Color.clear, lineWidth: 1))
+        }
+    }
+
+    private var intensitySplit: some View {
+        let check = intensityCheck
+        let changed = check.overrideMinutes != nil
+        let zones = Array(measuredSplit.prefix(5))
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(L10n.get("activity_detail_intensity_split_label")).font(.subheadline)
+                Spacer()
+                if changed || check.invalid {
+                    Button { intensityEdited = false } label: { Image(systemName: "arrow.counterclockwise") }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel(L10n.get("activity_detail_override_reset"))
+                }
+            }
+            // The diary's order: Wettkampf and Schnelligkeit on top, then the zones.
+            HStack(spacing: 6) {
+                ForEach([5, 6], id: \.self) { index in
+                    minutesBox(L10n.get(index == 5 ? "activity_detail_intensity_wettkampf" : "activity_detail_intensity_schnelligkeit"),
+                               text: Binding(get: { shownIntensityTexts[index] }, set: { setIntensity(index, $0) }),
+                               invalid: check.invalid)
+                }
+            }
+            HStack(spacing: 6) {
+                ForEach(0..<5, id: \.self) { zone in
+                    minutesBox(String(format: L10n.get("activity_detail_hr_zone_short"), zone + 1),
+                               text: Binding(get: { shownIntensityTexts[zone] }, set: { setIntensity(zone, $0) }),
+                               invalid: check.invalid)
+                }
+            }
+            Text(check.invalid && Int(check.sum) != totalMinutes
+                 ? String(format: L10n.get("activity_detail_intensity_split_mismatch"), Int(check.sum), totalMinutes)
+                 : check.invalid ? L10n.get("activity_detail_override_invalid")
+                 : changed ? String(format: L10n.get("activity_detail_intensity_split_changed"),
+                                    zones.reduce(0, +) > 0 ? zones.map { String($0) }.joined(separator: " / ") : "-")
+                 : measuredSplit.contains(where: { $0 > 0 }) ? L10n.get("activity_detail_override_measured")
+                 : L10n.get("activity_detail_intensity_split_none"))
+                .font(.caption)
+                .foregroundStyle(check.invalid ? Color.red : Color.secondary)
+            Text(L10n.get("activity_detail_intensity_split_info")).font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var disciplineSplit: some View {
+        if disciplinePair.count == 2 {
+            let check = disciplineCheck
+            let labels = ReviewFields.shared.disciplineLabelKeys(subDisciplineKey: disciplinePair[1])
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(L10n.get("activity_detail_discipline_split_label")).font(.subheadline)
+                    Spacer()
+                    if check.overrideMinutes != nil || check.invalid {
+                        Button { disciplineEdited = false } label: { Image(systemName: "arrow.counterclockwise") }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel(L10n.get("activity_detail_override_reset"))
+                    }
+                }
+                HStack(spacing: 6) {
+                    ForEach(0..<2, id: \.self) { index in
+                        minutesBox(L10n.get(labels[index]) + " (min)",
+                                   text: Binding(get: { shownDisciplineTexts[index] }, set: { setDiscipline(index, $0) }),
+                                   invalid: check.invalid)
+                    }
+                }
+                Text(check.invalid && Int(check.sum) != totalMinutes
+                     ? String(format: L10n.get("activity_detail_intensity_split_mismatch"), Int(check.sum), totalMinutes)
+                     : check.invalid ? L10n.get("activity_detail_override_invalid")
+                     : check.overrideMinutes != nil ? L10n.get("activity_detail_discipline_split_changed")
+                     : L10n.get("activity_detail_discipline_split_default"))
+                    .font(.caption)
+                    .foregroundStyle(check.invalid ? Color.red : Color.secondary)
+                if let suggested = suggestedSub {
+                    HStack {
+                        Text(String(format: L10n.get("activity_detail_discipline_split_suggestion"), suggested))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button(L10n.get("activity_detail_discipline_split_apply")) {
+                            disciplineTexts = [String(totalMinutes - suggested), String(suggested)]
+                            disciplineEdited = true
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+                Text(L10n.get("activity_detail_discipline_split_info")).font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: Body
 
     var body: some View {
         NavigationStack {
@@ -1898,22 +2174,108 @@ struct EditActivitySheet: View {
                             // The title leads the diary description: renaming it renames that part too.
                             comment = Self.commentWithTitle(new, comment, replacing: old)
                         }
+                    Picker(L10n.get("activity_detail_sport_label"), selection: $sport) {
+                        ForEach(Self.sports, id: \.self) { Text(L10n.get($0.optionKey)).tag($0) }
+                    }
+                    .onChange(of: sport) { _, _ in resetDisciplineForPair() }
+                    Text(String(format: L10n.get("activity_detail_sport_garmin_hint"), L10n.get(sport.garminKey)))
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text(String(format: L10n.get("activity_detail_sport_strava_hint"), L10n.get(sport.stravaKey)))
+                        .font(.caption).foregroundStyle(.secondary)
+                    if sport.hasStyle {
+                        Picker(L10n.get("activity_detail_style_label"), selection: $style) {
+                            ForEach(Self.styles, id: \.self) { Text(L10n.get($0.optionKey)).tag($0) }
+                        }
+                        .onChange(of: style) { _, _ in resetDisciplineForPair() }
+                        Text(String(format: L10n.get("activity_detail_style_garmin_hint"), L10n.get(style.garminKey)))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     Picker(L10n.get("activity_detail_training_type_label"), selection: $trainingType) {
                         ForEach(trainingOptions, id: \.0) { option in Text(L10n.get(option.1)).tag(option.0) }
                         if !trainingOptions.contains(where: { $0.0 == trainingType }) {
                             Text(Format.trainingTypeWord(trainingType)).tag(trainingType)
                         }
                     }
+                    .onChange(of: trainingType) { _, _ in resetDisciplineForPair() }
                 } header: {
-                    Text(L10n.get("activity_detail_diary_card_title"))
+                    Text(L10n.get("detail_group_activity"))
                 }
                 .listRowBackground(Self.diaryRow)
-                Section(L10n.get("detail_group_effort")) {
+                Section {
+                    overrideRow(L10n.get("activity_detail_duration_label"), text: $durationText, suffix: "", keyboard: .numbersAndPunctuation,
+                                measured: DiaryFields.shared.formatDuration(totalSeconds: item.elapsedSec),
+                                overridden: durationOverride != 0, invalid: durationInvalid) {
+                        durationText = DiaryFields.shared.formatDuration(totalSeconds: item.elapsedSec)
+                    }
+                    // What the diary books after its rounding; the splits below add up to it.
+                    LabeledContent(L10n.get("activity_detail_rounded_duration_label"), value: Format.duration(roundedSeconds))
+                    overrideRow(L10n.get("activity_detail_distance_label"), text: $distanceText, suffix: "km", keyboard: .decimalPad,
+                                measured: Self.km(item.distanceM), overridden: distanceOverrideM > 0, invalid: distanceInvalid) {
+                        distanceText = Self.km(item.distanceM)
+                    }
+                    overrideRow(L10n.get("activity_detail_avg_hr_label"), text: $hrText, suffix: "bpm", keyboard: .numberPad,
+                                measured: Self.bpm(item.avgHeartRate), overridden: hrOverride > 0, invalid: hrInvalid) {
+                        hrText = Self.bpm(item.avgHeartRate)
+                    }
+                } header: {
+                    Text(L10n.get("detail_group_numbers"))
+                }
+                .listRowBackground(Self.diaryRow)
+                Section {
+                    intensitySplit
+                    disciplineSplit
+                } header: {
+                    Text(L10n.get("detail_group_split"))
+                }
+                .listRowBackground(Self.diaryRow)
+                .onChange(of: totalMinutes) { _, total in
+                    // A changed duration keeps the athlete's sub-row minutes; the main row takes the rest.
+                    if disciplineEdited, let sub = Int(disciplineTexts[1]), sub <= total { disciplineTexts[0] = String(total - sub) }
+                }
+                Section {
                     Picker(L10n.get("activity_detail_rpe_label"), selection: $rpe) {
                         ForEach(0...10, id: \.self) { value in Text(value == 0 ? "–" : "\(value)").tag(value) }
                     }
+                    if let load = DiaryFields.shared.fosterLoad(rpe: Int32(rpe), elapsedTimeSec: roundedSeconds)?.intValue {
+                        Text(String(format: L10n.get("activity_detail_foster_load"), load))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(L10n.get("activity_detail_diary_comment_label")).font(.caption).foregroundStyle(.secondary)
+                        TextEditor(text: $comment).frame(minHeight: 80)
+                    }
+                } header: {
+                    Text(L10n.get("detail_group_effort"))
                 }
                 .listRowBackground(Self.diaryRow)
+                Section(L10n.get("activity_detail_section_feeling")) {
+                    Picker(L10n.get("activity_detail_feeling_label"), selection: $feeling) {
+                        ForEach(Self.feelings.indices, id: \.self) { index in Text(L10n.get(Self.feelings[index])).tag(index) }
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(L10n.get("activity_detail_note_label")).font(.caption).foregroundStyle(.secondary)
+                        TextEditor(text: $note).frame(minHeight: 70)
+                    }
+                }
+                .listRowBackground(CardTone.red.container)
+                // Wheel only applies to rollerski presets, wax to Langlauf Classic; both show for an unknown preset or a stored value.
+                let showWheel = EquipmentLabels.shared.showsWheel(preset: livePreset, wheelType: Int32(wheelType))
+                let showWax = EquipmentLabels.shared.showsWax(preset: livePreset, waxType: Int32(waxType))
+                if showWheel || showWax {
+                    Section(L10n.get("activity_detail_section_equipment")) {
+                        if showWheel {
+                            Picker(L10n.get("activity_detail_wheel_label"), selection: $wheelType) {
+                                ForEach(Self.wheelOptions.indices, id: \.self) { Text(L10n.get(Self.wheelOptions[$0])).tag($0) }
+                            }
+                        }
+                        if showWax {
+                            Picker(L10n.get("activity_detail_wax_label"), selection: $waxType) {
+                                ForEach(Self.waxOptions.indices, id: \.self) { Text(L10n.get(Self.waxOptions[$0])).tag($0) }
+                            }
+                        }
+                    }
+                    .listRowBackground(CardTone.purple.container)
+                }
                 if let preview = item.stravaPreview {
                     // PRIVACY-SYNC: the athlete selects how much generated analysis to send, or removes our blocks.
                     let selectedPreview = preview.withMode(mode: stravaDescriptionMode)
@@ -1999,39 +2361,6 @@ struct EditActivitySheet: View {
                     }
                     .listRowBackground(CardTone.orange.container)
                 }
-                Section(L10n.get("activity_detail_diary_comment_label")) {
-                    TextEditor(text: $comment).frame(minHeight: 80)
-                }
-                .listRowBackground(Self.diaryRow)
-                Section {
-                    LabeledContent(L10n.get("activity_detail_duration_label")) {
-                        TextField(Format.duration(item.elapsedSec), text: $minutes)
-                            .keyboardType(.numberPad)
-                            .multilineTextAlignment(.trailing)
-                        Text("min").foregroundStyle(.secondary)
-                        // What the diary books after its rounding (the shared DiaryEntryBuilder rounds the corrected duration too).
-                        Text("\(L10n.get("activity_detail_rounded_duration_label")) \(Format.duration(Int32(roundedSeconds)))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    LabeledContent(L10n.get("activity_detail_distance_label")) {
-                        TextField(item.distanceM > 0 ? String(format: "%.1f", Double(item.distanceM) / 1000) : "0", text: $kilometers)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                        Text("km").foregroundStyle(.secondary)
-                    }
-                } header: {
-                    Text(L10n.get("detail_group_numbers"))
-                } footer: {
-                    Text(L10n.get("ios_leave_empty_watch"))
-                }
-                .listRowBackground(Self.diaryRow)
-                Section(L10n.get("activity_detail_section_feeling")) {
-                    Picker(L10n.get("activity_detail_feeling_label"), selection: $feeling) {
-                        ForEach(Self.feelings.indices, id: \.self) { index in Text(L10n.get(Self.feelings[index])).tag(index) }
-                    }
-                }
-                .listRowBackground(CardTone.red.container)
                 sendSection
             }
             .navigationTitle(L10n.get("activity_detail_review_heading"))
@@ -2044,7 +2373,7 @@ struct EditActivitySheet: View {
                     // Automatic mode sends on its own: the form action replaces this toolbar Save.
                     if !(companion.automaticSync && companion.sendsSomewhere) {
                         Button(L10n.get("activity_detail_save_button")) { Task { await save(send: false) } }
-                            .disabled(saving)
+                            .disabled(saving || inputInvalid)
                     }
                 }
             }
@@ -2053,12 +2382,18 @@ struct EditActivitySheet: View {
 
     /// Every button saves the screen's values first, so nothing sent is older than what is shown.
     private func save(send: Bool, createOnStrava: Bool = false) async {
+        guard !inputInvalid else { return }
         saving = true
-        let km = Double(kilometers.replacingOccurrences(of: ",", with: ".")) ?? 0
+        let edit = ActivityEdit(
+            title: title, trainingType: trainingType, sport: sport, style: style,
+            rpe: Int32(rpe), feeling: Int32(feeling), diaryComment: comment, note: note,
+            overrideElapsedSec: Int32(clamping: durationOverride), overrideDistanceM: distanceOverrideM,
+            overrideAvgHeartRate: hrOverride,
+            intensityMinutes: intensityCheck.overrideMinutes ?? [], disciplineMinutes: disciplineCheck.overrideMinutes ?? [],
+            wheelType: Int32(wheelType), waxType: Int32(waxType), stravaDescriptionMode: stravaDescriptionMode
+        )
         let saved = await companion.saveActivity(
-            item.id, title: title, trainingType: trainingType, rpe: rpe, feeling: feeling,
-            comment: comment, minutes: Int(minutes) ?? 0, kilometers: km,
-            stravaDescriptionMode: stravaDescriptionMode,
+            item.id, edit: edit,
             stravaTitle: item.stravaPreview.map { stravaTitle ?? renamedTo ?? $0.title },
             stravaSportType: item.stravaPreview.map { stravaSportType ?? $0.sportType }
         )
@@ -2086,13 +2421,13 @@ struct EditActivitySheet: View {
                     Button(L10n.get(label)) {
                         Task { await save(send: true) }
                     }
-                    .disabled(saving)
+                    .disabled(saving || inputInvalid)
                 }
                 if canCreate {
                     Button(L10n.get("activity_detail_strava_create")) {
                         Task { await save(send: false, createOnStrava: true) }
                     }
-                    .disabled(saving)
+                    .disabled(saving || inputInvalid)
                 }
             }
         }
