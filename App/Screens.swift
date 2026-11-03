@@ -239,7 +239,7 @@ struct ActivitiesScreen: View {
                 // Android's chat icon next to settings: feedback one tap away, not only under Settings › Privacy.
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
-                        FeedbackScreen()
+                        FeedbackHubScreen()
                     } label: {
                         Image(systemName: "bubble.left.and.text.bubble.right")
                     }
@@ -397,7 +397,7 @@ struct BoostReminderCard: View {
         .padding(.vertical, 4)
         .listRowBackground(CardTone.blue.container)
         .navigationDestination(isPresented: $openFeedback) {
-            FeedbackScreen(preselectActivityId: reminder.activityId)
+            FeedbackScreen(startCategory: "boost", preselectActivityId: reminder.activityId)
         }
     }
 }
@@ -1344,7 +1344,7 @@ struct SettingsPrivacyPage: View {
         Form {
                 Section(L10n.get("status_my_data_heading")) {
                     DownloadMyDataButton()
-                    NavigationLink(L10n.get("feedback_title")) { FeedbackScreen() }
+                    NavigationLink(L10n.get("feedback_title")) { FeedbackHubScreen() }
                     Button(L10n.get("status_delete_my_data"), role: .destructive) { confirmingDeleteAll = true }
                         .disabled(companion.syncing)
                 }
