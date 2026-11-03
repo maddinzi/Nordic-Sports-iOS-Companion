@@ -37,6 +37,10 @@ struct WatchSettingsScreen: View {
                     if let sync = watch.sync {
                         WatchSyncRow(sync: sync)
                     }
+                    // Only a watch that reports per-sport values (0.9.117+); an older one shows nothing here.
+                    if let auto = watch.sportAuto {
+                        NavigationLink(auto.title) { WatchSportAutoScreen(deviceId: watch.deviceId) }
+                    }
                     if !watch.dataFieldGroups.isEmpty {
                         NavigationLink(L10n.get("watch_data_fields_title")) { WatchDataFieldsScreen(deviceId: watch.deviceId) }
                     }
@@ -98,6 +102,62 @@ private struct WatchSyncRow: View {
             Text(sync.detail).font(.footnote)
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// Auto lap and auto pause per sport (Android's SportAutoBlock): "All sports" sets the main
+/// setting and lets every sport follow it again; below, each sport can have its own value.
+struct WatchSportAutoScreen: View {
+    @EnvironmentObject var companion: Companion
+    let deviceId: Int64
+
+    var body: some View {
+        let auto = companion.watchSettings.first { $0.deviceId == deviceId }?.sportAuto
+        Form {
+            if let auto {
+                Section { Text(auto.intro).font(.footnote).foregroundStyle(.secondary) }
+                Section {
+                    Picker(auto.lapTitle, selection: Binding(
+                        get: { auto.mainLap },
+                        set: { companion.setWatchSportAutoAll(deviceId: deviceId, lap: $0, pause: -1) }
+                    )) {
+                        ForEach(auto.allLapChoices, id: \.value) { Text($0.label).tag($0.value) }
+                    }
+                    Picker(auto.pauseTitle, selection: Binding(
+                        get: { auto.mainPause },
+                        set: { companion.setWatchSportAutoAll(deviceId: deviceId, lap: -1, pause: $0) }
+                    )) {
+                        ForEach(auto.allPauseChoices, id: \.value) { Text($0.label).tag($0.value) }
+                    }
+                    Text(auto.allHint).font(.footnote).foregroundStyle(.secondary)
+                } header: {
+                    Text(auto.allTitle)
+                }
+                ForEach(auto.rows, id: \.sport) { row in
+                    Section {
+                        Picker(auto.lapTitle, selection: Binding(
+                            get: { row.lap },
+                            set: { companion.changeWatchSportAuto(deviceId: deviceId, key: row.lapKey, value: $0) }
+                        )) {
+                            ForEach(auto.lapChoices, id: \.value) { Text($0.label).tag($0.value) }
+                        }
+                        Picker(auto.pauseTitle, selection: Binding(
+                            get: { row.pause },
+                            set: { companion.changeWatchSportAuto(deviceId: deviceId, key: row.pauseKey, value: $0) }
+                        )) {
+                            ForEach(auto.pauseChoices, id: \.value) { Text($0.label).tag($0.value) }
+                        }
+                        if !row.note.isEmpty {
+                            Text(row.note).font(.footnote).foregroundStyle(row.pending ? Color.orange : Color.red)
+                        }
+                    } header: {
+                        Text(row.title)
+                    }
+                }
+            }
+        }
+        .navigationTitle(auto?.title ?? "")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

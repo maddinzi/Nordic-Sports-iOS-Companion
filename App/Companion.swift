@@ -946,6 +946,19 @@ final class Companion: NSObject, ObservableObject {
         refreshWatchSettings()
     }
 
+    /// Sets the per-sport auto lap or auto pause [key] ("AutoLap_running") to [value] (-1: as the main setting).
+    func changeWatchSportAuto(deviceId: Int64, key: String, value: Int32) {
+        core.changeWatchSportAuto(deviceId: deviceId, key: key, value: value)
+        refreshWatchSettings()
+    }
+
+    /// "All sports": [lap] (0, 1000, 5000; -1 leaves it) and [pause] (1 on, 0 off; -1 leaves it) become the
+    /// main settings and every sport follows them again.
+    func setWatchSportAutoAll(deviceId: Int64, lap: Int32, pause: Int32) {
+        core.setWatchSportAutoAll(deviceId: deviceId, lap: lap, pause: pause)
+        refreshWatchSettings()
+    }
+
     /// "Pace → Speed" ([toSpeed]) or "Speed → Pace" for every sport's data fields.
     func switchWatchPaceSpeed(deviceId: Int64, toSpeed: Bool) {
         core.switchWatchPaceSpeed(deviceId: deviceId, toSpeed: toSpeed)
