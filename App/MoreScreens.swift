@@ -37,14 +37,6 @@ struct WatchSettingsScreen: View {
                     if let sync = watch.sync {
                         WatchSyncRow(sync: sync)
                     }
-                    // Only a watch that reports per-sport values (0.9.117+); an older one shows nothing here.
-                    if let auto = watch.sportAuto {
-                        NavigationLink(auto.title) { WatchSportAutoScreen(deviceId: watch.deviceId) }
-                    }
-                    // Only a watch that reports per-sport skill levels (0.9.118+); an older one shows nothing here.
-                    if let skillLevel = watch.skillLevel {
-                        NavigationLink(skillLevel.title) { WatchSkillLevelScreen(deviceId: watch.deviceId) }
-                    }
                     if !watch.dataFieldGroups.isEmpty {
                         NavigationLink(L10n.get("watch_data_fields_title")) { WatchDataFieldsScreen(deviceId: watch.deviceId) }
                     }
@@ -76,6 +68,17 @@ struct WatchSettingsScreen: View {
                         ForEach(group.items, id: \.key) { item in
                             WatchSettingRow(deviceId: watch.deviceId, item: item)
                         }
+                        // Auto lap and auto pause per sport end the Recording group, next to the main settings
+                        // (only a watch that reports per-sport values, 0.9.117+).
+                        if group.title == L10n.get("watch_group_recording"), let auto = watch.sportAuto {
+                            NavigationLink(auto.title) { WatchSportAutoScreen(deviceId: watch.deviceId) }
+                        }
+                    }
+                }
+                // Last on the screen; only a watch that reports per-sport skill levels (0.9.118+).
+                if let skillLevel = watch.skillLevel {
+                    Section {
+                        NavigationLink(skillLevel.title) { WatchSkillLevelScreen(deviceId: watch.deviceId) }
                     }
                 }
             }
@@ -926,7 +929,7 @@ struct OutdatedScreen: View {
     }
 }
 
-/// Android's first-start guide: six steps (nickname, demo or own data, watch, wrist, online repository, diary),
+/// Android's first-start guide: seven steps (nickname, demo or own data, watch, wrist, skill level, online repository, diary),
 /// each skippable; shown once (also left out when the app is already set up). The step counter stays on top and the
 /// buttons at the bottom, so the screen does not change size from step to step; long content scrolls.
 struct OnboardingScreen: View {
@@ -940,12 +943,19 @@ struct OnboardingScreen: View {
     /// "Your watch": 0 asks whether the athlete has the watch app, 1 waits for the watch to talk to this app.
     @State private var watchPhase = 0
 
-    private let steps = 6
+    private let steps = 7
 
     /// A watch that reported its settings with the wrist not set (value 0); the wrist is asked for it.
     private var wristUnsetWatch: WatchSettingsView? {
         companion.watchSettings.first { watch in
             watch.groups.contains { $0.items.contains { $0.key == "WatchWrist" && $0.value == 0 } }
+        }
+    }
+
+    /// A watch that reported its settings with the skill level not set (value 0); it is asked after the wrist.
+    private var skillUnsetWatch: WatchSettingsView? {
+        companion.watchSettings.first { watch in
+            watch.groups.contains { $0.items.contains { $0.key == "SkillLevel" && $0.value == 0 } }
         }
     }
 
@@ -1035,6 +1045,14 @@ struct OnboardingScreen: View {
                 Color.clear.frame(height: 1).onAppear { next() }
             }
         case 4:
+            // The self-declared skill level, a step of its own after the wrist (asked inline below the
+            // wrist question it vanished with the wrist answer); skipped when no watch reports it as not set.
+            if let watch = skillUnsetWatch {
+                skillLevelQuestion(watch)
+            } else {
+                Color.clear.frame(height: 1).onAppear { next() }
+            }
+        case 5:
             Text(L10n.get("onboarding_guide_strava_title")).font(.title2.bold())
             Text(L10n.get("onboarding_guide_strava_body"))
             Text(L10n.get("onboarding_guide_strava_how")).font(.footnote).foregroundStyle(.secondary)
@@ -1045,7 +1063,7 @@ struct OnboardingScreen: View {
             Text(L10n.get("onboarding_guide_diary_body"))
             Text(L10n.get("onboarding_guide_diary_how")).font(.footnote).foregroundStyle(.secondary)
         }
-        if step == 4 || step == 5 {
+        if step == 5 || step == 6 {
             Text(L10n.get("onboarding_guide_later")).font(.footnote).foregroundStyle(.secondary)
         }
     }
@@ -1089,10 +1107,7 @@ struct OnboardingScreen: View {
                         .buttonStyle(.borderedProminent)
                         .disabled(!companion.watchEverSeen)
                 }
-            case 3:
-                Button(L10n.get("onboarding_guide_not_now")) { next() }
-                Spacer()
-            case 4:
+            case 3, 4, 5:
                 Button(L10n.get("onboarding_guide_not_now")) { next() }
                 Spacer()
             default:
@@ -1134,15 +1149,11 @@ struct OnboardingScreen: View {
                         .buttonStyle(.borderedProminent)
                 }
             }
-            Spacer().frame(height: 8)
-            skillLevelQuestion(watch)
         }
     }
 
-    /// The self-declared skill level, asked right below the wrist question with a little
-    /// distance (Android's `SkillLevelQuestion`, same `SkillLevel` setting as
-    /// `WatchSportAutoScreen`'s per-sport screen). No "not set" button: skipping leaves it
-    /// unset, same as "Not now" for the wrist.
+    /// The self-declared skill level, a step of its own after the wrist (Android's `SkillLevelStep`,
+    /// same `SkillLevel` setting as the per-sport screen). No "not set" button: "Not now" leaves it unset.
     private func skillLevelQuestion(_ watch: WatchSettingsView) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L10n.get("onboarding_guide_skill_level_title")).font(.title3.bold())

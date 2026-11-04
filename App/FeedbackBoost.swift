@@ -84,7 +84,15 @@ enum BoostText {
         return parts.joined(separator: " · ")
     }
 
-    /// The activity type the file says (when we know it) and a label it already carries.
+    private static let competenceKey = "boostCompetence"
+
+    /// The last skill the athlete chose, the start for a file whose activity has none.
+    static func rememberCompetence(_ level: String) {
+        UserDefaults.standard.set(level, forKey: competenceKey)
+    }
+
+    /// The activity type the file says (when we know it), a label it already carries and the skill: the
+    /// activity's own, else the last answer.
     static func defaults(_ c: BoostCandidate, catalogs: [String]) -> BoostDeclaration {
         BoostDeclaration(
             activityType: catalogs.contains(c.view.catalog) ? c.view.catalog : "",
@@ -92,6 +100,7 @@ enum BoostText {
             terrain: c.view.labelTerrain,
             poles: c.view.labelPoles,
             note: c.view.labelNote,
+            competence: c.view.competence.isEmpty ? (UserDefaults.standard.string(forKey: competenceKey) ?? "") : c.view.competence,
             surface: c.view.labelSurface
         )
     }
@@ -289,14 +298,6 @@ struct BoostDeclareView: View {
                             declarations[candidate.key] = next
                         }
                     }
-                    // About the athlete, not the file: choosing a level sets it on every file of this step.
-                    Text(L10n.get("feedback_boost_competence")).font(.caption).foregroundStyle(.secondary)
-                    ForEach(BoostText.competenceLevels, id: \.self) { level in
-                        choice(BoostText.competenceName(level), on: d.competence == level) {
-                            let next = d.competence == level ? "" : level
-                            for c in candidates { declarations[c.key, default: BoostDeclaration()].competence = next }
-                        }
-                    }
                     if !d.activityType.isEmpty {
                         Text(L10n.get("recording_boost_label_technique")).font(.caption).foregroundStyle(.secondary)
                         ForEach(options.techniques, id: \.self) { code in
@@ -337,6 +338,16 @@ struct BoostDeclareView: View {
                                 next.poles = d.poles == 0 ? -1 : 0
                                 declarations[candidate.key] = next
                             }
+                        }
+                    }
+                    // About the athlete, for every sport (Android: a drop-down on each file's declare screen).
+                    Text(L10n.get("feedback_boost_competence")).font(.caption).foregroundStyle(.secondary)
+                    ForEach(BoostText.competenceLevels, id: \.self) { level in
+                        choice(BoostText.competenceName(level), on: d.competence == level) {
+                            var next = d
+                            next.competence = d.competence == level ? "" : level
+                            declarations[candidate.key] = next
+                            BoostText.rememberCompetence(next.competence)
                         }
                     }
                     TextField(L10n.get("recording_boost_label_note"), text: Binding(
