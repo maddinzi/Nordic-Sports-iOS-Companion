@@ -978,6 +978,18 @@ final class Companion: NSObject, ObservableObject {
         refreshWatchSettings()
     }
 
+    /// Sets the per-sport skill level [key] ("SkillLevel_running") to [value] (-1: as the main setting).
+    func changeWatchSkillLevel(deviceId: Int64, key: String, value: Int32) {
+        core.changeWatchSkillLevel(deviceId: deviceId, key: key, value: value)
+        refreshWatchSettings()
+    }
+
+    /// "All sports": [level] becomes the main skill level setting and every sport follows it again.
+    func setWatchSkillLevelAll(deviceId: Int64, level: Int32) {
+        core.setWatchSkillLevelAll(deviceId: deviceId, level: level)
+        refreshWatchSettings()
+    }
+
     /// "Pace → Speed" ([toSpeed]) or "Speed → Pace" for every sport's data fields.
     func switchWatchPaceSpeed(deviceId: Int64, toSpeed: Bool) {
         core.switchWatchPaceSpeed(deviceId: deviceId, toSpeed: toSpeed)
