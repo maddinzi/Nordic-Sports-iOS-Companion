@@ -175,6 +175,8 @@ final class Companion: NSObject, ObservableObject {
             activities = try await core.activities(limit: 300)
             demoOn = core.demoEnabled()
             syncStatus = try await core.syncStatus(nowEpochMillis: Int64(Date().timeIntervalSince1970 * 1000))
+            // The cards follow the activities: a deleted one takes its Recording Boost reminder along.
+            boostReminders = try await core.feedbackBoostReminders()
         } catch {
             report(error)
         }
