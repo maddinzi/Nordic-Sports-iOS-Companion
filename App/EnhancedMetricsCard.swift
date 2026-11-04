@@ -173,6 +173,10 @@ private func tileTexts(_ key: String) -> (name: String, desc: String, abbreviati
     case "gct": return (L10n.get("em_gct_name"), L10n.get("em_gct_desc"), nil)
     case "vo": return (L10n.get("em_vo_name"), L10n.get("em_vo_desc"), nil)
     case "vr": return (L10n.get("em_vr_name"), L10n.get("em_vr_desc"), nil)
+    case "ascent": return (L10n.get("em_ascent_name"), L10n.get("em_ascent_desc"), nil)
+    case "descent": return (L10n.get("em_descent_name"), L10n.get("em_descent_desc"), nil)
+    case "rmssd": return (L10n.get("em_rmssd_name"), L10n.get("em_rmssd_desc"), nil)
+    case "sdnn": return (L10n.get("em_sdnn_name"), L10n.get("em_sdnn_desc"), nil)
     default: return (key, "", nil)
     }
 }
@@ -193,10 +197,19 @@ struct EnhancedMetricsCard: View {
             if !view.headline.isEmpty {
                 section(L10n.get(isRun ? "em_run_eff_title" : "em_poling_title")) { tiles(view.headline) }
             }
+            if isRun, !view.climb.isEmpty {
+                section(L10n.get("em_climb_title")) { tiles(view.climb) }
+            }
             if isRun, !view.form.isEmpty || view.balanceLeft > 0 {
                 section(L10n.get("em_form_title"), badge: sourceName) {
                     tiles(view.form)
                     if view.balanceLeft > 0 { balance(Double(view.balanceLeft)) }
+                }
+            }
+            if isRun, !view.hrv.isEmpty {
+                section(L10n.get("em_hrv_title"), badge: hrvSourceName) {
+                    tiles(view.hrv)
+                    Text(L10n.get("em_hrv_note")).font(.caption).foregroundStyle(tone.subtitle)
                 }
             }
             if isRun, !view.gait.isEmpty { section(L10n.get("em_gait_title")) { gaitBar } }
@@ -215,6 +228,9 @@ struct EnhancedMetricsCard: View {
             }
             if isRun, !view.geoRows.isEmpty {
                 section(L10n.get("em_geo_title"), hint: L10n.get("em_geo_desc")) { geoGrid }
+            }
+            if isRun, !view.climbRows.isEmpty {
+                section(L10n.get("em_climb_geo_title"), hint: L10n.get("em_climb_geo_desc")) { climbGrid }
             }
             if !view.splits.isEmpty {
                 section(L10n.get("em_splits_title")) {
@@ -238,6 +254,14 @@ struct EnhancedMetricsCard: View {
                 .font(.caption2).foregroundStyle(tone.subtitle)
         }
         .sheet(isPresented: $explaining) { explanation }
+    }
+
+    private var hrvSourceName: String? {
+        switch view.hrvSource {
+        case "strap": return L10n.get("em_src_strap")
+        case "wrist": return L10n.get("em_src_wrist_sensor")
+        default: return nil
+        }
     }
 
     private var sourceName: String? {
@@ -395,6 +419,19 @@ struct EnhancedMetricsCard: View {
                      L10n.get("em_col_slope")], header: true, color: nil)
             Divider()
             ForEach(view.geoRows, id: \.key) { row in
+                gridRow([stateShort(row.key)] + row.cells.map { $0 }, header: false, color: stateColor(row.key))
+                Divider().opacity(0.4)
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 4)
+        .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var climbGrid: some View {
+        VStack(spacing: 0) {
+            gridRow([L10n.get("em_col_terrain"), L10n.get("em_col_gain"), L10n.get("em_col_loss")], header: true, color: nil)
+            Divider()
+            ForEach(view.climbRows, id: \.key) { row in
                 gridRow([stateShort(row.key)] + row.cells.map { $0 }, header: false, color: stateColor(row.key))
                 Divider().opacity(0.4)
             }

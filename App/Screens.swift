@@ -687,6 +687,7 @@ struct ActivityDetailScreen: View {
                 if current.avgHeartRate > 0 { LabeledContent(L10n.get("activity_detail_avg_hr_label"), value: "\(current.avgHeartRate) bpm") }
                 if current.maxHeartRate > 0 { LabeledContent(L10n.get("activity_detail_max_hr_label"), value: "\(current.maxHeartRate) bpm") }
                 if current.totalAscentM > 0 { LabeledContent(L10n.get("activity_detail_ascent_label"), value: "\(Int(current.totalAscentM)) m") }
+                if current.totalDescentM > 0 { LabeledContent(L10n.get("activity_detail_descent_label"), value: "\(Int(current.totalDescentM)) m") }
                 if current.calories > 0 { LabeledContent(L10n.get("activity_detail_calories_label"), value: "\(current.calories) kcal") }
                 if current.avgSpeedMps > 0 {
                     LabeledContent(L10n.get("activity_detail_avg_max_speed_label"),
