@@ -41,6 +41,10 @@ struct WatchSettingsScreen: View {
                     if let auto = watch.sportAuto {
                         NavigationLink(auto.title) { WatchSportAutoScreen(deviceId: watch.deviceId) }
                     }
+                    // Only a watch that reports per-sport skill levels (0.9.118+); an older one shows nothing here.
+                    if let skillLevel = watch.skillLevel {
+                        NavigationLink(skillLevel.title) { WatchSkillLevelScreen(deviceId: watch.deviceId) }
+                    }
                     if !watch.dataFieldGroups.isEmpty {
                         NavigationLink(L10n.get("watch_data_fields_title")) { WatchDataFieldsScreen(deviceId: watch.deviceId) }
                     }
@@ -157,6 +161,52 @@ struct WatchSportAutoScreen: View {
             }
         }
         .navigationTitle(auto?.title ?? "")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Self-declared skill level per sport (Android's SkillLevelBlock): "All sports" sets the main
+/// setting and lets every sport follow it again; below, each sport can have its own value. Not
+/// a verdict on technique, a plain self-report that pre-fills Recording Boost's own competence
+/// picker. Same shape as [WatchSportAutoScreen].
+struct WatchSkillLevelScreen: View {
+    @EnvironmentObject var companion: Companion
+    let deviceId: Int64
+
+    var body: some View {
+        let skillLevel = companion.watchSettings.first { $0.deviceId == deviceId }?.skillLevel
+        Form {
+            if let skillLevel {
+                Section { Text(skillLevel.intro).font(.footnote).foregroundStyle(.secondary) }
+                Section {
+                    Picker(skillLevel.levelTitle, selection: Binding(
+                        get: { skillLevel.mainLevel },
+                        set: { companion.setWatchSkillLevelAll(deviceId: deviceId, level: $0) }
+                    )) {
+                        ForEach(skillLevel.allChoices, id: \.value) { Text($0.label).tag($0.value) }
+                    }
+                    Text(skillLevel.allHint).font(.footnote).foregroundStyle(.secondary)
+                } header: {
+                    Text(skillLevel.allTitle)
+                }
+                ForEach(skillLevel.rows, id: \.sport) { row in
+                    Section {
+                        Picker(skillLevel.levelTitle, selection: Binding(
+                            get: { row.level },
+                            set: { companion.changeWatchSkillLevel(deviceId: deviceId, key: row.key, value: $0) }
+                        )) {
+                            ForEach(skillLevel.choices, id: \.value) { Text($0.label).tag($0.value) }
+                        }
+                        if !row.note.isEmpty {
+                            Text(row.note).font(.footnote).foregroundStyle(row.pending ? Color.orange : Color.red)
+                        }
+                    } header: {
+                        Text(row.title)
+                    }
+                }
+            }
+        }
+        .navigationTitle(skillLevel?.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -905,6 +955,10 @@ struct OnboardingScreen: View {
         companion.changeWatchSetting(deviceId: watch.deviceId, key: "WatchWrist", value: value)
     }
 
+    private func chooseSkillLevel(_ watch: WatchSettingsView, _ value: Int32) {
+        companion.changeWatchSetting(deviceId: watch.deviceId, key: "SkillLevel", value: value)
+    }
+
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 0) {
@@ -1078,6 +1132,28 @@ struct OnboardingScreen: View {
                 ForEach([("watch_option_wrist_left", Int32(1)), ("watch_option_wrist_right", Int32(2))], id: \.1) { label, value in
                     Button(L10n.get(label)) { chooseWrist(watch, value) }
                         .buttonStyle(.borderedProminent)
+                }
+            }
+            Spacer().frame(height: 8)
+            skillLevelQuestion(watch)
+        }
+    }
+
+    /// The self-declared skill level, asked right below the wrist question with a little
+    /// distance (Android's `SkillLevelQuestion`, same `SkillLevel` setting as
+    /// `WatchSportAutoScreen`'s per-sport screen). No "not set" button: skipping leaves it
+    /// unset, same as "Not now" for the wrist.
+    private func skillLevelQuestion(_ watch: WatchSettingsView) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L10n.get("onboarding_guide_skill_level_title")).font(.title3.bold())
+            Text(L10n.get("onboarding_guide_skill_level_body"))
+            HStack(spacing: 8) {
+                ForEach(
+                    [("watch_option_skill_level_beginner", Int32(1)), ("watch_option_skill_level_intermediate", Int32(2)),
+                     ("watch_option_skill_level_expert", Int32(3))], id: \.1
+                ) { label, value in
+                    Button(L10n.get(label)) { chooseSkillLevel(watch, value) }
+                        .buttonStyle(.bordered)
                 }
             }
         }
