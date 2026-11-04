@@ -200,11 +200,19 @@ struct EnhancedMetricsCard: View {
             if isRun, !view.gait.isEmpty { section(L10n.get("em_gait_title")) { gaitBar } }
             if !view.shares.isEmpty {
                 section(L10n.get(isRun ? "em_terrain_title" : "em_share_title"),
-                        hint: L10n.get(isRun ? "em_terrain_desc" : "em_share_desc")) { donut }
+                        hint: L10n.get(isRun ? "em_terrain_desc" : "em_share_desc")) {
+                    donut
+                    if isRun {
+                        Text(L10n.get("em_terrain_time_note")).font(.caption).foregroundStyle(tone.subtitle)
+                    }
+                }
             }
             if !view.rows.isEmpty {
                 section(L10n.get(isRun ? "em_terrain_table_title" : "em_table_title"),
                         hint: L10n.get(isRun ? "em_terrain_table_desc" : "em_table_desc")) { grid }
+            }
+            if isRun, !view.geoRows.isEmpty {
+                section(L10n.get("em_geo_title"), hint: L10n.get("em_geo_desc")) { geoGrid }
             }
             if !view.splits.isEmpty {
                 section(L10n.get("em_splits_title")) {
@@ -354,9 +362,31 @@ struct EnhancedMetricsCard: View {
                         Text("\(Int(share.percent))%").font(.footnote.weight(.bold))
                     }
                 }
+                if isRun, view.uphillTotalPercent >= 0 {
+                    Divider()
+                    HStack(spacing: 8) {
+                        Text(L10n.get("em_uphill_total")).font(.footnote)
+                        Spacer(minLength: 4)
+                        Text("\(Int(view.uphillTotalPercent))%").font(.footnote.weight(.bold))
+                    }
+                }
             }
         }
         .padding(12)
+        .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var geoGrid: some View {
+        VStack(spacing: 0) {
+            gridRow([L10n.get("em_col_terrain"), L10n.get("em_col_distance"), L10n.get("em_col_distance_share"),
+                     L10n.get("em_col_slope")], header: true, color: nil)
+            Divider()
+            ForEach(view.geoRows, id: \.key) { row in
+                gridRow([stateShort(row.key)] + row.cells.map { $0 }, header: false, color: stateColor(row.key))
+                Divider().opacity(0.4)
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 4)
         .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
     }
 
@@ -433,6 +463,7 @@ struct EnhancedMetricsCard: View {
                             }
                         }
                     }
+                    if isRun { Text(L10n.get("em_terrain_method")).font(.footnote) }
                 }
             }
             .navigationTitle(L10n.get("em_sheet_title"))
