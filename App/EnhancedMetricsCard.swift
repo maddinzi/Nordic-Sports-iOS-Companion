@@ -197,7 +197,7 @@ struct EnhancedMetricsCard: View {
             if !view.headline.isEmpty {
                 section(L10n.get(isRun ? "em_run_eff_title" : "em_poling_title")) { tiles(view.headline) }
             }
-            if isRun, !view.climb.isEmpty {
+            if !view.climb.isEmpty {
                 section(L10n.get("em_climb_title")) { tiles(view.climb) }
             }
             if isRun, !view.form.isEmpty || view.balanceLeft > 0 {
@@ -206,7 +206,7 @@ struct EnhancedMetricsCard: View {
                     if view.balanceLeft > 0 { balance(Double(view.balanceLeft)) }
                 }
             }
-            if isRun, !view.hrv.isEmpty {
+            if !view.hrv.isEmpty {
                 section(L10n.get("em_hrv_title"), badge: hrvSourceName) {
                     tiles(view.hrv)
                     Text(L10n.get("em_hrv_note")).font(.caption).foregroundStyle(tone.subtitle)
