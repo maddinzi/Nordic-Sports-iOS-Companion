@@ -108,6 +108,7 @@ private extension Color {
     static let terrainUp = Color(red: 0xF0 / 255, green: 0xB3 / 255, blue: 0x23 / 255)
     static let terrainFlat = Color(red: 0x9C / 255, green: 0xCB / 255, blue: 0x5A / 255)
     static let terrainDown = Color(red: 0x2E / 255, green: 0x7D / 255, blue: 0x4F / 255)
+    static let terrainSteepDown = Color(red: 0x14 / 255, green: 0x53 / 255, blue: 0x2D / 255)
 }
 
 /// Colour per catalog state: techniques (V2, V1, ...) and terrain (UP, FLAT, ...).
@@ -122,6 +123,7 @@ private func stateColor(_ key: String) -> Color {
     case "UP": return .terrainUp
     case "FLAT": return .terrainFlat
     case "DOWN": return .terrainDown
+    case "STEEP_DOWN": return .terrainSteepDown
     case "GLIDE", "WALK": return .techniqueGrey
     default: return .techniqueLight
     }
@@ -142,6 +144,7 @@ private func stateName(_ key: String) -> String {
     case "FLAT": return L10n.get("em_flat")
     case "DOWN": return L10n.get("em_down")
     case "STEEP": return L10n.get("em_steep")
+    case "STEEP_DOWN": return L10n.get("em_steep_down")
     case "RUN": return L10n.get("em_run")
     case "WALK": return L10n.get("em_walk")
     default: return key
@@ -151,7 +154,7 @@ private func stateName(_ key: String) -> String {
 /// The short code in the grid: GLIDE and OTHER in words, the rest as is.
 private func stateShort(_ key: String) -> String {
     switch key {
-    case "GLIDE", "OTHER", "UP", "FLAT", "DOWN", "STEEP": return stateName(key)
+    case "GLIDE", "OTHER", "UP", "FLAT", "DOWN", "STEEP", "STEEP_DOWN": return stateName(key)
     default: return key
     }
 }
@@ -532,7 +535,7 @@ struct EnhancedMetricsCard: View {
     }
 
     private var stateKeysForSheet: [String] {
-        isRun ? ["STEEP", "UP", "FLAT", "DOWN"] : view.shares.map { $0.key }.filter { $0 != "OTHER" }
+        isRun ? ["STEEP", "UP", "FLAT", "DOWN", "STEEP_DOWN"] : view.shares.map { $0.key }.filter { $0 != "OTHER" }
     }
 
     private func stateDescription(_ key: String) -> String {
@@ -548,6 +551,7 @@ struct EnhancedMetricsCard: View {
         case "FLAT": return L10n.get("em_desc_flat")
         case "DOWN": return L10n.get("em_desc_down")
         case "STEEP": return L10n.get("em_desc_steep")
+        case "STEEP_DOWN": return L10n.get("em_desc_steep_down")
         default: return ""
         }
     }
