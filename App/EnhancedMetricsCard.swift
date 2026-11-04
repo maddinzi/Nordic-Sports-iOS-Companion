@@ -101,11 +101,13 @@ private extension Color {
     static let techniqueGreen = Color(red: 0x3F / 255, green: 0xA0 / 255, blue: 0x64 / 255)
     static let runBlue = Color(red: 0x1F / 255, green: 0x6F / 255, blue: 0xB5 / 255)
     static let techniqueOrange = Color(red: 0xE0 / 255, green: 0x8A / 255, blue: 0x1E / 255)
-    static let techniquePurple = Color(red: 0x7B / 255, green: 0x4F / 255, blue: 0xA8 / 255)
-    static let techniqueTeal = Color(red: 0x1E / 255, green: 0x9A / 255, blue: 0x8A / 255)
     static let techniqueGrey = Color(red: 0x8D / 255, green: 0x99 / 255, blue: 0xA6 / 255)
     static let techniqueLight = Color(red: 0xC9 / 255, green: 0xD0 / 255, blue: 0xD8 / 255)
-    static let terrainRed = Color(red: 0xC0 / 255, green: 0x39 / 255, blue: 0x2B / 255)
+    // Running terrain, orange over yellow and light green to dark green (`TechniqueCatalogs.COLOR_RGB`).
+    static let terrainSteep = Color(red: 0xE2 / 255, green: 0x57 / 255, blue: 0x1E / 255)
+    static let terrainUp = Color(red: 0xF0 / 255, green: 0xB3 / 255, blue: 0x23 / 255)
+    static let terrainFlat = Color(red: 0x9C / 255, green: 0xCB / 255, blue: 0x5A / 255)
+    static let terrainDown = Color(red: 0x2E / 255, green: 0x7D / 255, blue: 0x4F / 255)
 }
 
 /// Colour per catalog state: techniques (V2, V1, ...) and terrain (UP, FLAT, ...).
@@ -116,11 +118,11 @@ private func stateColor(_ key: String) -> Color {
     case "V1": return .techniqueLightBlue
     case "DP": return .techniqueGreen
     case "RUN": return .runBlue
-    case "UP": return .techniqueOrange
-    case "DOWN": return .techniquePurple
-    case "FLAT": return .techniqueTeal
+    case "STEEP": return .terrainSteep
+    case "UP": return .terrainUp
+    case "FLAT": return .terrainFlat
+    case "DOWN": return .terrainDown
     case "GLIDE", "WALK": return .techniqueGrey
-    case "STEEP": return .terrainRed
     default: return .techniqueLight
     }
 }
@@ -264,24 +266,35 @@ struct EnhancedMetricsCard: View {
     }
 
     private func tiles(_ values: [EmValue]) -> some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8, alignment: .top), GridItem(.flexible(), spacing: 8, alignment: .top)],
-                  spacing: 8) {
-            ForEach(values, id: \.key) { value in
-                let texts = tileTexts(value.key)
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text(value.value).font(.title.weight(.semibold))
-                        if !value.unit.isEmpty { Text(value.unit).font(.footnote).foregroundStyle(.secondary) }
+        // A Grid, not a LazyVGrid: both tiles of a row stretch to the taller one.
+        Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+            ForEach(Array(stride(from: 0, to: values.count, by: 2)), id: \.self) { start in
+                GridRow {
+                    tile(values[start])
+                    if start + 1 < values.count {
+                        tile(values[start + 1])
+                    } else {
+                        Color.clear.frame(maxWidth: .infinity)
                     }
-                    Text(texts.abbreviation.map { "\(texts.name) (\($0))" } ?? texts.name)
-                        .font(.footnote.weight(.semibold))
-                    Text(texts.desc).font(.caption).foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12).padding(.vertical, 10)
-                .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
             }
         }
+    }
+
+    private func tile(_ value: EmValue) -> some View {
+        let texts = tileTexts(value.key)
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(value.value).font(.title.weight(.semibold))
+                if !value.unit.isEmpty { Text(value.unit).font(.footnote).foregroundStyle(.secondary) }
+            }
+            Text(texts.abbreviation.map { "\(texts.name) (\($0))" } ?? texts.name)
+                .font(.footnote.weight(.semibold))
+            Text(texts.desc).font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func balance(_ left: Double) -> some View {
@@ -482,7 +495,7 @@ struct EnhancedMetricsCard: View {
     }
 
     private var stateKeysForSheet: [String] {
-        isRun ? ["UP", "FLAT", "DOWN", "STEEP"] : view.shares.map { $0.key }.filter { $0 != "OTHER" }
+        isRun ? ["STEEP", "UP", "FLAT", "DOWN"] : view.shares.map { $0.key }.filter { $0 != "OTHER" }
     }
 
     private func stateDescription(_ key: String) -> String {
