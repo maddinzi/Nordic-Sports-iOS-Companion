@@ -455,6 +455,7 @@ final class Companion: NSObject, ObservableObject {
             refreshDiary()
             await refresh()
         }
+        runWantedDiaryUpdate()
         return outcome
     }
 
@@ -807,6 +808,7 @@ final class Companion: NSObject, ObservableObject {
             refreshDiary()
             await refresh()
         }
+        runWantedDiaryUpdate()
     }
 
     // MARK: - JSON and CSV destinations
@@ -1431,9 +1433,25 @@ final class Companion: NSObject, ObservableObject {
         await afterEdit()
     }
 
+    /// An edit wants its diary rewrite but a sync was running (right after a workout the watch transfer and the
+    /// first diary write usually are): the sync that ends next runs once more, so the edit is never left behind.
+    private var diaryUpdateWanted = false
+
+    /// Called when a run that held `syncing` ends; starts the rewrite an edit asked for meanwhile.
+    private func runWantedDiaryUpdate() {
+        guard diaryUpdateWanted, !outdated else { return }
+        diaryUpdateWanted = false
+        Task { await sync() }
+    }
+
     private func afterEdit() async {
         if automaticSync, diaryConnected, diarySettings.autoUpdate {
-            await sync()
+            if syncing {
+                diaryUpdateWanted = true
+                await refresh()
+            } else if case .skipped = await sync() {
+                diaryUpdateWanted = true
+            }
         } else {
             await refresh()
         }
