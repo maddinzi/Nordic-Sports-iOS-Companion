@@ -191,6 +191,7 @@ struct EnhancedMetricsCard: View {
     let view: EnhancedMetricsView
     private let tone = CardTone.blue
     @State private var explaining = false
+    @State private var polingOpen = false
 
     private var isRun: Bool { view.kind == "run" }
 
@@ -228,6 +229,21 @@ struct EnhancedMetricsCard: View {
             if !view.rows.isEmpty {
                 section(L10n.get(isRun ? "em_terrain_table_title" : "em_table_title"),
                         hint: L10n.get(isRun ? "em_terrain_table_desc" : "em_table_desc")) { grid }
+            }
+            if !isRun, !view.polingRows.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(L10n.get("em_poling_matrix_title")).font(.subheadline.weight(.semibold))
+                            .foregroundStyle(tone.title)
+                        Spacer()
+                        Button(L10n.get(polingOpen ? "em_collapse" : "em_expand")) { polingOpen.toggle() }
+                            .buttonStyle(.borderless)
+                    }
+                    if polingOpen {
+                        Text(L10n.get("em_poling_matrix_desc")).font(.caption).foregroundStyle(tone.subtitle)
+                        polingGrid
+                    }
+                }
             }
             if isRun, !view.geoRows.isEmpty {
                 section(L10n.get("em_geo_title"), hint: L10n.get("em_geo_desc")) { geoGrid }
@@ -422,6 +438,19 @@ struct EnhancedMetricsCard: View {
                      L10n.get("em_col_slope")], header: true, color: nil)
             Divider()
             ForEach(view.geoRows, id: \.key) { row in
+                gridRow([stateShort(row.key)] + row.cells.map { $0 }, header: false, color: stateColor(row.key))
+                Divider().opacity(0.4)
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 4)
+        .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var polingGrid: some View {
+        VStack(spacing: 0) {
+            gridRow([L10n.get("em_col_technique"), "SPM\n/min", "DPS\nm", "APID\nms", "ADC\n%"], header: true, color: nil)
+            Divider()
+            ForEach(view.polingRows, id: \.key) { row in
                 gridRow([stateShort(row.key)] + row.cells.map { $0 }, header: false, color: stateColor(row.key))
                 Divider().opacity(0.4)
             }
