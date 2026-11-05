@@ -181,6 +181,8 @@ private func clock(_ totalSeconds: Int) -> String {
 private struct MetricBars: View {
     let title: String
     let chart: EmBarChart
+    /// A state key to keep in colour; the other bars fade (the donut's selection).
+    var highlight: String? = nil
     @State private var grow: CGFloat = 0
     private let tone = CardTone.blue
 
@@ -217,6 +219,7 @@ private struct MetricBars: View {
     private func row(_ bar: EmBar) -> some View {
         let name = stateShort(bar.key)
         let time = clock(Int(bar.seconds))
+        let dim = highlight != nil && highlight != bar.key
         return HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 0) {
                 Text(name).font(.footnote).lineLimit(1).minimumScaleFactor(0.8)
@@ -226,7 +229,7 @@ private struct MetricBars: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(stateColor(bar.key).opacity(bar.faded ? 0.45 : 1))
+                        .fill(stateColor(bar.key).opacity((bar.faded ? 0.45 : 1) * (dim ? 0.4 : 1)))
                         .frame(width: geo.size.width * CGFloat(bar.value / scale) * grow)
                     if let average {
                         let x = geo.size.width * CGFloat(average / scale)
@@ -240,6 +243,7 @@ private struct MetricBars: View {
             }
             .frame(height: 22)
             Text(bar.text).font(.footnote.weight(bar.emphasis ? .bold : .regular))
+                .opacity(dim ? 0.45 : 1)
                 .frame(width: 72, alignment: .trailing)
         }
         .accessibilityElement(children: .ignore)
@@ -278,6 +282,9 @@ struct EnhancedMetricsCard: View {
     /// The ski tile whose bar chart is open (a `view.charts` id), and the metric chosen on the run card.
     @State private var openChart: String?
     @State private var selectedChart: String?
+    /// The technique or terrain picked on the donut (a state key); the legend and the bar charts follow it.
+    @State private var selectedKey: String?
+    @State private var selectedAngle: Double?
 
     private var isRun: Bool { view.kind == "run" }
 
@@ -288,7 +295,7 @@ struct EnhancedMetricsCard: View {
                 section(L10n.get(isRun ? "em_run_eff_title" : "em_poling_title")) {
                     tiles(view.headline)
                     if !isRun, let id = openChart, let chart = view.charts.first(where: { $0.id == id }) {
-                        MetricBars(title: skiChartTitle(id), chart: chart).id(id)
+                        MetricBars(title: skiChartTitle(id), chart: chart, highlight: selectedKey).id(id)
                     }
                 }
             }
@@ -496,7 +503,7 @@ struct EnhancedMetricsCard: View {
                         }
                     }
                 }
-                MetricBars(title: runChartName(current.id), chart: current).id(current.id)
+                MetricBars(title: runChartName(current.id), chart: current, highlight: selectedKey).id(current.id)
             }
         }
     }
@@ -553,31 +560,68 @@ struct EnhancedMetricsCard: View {
         }
     }
 
+    /// A second tap on the picked state, or the legend row again, clears the selection.
+    private func toggleSelection(_ key: String) {
+        withAnimation(.easeInOut(duration: 0.2)) { selectedKey = selectedKey == key ? nil : key }
+        selectedAngle = nil
+    }
+
+    private func clearSelection() {
+        withAnimation(.easeInOut(duration: 0.2)) { selectedKey = nil }
+        selectedAngle = nil
+    }
+
     private var donut: some View {
         HStack(spacing: 14) {
             ZStack {
                 Chart(view.shares, id: \.key) { share in
-                    SectorMark(angle: .value("share", Double(max(share.percent, 0.1))), innerRadius: .ratio(0.62), angularInset: 0.5)
-                        .foregroundStyle(stateColor(share.key))
+                    SectorMark(angle: .value("share", Double(max(share.percent, 0.1))),
+                               innerRadius: .ratio(0.62), outerRadius: .ratio(selectedKey == share.key ? 1.0 : 0.92),
+                               angularInset: 0.5)
+                        .foregroundStyle(stateColor(share.key).opacity(selectedKey == nil || selectedKey == share.key ? 1 : 0.3))
                 }
                 .chartLegend(.hidden)
+                .chartAngleSelection(value: $selectedAngle)
+                .onChange(of: selectedAngle) { _, angle in
+                    guard let angle else { return }
+                    var end = 0.0
+                    for share in view.shares {
+                        end += Double(max(share.percent, 0.1))
+                        if angle <= end { toggleSelection(share.key); break }
+                    }
+                }
                 .frame(width: 124, height: 124)
                 .accessibilityLabel(L10n.get("em_share_a11y"))
-                if view.totalSeconds > 0 {
+                if let key = selectedKey, let share = view.shares.first(where: { $0.key == key }) {
+                    VStack(spacing: 0) {
+                        Text("\(Int(share.percent))%").font(.subheadline.weight(.semibold))
+                        Text(stateShort(key)).font(.caption2).foregroundStyle(.secondary)
+                    }
+                } else if view.totalSeconds > 0 {
                     VStack(spacing: 0) {
                         Text(clock(Int(view.totalSeconds))).font(.subheadline.weight(.semibold))
                         Text(L10n.get("em_share_tracked")).font(.caption2).foregroundStyle(.secondary)
                     }
                 }
+                // The hole: a tap here clears the selection (the chart's angle selection would pick a slice).
+                Color.clear.frame(width: 64, height: 64).contentShape(Circle())
+                    .onTapGesture { clearSelection() }
             }
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(view.shares, id: \.key) { share in
-                    HStack(spacing: 8) {
-                        RoundedRectangle(cornerRadius: 3).fill(stateColor(share.key)).frame(width: 12, height: 12)
-                        Text(stateName(share.key)).font(.footnote)
-                        Spacer(minLength: 4)
-                        Text("\(Int(share.percent))%").font(.footnote.weight(.bold))
+                    Button { toggleSelection(share.key) } label: {
+                        HStack(spacing: 8) {
+                            RoundedRectangle(cornerRadius: 3).fill(stateColor(share.key)).frame(width: 12, height: 12)
+                            Text(stateName(share.key)).font(.footnote.weight(selectedKey == share.key ? .bold : .regular))
+                            Spacer(minLength: 4)
+                            Text("\(Int(share.percent))%").font(.footnote.weight(.bold))
+                        }
+                        .padding(.horizontal, 4).padding(.vertical, 3)
+                        .background(selectedKey == share.key ? Color.primary.opacity(0.08) : Color.clear,
+                                    in: RoundedRectangle(cornerRadius: 8))
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                 }
                 if isRun, view.uphillTotalPercent >= 0 {
                     Divider()
