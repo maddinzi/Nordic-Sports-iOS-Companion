@@ -629,6 +629,50 @@ struct ActivityDetailScreen: View {
     private var current: ActivityItem { companion.activities.first { $0.id == item.id } ?? item }
 
     /// The wrist in the app language; the watch's own label is English.
+    /// The number tiles of the technical data card in rows that belong together (as Android's `TechnicalDataCard`):
+    /// time and energy, distance and pace, heart rate, climb. A row with one tile fills the width.
+    private var technicalRows: [[KeyFigure]] {
+        func figure(_ value: String, _ unit: String, _ key: String) -> KeyFigure { KeyFigure(value: value, unit: unit, name: L10n.get(key)) }
+        let duration = figure(Format.duration(current.elapsedSec), "", "activity_detail_duration_label")
+        let calories: KeyFigure? = current.calories > 0 ? figure("\(current.calories)", "kcal", "activity_detail_calories_label") : nil
+        let distance: KeyFigure? = current.distanceM > 0 ? figure(Format.distance(current.distanceM), "", "activity_detail_distance_label") : nil
+        // The unit of the speed pair goes into its name: both numbers and "km/h" side by side do not fit a half tile.
+        let speed: KeyFigure? = current.avgSpeedMps > 0
+            ? KeyFigure(value: String(format: "%.1f / %.1f", Double(current.avgSpeedMps) * 3.6, Double(current.maxSpeedMps) * 3.6),
+                        unit: "", name: L10n.get("activity_detail_avg_max_speed_label") + " (km/h)")
+            : nil
+        let avgHeartRate: KeyFigure? = current.avgHeartRate > 0 ? figure("\(current.avgHeartRate)", "bpm", "activity_detail_avg_hr_label") : nil
+        let maxHeartRate: KeyFigure? = current.maxHeartRate > 0 ? figure("\(current.maxHeartRate)", "bpm", "activity_detail_max_hr_label") : nil
+        let ascent: KeyFigure? = current.totalAscentM > 0 ? figure("\(Int(current.totalAscentM))", "m", "activity_detail_ascent_label") : nil
+        let descent: KeyFigure? = current.totalDescentM > 0 ? figure("\(Int(current.totalDescentM))", "m", "activity_detail_descent_label") : nil
+        return [[duration, calories], [distance, speed], [avgHeartRate, maxHeartRate], [ascent, descent]].map { $0.compactMap { $0 } }
+    }
+
+    /// The facts that are text: start, the older-watch notes (poling averages, running share), device, wrist and place.
+    private var technicalFacts: [(label: String, value: String)] {
+        var facts: [(label: String, value: String)] = [(L10n.get("activity_detail_started_label"), Format.date(current.startEpochSec))]
+        // Poling metrics only for rollski and langlauf, as on Android.
+        if current.avgSpm > 0, current.enhancedMetrics == nil, current.preset.hasPrefix("rollski") || current.preset.hasPrefix("langlauf") {
+            facts.append((L10n.get("activity_detail_stroke_metrics_label"),
+                          String(format: "%lld / %.2f m / %.0f ms / %.0f %%", Int(current.avgSpm), Double(current.avgDpsM),
+                                 Double(current.avgApidMs), Double(current.avgAdcPercent))))
+        }
+        if current.techniqueSharePercent.isEmpty, !current.watch.isEmpty,
+           ["running", "poleRunning", "trailrun", "mountainRun", "track"].contains(current.preset) {
+            facts.append((L10n.get("activity_detail_technique_share_label"), L10n.get("activity_detail_technique_share_running_missing")))
+        }
+        // Older watch versions: shares only; newer ones send averages (analysis section below).
+        if current.techniqueCatalog == "running", current.techniqueSharePercent.count >= 2, current.analysisLines.isEmpty {
+            facts.append((L10n.get("activity_detail_technique_share_label"),
+                          String(format: L10n.get("activity_detail_technique_share_running_value"),
+                                 current.techniqueSharePercent[0].doubleValue, current.techniqueSharePercent[1].doubleValue)))
+        }
+        if !current.watch.isEmpty { facts.append((L10n.get("activity_detail_device_label"), current.watch)) }
+        if let wrist = wristText(current) { facts.append((L10n.get("activity_detail_watch_wrist_label"), wrist)) }
+        if !current.locationName.isEmpty { facts.append((L10n.get("activity_detail_location_label"), current.locationName)) }
+        return facts
+    }
+
     private func wristText(_ a: ActivityItem) -> String? {
         switch a.watchWrist {
         case 1: return L10n.get("watch_option_wrist_left")
@@ -681,40 +725,12 @@ struct ActivityDetailScreen: View {
                 }
             }
             Section {
-                LabeledContent(L10n.get("activity_detail_started_label"), value: Format.date(current.startEpochSec))
-                LabeledContent(L10n.get("activity_detail_duration_label"), value: Format.duration(current.elapsedSec))
-                if current.distanceM > 0 { LabeledContent(L10n.get("activity_detail_distance_label"), value: Format.distance(current.distanceM)) }
-                if current.avgHeartRate > 0 { LabeledContent(L10n.get("activity_detail_avg_hr_label"), value: "\(current.avgHeartRate) bpm") }
-                if current.maxHeartRate > 0 { LabeledContent(L10n.get("activity_detail_max_hr_label"), value: "\(current.maxHeartRate) bpm") }
-                if current.totalAscentM > 0 { LabeledContent(L10n.get("activity_detail_ascent_label"), value: "\(Int(current.totalAscentM)) m") }
-                if current.totalDescentM > 0 { LabeledContent(L10n.get("activity_detail_descent_label"), value: "\(Int(current.totalDescentM)) m") }
-                if current.calories > 0 { LabeledContent(L10n.get("activity_detail_calories_label"), value: "\(current.calories) kcal") }
-                if current.avgSpeedMps > 0 {
-                    LabeledContent(L10n.get("activity_detail_avg_max_speed_label"),
-                                   value: String(format: "%.1f / %.1f km/h", Double(current.avgSpeedMps) * 3.6, Double(current.maxSpeedMps) * 3.6))
-                }
-                // Poling metrics only for rollski and langlauf, as on Android.
-                if current.avgSpm > 0, current.enhancedMetrics == nil, current.preset.hasPrefix("rollski") || current.preset.hasPrefix("langlauf") {
-                    LabeledContent(L10n.get("activity_detail_stroke_metrics_label"),
-                                   value: String(format: "%lld / %.2f m / %.0f ms / %.0f %%", Int(current.avgSpm), Double(current.avgDpsM),
-                                                 Double(current.avgApidMs), Double(current.avgAdcPercent)))
-                }
-                if current.techniqueSharePercent.isEmpty, !current.watch.isEmpty,
-                   ["running", "poleRunning", "trailrun", "mountainRun", "track"].contains(current.preset) {
-                    LabeledContent(L10n.get("activity_detail_technique_share_label"),
-                                   value: L10n.get("activity_detail_technique_share_running_missing"))
-                }
-                // Older watch versions: shares only; newer ones send averages (analysis section below).
-                if current.techniqueCatalog == "running", current.techniqueSharePercent.count >= 2, current.analysisLines.isEmpty {
-                    LabeledContent(L10n.get("activity_detail_technique_share_label"),
-                                   value: String(format: L10n.get("activity_detail_technique_share_running_value"),
-                                                 current.techniqueSharePercent[0].doubleValue, current.techniqueSharePercent[1].doubleValue))
-                }
-                if !current.watch.isEmpty { LabeledContent(L10n.get("activity_detail_device_label"), value: current.watch) }
-                if let wrist = wristText(current) { LabeledContent(L10n.get("activity_detail_watch_wrist_label"), value: wrist) }
-                if !current.locationName.isEmpty { LabeledContent(L10n.get("activity_detail_location_label"), value: current.locationName) }
+                TechnicalDataCard(
+                    title: L10n.get("activity_detail_section_technical"),
+                    rows: technicalRows, facts: technicalFacts
+                )
             }
-            .listRowBackground(CardTone.green.container)
+            .listRowBackground(CardTone.navy.container)
             // The watch's Enhanced Metrics (ski activity or run) as one collapsible card.
             if let metrics = current.enhancedMetrics {
                 Section { EnhancedMetricsCard(view: metrics) }
@@ -728,7 +744,7 @@ struct ActivityDetailScreen: View {
                 if current.rpe > 0 { LabeledContent(L10n.get("activity_detail_rpe_label"), value: "\(current.rpe)") }
                 if current.feeling > 0 { LabeledContent(L10n.get("activity_detail_feeling_label"), value: "\(current.feeling)") }
             }
-            .listRowBackground(CardTone.red.container)
+            .listRowBackground(CardTone.green.container)
             let zones = current.hrZonePercents.map { $0.floatValue }
             if zones.contains(where: { $0 > 0 }) {
                 Section(L10n.get("ios_hr_zones")) {
@@ -756,7 +772,7 @@ struct ActivityDetailScreen: View {
                         Text(line)
                     }
                 }
-                .listRowBackground(CardTone.teal.container)
+                .listRowBackground(CardTone.blue.container)
             }
             // Strength sets as the Strava description block says them (shared StrengthDescription.body).
             let setLines = current.strengthSetLines

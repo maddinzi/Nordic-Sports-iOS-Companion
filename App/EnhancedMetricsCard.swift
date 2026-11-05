@@ -5,7 +5,9 @@ import SwiftUI
 /// The tinted card look of the activity detail screen, as on Android (`CardTone` in Theme.kt):
 /// a light tint, a thin frame in the same hue and a title in a dark shade of it.
 enum CardTone {
-    case blue, red, green, yellow, orange, purple, teal, grey
+    /// The detail screen follows one scheme from the top (as Android): yellow (what the athlete enters), green (feeling),
+    /// darkGreen (equipment), navy (technical data), blue (Enhanced Metrics). Orange and red stay for notices and problems.
+    case blue, navy, red, green, darkGreen, yellow, orange, purple, teal, grey
 
     private static func dyn(_ light: UInt32, _ dark: UInt32) -> Color {
         func ui(_ hex: UInt32) -> UIColor {
@@ -20,6 +22,8 @@ enum CardTone {
         case .blue: return Self.dyn(0xEAF4FD, 0x12283B)
         case .red: return Self.dyn(0xFDECEC, 0x3A1A1A)
         case .green: return Self.dyn(0xEAF6EC, 0x14301A)
+        case .darkGreen: return Self.dyn(0xD3E8D7, 0x0C2214)
+        case .navy: return Self.dyn(0xDCE5F3, 0x0F1B33)
         case .yellow: return Self.dyn(0xFFF7DB, 0x2B2610)
         case .orange: return Self.dyn(0xFFEEDF, 0x33200F)
         case .purple: return Self.dyn(0xF3EDFB, 0x251A36)
@@ -33,6 +37,8 @@ enum CardTone {
         case .blue: return Self.dyn(0x8FC2EC, 0x2F5F85)
         case .red: return Self.dyn(0xE8A0A0, 0x8A3A3A)
         case .green: return Self.dyn(0x9BCBA3, 0x3C7A48)
+        case .darkGreen: return Self.dyn(0x5A9467, 0x2D6B3E)
+        case .navy: return Self.dyn(0x5878AD, 0x3A5A92)
         case .yellow: return Self.dyn(0xE6C65C, 0x8A7220)
         case .orange: return Self.dyn(0xF0A66B, 0x9A5A2A)
         case .purple: return Self.dyn(0xBBA3E0, 0x6F4FA0)
@@ -46,6 +52,8 @@ enum CardTone {
         case .blue: return Self.dyn(0x0B3A5E, 0xBFE0FA)
         case .red: return Self.dyn(0x6B1D1D, 0xF5C2C2)
         case .green: return Self.dyn(0x1B4D26, 0xBFE8C7)
+        case .darkGreen: return Self.dyn(0x0F3A1B, 0xA9DCB4)
+        case .navy: return Self.dyn(0x0B2547, 0xB9CCEE)
         case .yellow: return Self.dyn(0x5C4400, 0xFFE69A)
         case .orange: return Self.dyn(0x7A3300, 0xFFD3B0)
         case .purple: return Self.dyn(0x3F2468, 0xE0D0F5)
@@ -59,6 +67,8 @@ enum CardTone {
         case .blue: return Self.dyn(0x2F5F85, 0x9DB9D0)
         case .red: return Self.dyn(0x8A3A3A, 0xD9A0A0)
         case .green: return Self.dyn(0x2F6B3C, 0x9CC8A5)
+        case .darkGreen: return Self.dyn(0x24572F, 0x86B892)
+        case .navy: return Self.dyn(0x2C4A78, 0x8FA6CC)
         case .yellow: return Self.dyn(0x7A5E10, 0xD4BE70)
         case .orange: return Self.dyn(0x9A4B12, 0xE0AE85)
         case .purple: return Self.dyn(0x5E4290, 0xB9A3D6)
@@ -68,7 +78,7 @@ enum CardTone {
     }
 
     /// The tile and badge backgrounds inside a card of this tone.
-    var tile: Color { Self.dyn(0xFFFFFF, 0x1B3550) }
+    var tile: Color { self == .navy ? Self.dyn(0xFFFFFF, 0x1B2D50) : Self.dyn(0xFFFFFF, 0x1B3550) }
 }
 
 /// A collapsible group of the detail screen: tinted background and frame like Android's `CollapsibleCard`.
@@ -164,6 +174,79 @@ private func clock(_ totalSeconds: Int) -> String {
     return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
 }
 
+/// The bar chart of the cards (ski by technique, running by terrain), drawn from the shared `EmBarChart`:
+/// one bar per state, the dashed average line named in the header, a pale bar for a state with little time and a
+/// bold label on the emphasised bar. Same layout as Android's `MetricBars`; the bars grow in when it appears, so
+/// give it `.id(chart.id)` to replay that when the metric changes.
+private struct MetricBars: View {
+    let title: String
+    let chart: EmBarChart
+    @State private var grow: CGFloat = 0
+    private let tone = CardTone.blue
+
+    private var average: Double? { chart.average?.doubleValue }
+
+    private var scale: Double {
+        let top = chart.bars.map { $0.value }.max() ?? 0
+        let widest = max(top, average ?? 0)
+        return widest > 0 ? widest : 1
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(title).font(.caption.weight(.semibold)).foregroundStyle(tone.subtitle)
+                Spacer()
+                if average != nil, let text = chart.averageText {
+                    Path { path in
+                        path.move(to: CGPoint(x: 0, y: 5))
+                        path.addLine(to: CGPoint(x: 18, y: 5))
+                    }
+                    .stroke(Color.secondary, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                    .frame(width: 18, height: 10)
+                    Text("Ø \(text)").font(.caption).foregroundStyle(tone.subtitle)
+                }
+            }
+            ForEach(chart.bars, id: \.key) { bar in row(bar) }
+        }
+        .padding(12)
+        .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
+        .onAppear { withAnimation(.easeOut(duration: 0.4)) { grow = 1 } }
+    }
+
+    private func row(_ bar: EmBar) -> some View {
+        let name = stateShort(bar.key)
+        let time = clock(Int(bar.seconds))
+        return HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(name).font(.footnote).lineLimit(1).minimumScaleFactor(0.8)
+                Text(time).font(.caption2).foregroundStyle(tone.subtitle)
+            }
+            .frame(width: 64, alignment: .leading)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(stateColor(bar.key).opacity(bar.faded ? 0.45 : 1))
+                        .frame(width: geo.size.width * CGFloat(bar.value / scale) * grow)
+                    if let average {
+                        let x = geo.size.width * CGFloat(average / scale)
+                        Path { path in
+                            path.move(to: CGPoint(x: x, y: 0))
+                            path.addLine(to: CGPoint(x: x, y: geo.size.height))
+                        }
+                        .stroke(Color.secondary.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+                    }
+                }
+            }
+            .frame(height: 22)
+            Text(bar.text).font(.footnote.weight(bar.emphasis ? .bold : .regular))
+                .frame(width: 72, alignment: .trailing)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(name) \(time) \(bar.text)")
+    }
+}
+
 /// What each headline key shows: name, explanation and the abbreviation (ski only).
 private func tileTexts(_ key: String) -> (name: String, desc: String, abbreviation: String?) {
     switch key {
@@ -192,6 +275,9 @@ struct EnhancedMetricsCard: View {
     private let tone = CardTone.blue
     @State private var explaining = false
     @State private var polingOpen = false
+    /// The ski tile whose bar chart is open (a `view.charts` id), and the metric chosen on the run card.
+    @State private var openChart: String?
+    @State private var selectedChart: String?
 
     private var isRun: Bool { view.kind == "run" }
 
@@ -199,7 +285,12 @@ struct EnhancedMetricsCard: View {
         ToneGroup(title: L10n.get("em_title"),
                   subtitle: L10n.get(isRun ? "em_run_subtitle" : "em_subtitle"), tone: tone) {
             if !view.headline.isEmpty {
-                section(L10n.get(isRun ? "em_run_eff_title" : "em_poling_title")) { tiles(view.headline) }
+                section(L10n.get(isRun ? "em_run_eff_title" : "em_poling_title")) {
+                    tiles(view.headline)
+                    if !isRun, let id = openChart, let chart = view.charts.first(where: { $0.id == id }) {
+                        MetricBars(title: skiChartTitle(id), chart: chart).id(id)
+                    }
+                }
             }
             if !view.climb.isEmpty {
                 section(L10n.get("em_climb_title")) { tiles(view.climb) }
@@ -223,6 +314,7 @@ struct EnhancedMetricsCard: View {
                     donut
                     if isRun {
                         Text(L10n.get("em_terrain_time_note")).font(.caption).foregroundStyle(tone.subtitle)
+                        runCharts
                     }
                 }
             }
@@ -232,13 +324,19 @@ struct EnhancedMetricsCard: View {
             }
             if !isRun, !view.polingRows.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(L10n.get("em_poling_matrix_title")).font(.subheadline.weight(.semibold))
-                            .foregroundStyle(tone.title)
-                        Spacer()
-                        Button(L10n.get(polingOpen ? "em_collapse" : "em_expand")) { polingOpen.toggle() }
-                            .buttonStyle(.borderless)
+                    Button { withAnimation(.easeInOut(duration: 0.25)) { polingOpen.toggle() } } label: {
+                        HStack {
+                            Text(L10n.get("em_poling_matrix_title")).font(.subheadline.weight(.semibold))
+                                .foregroundStyle(tone.title)
+                            Spacer()
+                            Image(systemName: "chevron.down").font(.footnote.weight(.semibold))
+                                .foregroundStyle(tone.title)
+                                .rotationEffect(.degrees(polingOpen ? 180 : 0))
+                        }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.get(polingOpen ? "em_collapse" : "em_expand"))
                     if polingOpen {
                         Text(L10n.get("em_poling_matrix_desc")).font(.caption).foregroundStyle(tone.subtitle)
                         polingGrid
@@ -324,12 +422,29 @@ struct EnhancedMetricsCard: View {
         }
     }
 
+    @ViewBuilder
     private func tile(_ value: EmValue) -> some View {
+        if !isRun, view.charts.contains(where: { $0.id == value.key }) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.25)) { openChart = openChart == value.key ? nil : value.key }
+            } label: { tileCard(value, chevron: true, open: openChart == value.key) }
+                .buttonStyle(.plain)
+        } else {
+            tileCard(value, chevron: false, open: false)
+        }
+    }
+
+    private func tileCard(_ value: EmValue, chevron: Bool, open: Bool) -> some View {
         let texts = tileTexts(value.key)
         return VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(value.value).font(.title.weight(.semibold))
                 if !value.unit.isEmpty { Text(value.unit).font(.footnote).foregroundStyle(.secondary) }
+                if chevron {
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.down").font(.footnote.weight(.semibold)).foregroundStyle(tone.subtitle)
+                        .rotationEffect(.degrees(open ? 180 : 0))
+                }
             }
             Text(texts.abbreviation.map { "\(texts.name) (\($0))" } ?? texts.name)
                 .font(.footnote.weight(.semibold))
@@ -338,6 +453,52 @@ struct EnhancedMetricsCard: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 12).padding(.vertical, 10)
         .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(open ? tone.subtitle : Color.clear, lineWidth: 2))
+    }
+
+    private func skiChartTitle(_ id: String) -> String {
+        switch id {
+        case "rate": return "SPM · /min"
+        case "dps": return "DPS · m"
+        case "apid": return "APID · ms"
+        case "adc": return "ADC · %"
+        default: return id
+        }
+    }
+
+    private func runChartName(_ id: String) -> String {
+        switch id {
+        case "pace": return L10n.get("em_col_pace")
+        case "gap": return L10n.get("em_col_gap")
+        case "hr": return L10n.get("em_col_hr")
+        case "gain": return L10n.get("em_col_gain")
+        case "loss": return L10n.get("em_col_loss")
+        default: return id
+        }
+    }
+
+    /// Pace, GAP, heart rate, gain and loss by terrain, one metric at a time (chips choose); Android: `TerrainBars`.
+    @ViewBuilder
+    private var runCharts: some View {
+        if !view.charts.isEmpty {
+            let current = view.charts.first(where: { $0.id == selectedChart }) ?? view.charts[0]
+            VStack(alignment: .leading, spacing: 8) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(view.charts, id: \.id) { chart in
+                            if chart.id == current.id {
+                                Button(runChartName(chart.id)) { selectedChart = chart.id }
+                                    .buttonStyle(.borderedProminent).controlSize(.small)
+                            } else {
+                                Button(runChartName(chart.id)) { selectedChart = chart.id }
+                                    .buttonStyle(.bordered).controlSize(.small)
+                            }
+                        }
+                    }
+                }
+                MetricBars(title: runChartName(current.id), chart: current).id(current.id)
+            }
+        }
     }
 
     private func balance(_ left: Double) -> some View {
