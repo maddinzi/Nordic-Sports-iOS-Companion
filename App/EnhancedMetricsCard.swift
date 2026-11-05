@@ -183,6 +183,8 @@ private struct MetricBars: View {
     let chart: EmBarChart
     /// A state key to keep in colour; the other bars fade (the donut's selection).
     var highlight: String? = nil
+    /// A tap on a bar passes its key, so the bars select and clear the same state as the donut.
+    var onSelect: ((String) -> Void)? = nil
     @State private var grow: CGFloat = 0
     private let tone = CardTone.blue
 
@@ -246,8 +248,11 @@ private struct MetricBars: View {
                 .opacity(dim ? 0.45 : 1)
                 .frame(width: 72, alignment: .trailing)
         }
+        .contentShape(Rectangle())
+        .onTapGesture { onSelect?(bar.key) }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(name) \(time) \(bar.text)")
+        .accessibilityAddTraits(onSelect == nil ? [] : .isButton)
     }
 }
 
@@ -295,7 +300,7 @@ struct EnhancedMetricsCard: View {
                 section(L10n.get(isRun ? "em_run_eff_title" : "em_poling_title")) {
                     tiles(view.headline)
                     if !isRun, let id = openChart, let chart = view.charts.first(where: { $0.id == id }) {
-                        MetricBars(title: skiChartTitle(id), chart: chart, highlight: selectedKey).id(id)
+                        MetricBars(title: skiChartTitle(id), chart: chart, highlight: selectedKey, onSelect: toggleSelection).id(id)
                     }
                 }
             }
@@ -503,7 +508,7 @@ struct EnhancedMetricsCard: View {
                         }
                     }
                 }
-                MetricBars(title: runChartName(current.id), chart: current, highlight: selectedKey).id(current.id)
+                MetricBars(title: runChartName(current.id), chart: current, highlight: selectedKey, onSelect: toggleSelection).id(current.id)
             }
         }
     }
