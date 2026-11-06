@@ -16,23 +16,48 @@ struct TechniqueSankeyChart: View {
     var body: some View {
         ChartFrame(title: L10n.get("em_timeline_title"), tone: tone) { space in
             VStack(alignment: .leading, spacing: 8) {
-                if byLap != nil {
-                    Picker("", selection: $lapMode) {
-                        Text(L10n.get("em_timeline_by_time")).tag(false)
-                        Text(L10n.get("em_timeline_by_lap")).tag(true)
+                if space.maximized {
+                    // Full screen is short and wide: the two choices stand left of the chart, one above the other.
+                    HStack(alignment: .top, spacing: 12) {
+                        if byLap != nil {
+                            VStack(spacing: 8) {
+                                modeButton(L10n.get("em_timeline_by_time"), lap: false)
+                                modeButton(L10n.get("em_timeline_by_lap"), lap: true)
+                            }
+                        }
+                        canvas(space).frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    .pickerStyle(.segmented)
-                    .onChange(of: lapMode) { _, _ in selected = "" }
+                } else {
+                    if byLap != nil {
+                        Picker("", selection: $lapMode) {
+                            Text(L10n.get("em_timeline_by_time")).tag(false)
+                            Text(L10n.get("em_timeline_by_lap")).tag(true)
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: lapMode) { _, _ in selected = "" }
+                    }
+                    canvas(space).frame(maxWidth: .infinity, minHeight: 240, maxHeight: 240)
                 }
-                SankeyCanvas(sankey: sankey, selected: selected, textScale: space.scale, onSelect: { key in
-                    selected = selected == key ? "" : key
-                })
-                .frame(maxWidth: .infinity, minHeight: 240, maxHeight: space.maximized ? .infinity : 240)
                 Text(caption).font(.caption).foregroundStyle(tone.subtitle)
                 // The legend goes with the full-screen chart: the bars too small to carry a name inline are named here.
                 if space.maximized { legend }
             }
         }
+    }
+
+    private func canvas(_ space: ChartSpace) -> some View {
+        SankeyCanvas(sankey: sankey, selected: selected, textScale: space.scale, onSelect: { key in
+            selected = selected == key ? "" : key
+        })
+    }
+
+    private func modeButton(_ title: String, lap: Bool) -> some View {
+        Button(title) {
+            lapMode = lap
+            selected = ""
+        }
+        .buttonStyle(.bordered)
+        .tint(lapMode == lap ? Color.accentColor : Color.secondary)
     }
 
     private var caption: String {
