@@ -1253,10 +1253,6 @@ struct SettingsDiaryPage: View {
                         ))
                         Button(L10n.get("ios_diary_write_7")) { Task { await companion.writeDiary(days: 7) } }
                             .disabled(companion.syncing)
-                        // TEMPORARY, as on Android: remove a few versions after 0.9.93.
-                        Text(L10n.get("settings_intro_compact_diary")).font(.footnote).foregroundStyle(.secondary)
-                        Button(L10n.get("status_compact_diary_heading")) { Task { await companion.compactDiary(days: 7) } }
-                            .disabled(companion.syncing)
                     } else {
                         Text(L10n.get("ios_diary_connect_hint"))
                             .foregroundStyle(.secondary)

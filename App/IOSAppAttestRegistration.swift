@@ -9,7 +9,7 @@ import UIKit
 final class IOSAppAttestRegistration {
     static let shared = IOSAppAttestRegistration()
 
-    private let baseURL = URL(string: "https://api.nordicsports.maddin.me")!
+    private let baseURL = URL(string: AppConfig.apiBaseUrl)!
     private let renewalIntervalMillis: Int64 = 23 * 24 * 60 * 60 * 1000
     private let retryIntervalMillis: Int64 = 6 * 60 * 60 * 1000
 

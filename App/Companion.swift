@@ -15,7 +15,7 @@ final class Companion: NSObject, ObservableObject {
 
     /// Strava's https redirect, received as a Universal Link (the server's
     /// apple-app-site-association); must match `CompanionCore.STRAVA_REDIRECT_URI`.
-    static let stravaCallbackHost = "api.nordicsports.maddin.me"
+    static let stravaCallbackHost = AppConfig.apiHost
     static let stravaCallbackPath = "/strava-callback"
 
     @Published private(set) var activities: [ActivityItem] = []
@@ -89,7 +89,7 @@ final class Companion: NSObject, ObservableObject {
             language: language,
             stravaClientId: setting("StravaClientId"),
             stravaClientSecret: setting("StravaClientSecret"),
-            webhookBaseUrl: "https://api.nordicsports.maddin.me",
+            webhookBaseUrl: AppConfig.apiBaseUrl,
             webhookApiKey: setting("WebhookApiKey"),
             oneDriveClientId: setting("OneDriveClientId"),
             dropboxAppKey: setting("DropboxAppKey"),
@@ -313,7 +313,7 @@ final class Companion: NSObject, ObservableObject {
             storeFailures = 0
             WatchLinkSpike.shared.add("activity from \(variant): \(result.summary)")
             // A burst arrives in dozens of chunks: only the last one (stored) changes anything.
-            if result.summary == "Recording Boost chunk" { return (0, 0) }
+            if result.partialBurst { return (0, 0) }
             await refresh()
             // The saved recording's "running on the watch" card was removed in the core.
             refreshWatchCards()
@@ -389,8 +389,6 @@ final class Companion: NSObject, ObservableObject {
     /// sync as on opening, in automated mode only. Returns a line for the Diagnostics log.
     func backgroundSync() async -> BackgroundOutcome {
         let access = FilesDiaryAccess.shared
-        access.beginBackgroundRun()
-        defer { access.endBackgroundRun() }
         guard !outdated else { return BackgroundOutcome(text: "this build is no longer supported, nothing run", success: true) }
         let stopped = BackgroundOutcome(text: "stopped before the diary was written (background time over)", success: false)
         let purged = await purgeExpiredStravaData()
@@ -401,8 +399,13 @@ final class Companion: NSObject, ObservableObject {
             return BackgroundOutcome(text: "neither Strava nor a diary connected", success: true)
         }
         guard !syncing else { return BackgroundOutcome(text: "a sync is already running", success: true) }
-        // No diary write is started once the stop flag is set (expiry handler, cancellation).
-        if Task.isCancelled || access.stopRequested { return stopped }
+        // Marked only now, with nothing awaited before `sync()` takes `syncing`: a run that does not sync (the refresh
+        // and the processing task can overlap, or a foreground sync runs) must not reset the stop flag or the shorter
+        // read deadline of the run that does.
+        access.beginBackgroundRun()
+        defer { access.endBackgroundRun() }
+        // No diary write is started once the task is over (expiry handler, cancellation).
+        if Task.isCancelled { return stopped }
         let outcome = await withTaskCancellationHandler {
             await sync()
         } onCancel: {
@@ -474,6 +477,7 @@ final class Companion: NSObject, ObservableObject {
             refreshDiary()
             await refresh()
         }
+        runWantedDiaryUpdate()
     }
 
     // MARK: - Strava
@@ -772,25 +776,7 @@ final class Companion: NSObject, ObservableObject {
             refreshDiary()
             await refresh()
         }
-    }
-
-    /// TEMPORARY (remove a few versions after 0.9.93): rewrites the entries written in the last
-    /// [days] days by the current rules; the sync log shows what happened.
-    func compactDiary(days: Int32) async {
-        guard !syncing else { return }
-        syncing = true
-        defer { syncing = false }
-        await withDiaryTime {
-            do {
-                let report = try await core.compactDiary(days: days)
-                syncLines = report.lines
-                lastSync = Date()
-            } catch {
-                report(error)
-            }
-            refreshDiary()
-            await refresh()
-        }
+        runWantedDiaryUpdate()
     }
 
     /// "Push to diary" for one activity; the sync log shows what was written.
@@ -898,19 +884,23 @@ final class Companion: NSObject, ObservableObject {
         await refreshFolderDestinations()
     }
 
-    /// "Write now" on one destination.
+    /// "Write now" on one destination, with a few more seconds from iOS like every diary write (`withDiaryTime`; the
+    /// folder writes do not read the stop flag, but each file is swapped in whole).
     func writeFolderDestinationNow(_ id: String) async {
         guard !syncing else { return }
         syncing = true
         defer { syncing = false }
-        do {
-            let report = try await core.writeFolderDestinationNow(id: id)
-            syncLines = report.lines
-        } catch {
-            self.report(error)
+        await withDiaryTime {
+            do {
+                let report = try await core.writeFolderDestinationNow(id: id)
+                syncLines = report.lines
+            } catch {
+                report(error)
+            }
+            refreshDiary()
+            await refresh()
         }
-        refreshDiary()
-        await refresh()
+        runWantedDiaryUpdate()
     }
 
     // MARK: - Watch settings
@@ -1218,7 +1208,9 @@ final class Companion: NSObject, ObservableObject {
 
     /// "Delete my data", as Android's: the shared core revokes Strava, forgets the diary and
     /// the watches' settings and empties the database; here the diary file bookmark, its
-    /// backups, exports and the diagnostics log go too. The diary workbook itself stays.
+    /// backups, the Recording Boost CSVs, the renewed folder bookmarks, exports, shared log
+    /// files and the diagnostics log go too. The diary workbook and the files in the athlete's
+    /// JSON/CSV folders stay.
     /// PRIVACY-SYNC: what "Delete my data" removes on iOS. Changing this? Re-check the
     /// Companion's design/privacy-notice-sync.md.
     func deleteAllData() async {
@@ -1229,15 +1221,19 @@ final class Companion: NSObject, ObservableObject {
             failed = [error.localizedDescription]
         }
         FilesDiaryAccess.shared.forget()
+        FolderFiles.shared.forgetRenewals()
         let files = FileManager.default
         if let documents = files.urls(for: .documentDirectory, in: .userDomainMask).first {
-            let backups = documents.appendingPathComponent(FilesDiaryAccess.backupFolder, isDirectory: true)
-            if files.fileExists(atPath: backups.path) {
-                do { try files.removeItem(at: backups) } catch { failed.append("diary backups") }
+            // As Android's PublicStorageWriter.deleteAllAppFiles: the folders this app writes in Documents.
+            for (folder, label) in [(FilesDiaryAccess.backupFolder, "diary backups"), (Self.boostFolder, "Recording Boost files")] {
+                let url = documents.appendingPathComponent(folder, isDirectory: true)
+                guard files.fileExists(atPath: url.path) else { continue }
+                do { try files.removeItem(at: url) } catch { failed.append(label) }
             }
         }
         do {
-            for name in try files.contentsOfDirectory(atPath: files.temporaryDirectory.path) where name.hasSuffix(".json") {
+            // The "my data" JSON and the shared log files (`logFile`, folder "logs").
+            for name in try files.contentsOfDirectory(atPath: files.temporaryDirectory.path) where name.hasSuffix(".json") || name == "logs" {
                 try files.removeItem(at: files.temporaryDirectory.appendingPathComponent(name))
             }
         } catch {
@@ -1422,6 +1418,7 @@ final class Companion: NSObject, ObservableObject {
             self.report(error)
         }
         await refresh()
+        runWantedDiaryUpdate()
     }
 
     func skipReview(_ activityId: String) async {
@@ -1437,7 +1434,8 @@ final class Companion: NSObject, ObservableObject {
     /// first diary write usually are): the sync that ends next runs once more, so the edit is never left behind.
     private var diaryUpdateWanted = false
 
-    /// Called when a run that held `syncing` ends; starts the rewrite an edit asked for meanwhile.
+    /// Called by every run that holds `syncing` when it ends (sync, backfill, "Write to diary now", a destination's
+    /// "Write now", "Create on Strava"); starts the rewrite an edit asked for meanwhile.
     private func runWantedDiaryUpdate() {
         guard diaryUpdateWanted, !outdated else { return }
         diaryUpdateWanted = false
