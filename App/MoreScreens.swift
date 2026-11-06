@@ -1174,7 +1174,7 @@ struct OnboardingScreen: View {
 /// Android's About: version, what's new, help with the translations, privacy policy, imprint,
 /// the description and the trademark note.
 struct AboutScreen: View {
-    private static let site = "https://nordicsports.maddin.me"
+    private static let site = AppConfig.websiteUrl
 
     @EnvironmentObject var companion: Companion
     @State private var tokenSaved = false
@@ -1242,7 +1242,7 @@ struct AboutScreen: View {
 struct LicensesScreen: View {
     private let text: String = {
         guard let url = Bundle.main.url(forResource: "open_source_licenses", withExtension: "txt"),
-              let content = try? String(contentsOf: url, encoding: .utf8) else { return "https://nordicsports.maddin.me" }
+              let content = try? String(contentsOf: url, encoding: .utf8) else { return AppConfig.websiteUrl }
         return content
     }()
 

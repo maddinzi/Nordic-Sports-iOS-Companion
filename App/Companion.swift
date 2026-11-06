@@ -15,7 +15,7 @@ final class Companion: NSObject, ObservableObject {
 
     /// Strava's https redirect, received as a Universal Link (the server's
     /// apple-app-site-association); must match `CompanionCore.STRAVA_REDIRECT_URI`.
-    static let stravaCallbackHost = "api.nordicsports.maddin.me"
+    static let stravaCallbackHost = AppConfig.apiHost
     static let stravaCallbackPath = "/strava-callback"
 
     @Published private(set) var activities: [ActivityItem] = []
@@ -89,7 +89,7 @@ final class Companion: NSObject, ObservableObject {
             language: language,
             stravaClientId: setting("StravaClientId"),
             stravaClientSecret: setting("StravaClientSecret"),
-            webhookBaseUrl: "https://api.nordicsports.maddin.me",
+            webhookBaseUrl: AppConfig.apiBaseUrl,
             webhookApiKey: setting("WebhookApiKey"),
             oneDriveClientId: setting("OneDriveClientId"),
             dropboxAppKey: setting("DropboxAppKey"),
@@ -313,7 +313,7 @@ final class Companion: NSObject, ObservableObject {
             storeFailures = 0
             WatchLinkSpike.shared.add("activity from \(variant): \(result.summary)")
             // A burst arrives in dozens of chunks: only the last one (stored) changes anything.
-            if result.summary == "Recording Boost chunk" { return (0, 0) }
+            if result.partialBurst { return (0, 0) }
             await refresh()
             // The saved recording's "running on the watch" card was removed in the core.
             refreshWatchCards()
@@ -768,26 +768,6 @@ final class Companion: NSObject, ObservableObject {
         await withDiaryTime {
             do {
                 let report = try await core.writeDiary(days: days)
-                syncLines = report.lines
-                lastSync = Date()
-            } catch {
-                report(error)
-            }
-            refreshDiary()
-            await refresh()
-        }
-        runWantedDiaryUpdate()
-    }
-
-    /// TEMPORARY (remove a few versions after 0.9.93): rewrites the entries written in the last
-    /// [days] days by the current rules; the sync log shows what happened.
-    func compactDiary(days: Int32) async {
-        guard !syncing else { return }
-        syncing = true
-        defer { syncing = false }
-        await withDiaryTime {
-            do {
-                let report = try await core.compactDiary(days: days)
                 syncLines = report.lines
                 lastSync = Date()
             } catch {
@@ -1454,8 +1434,8 @@ final class Companion: NSObject, ObservableObject {
     /// first diary write usually are): the sync that ends next runs once more, so the edit is never left behind.
     private var diaryUpdateWanted = false
 
-    /// Called by every run that holds `syncing` when it ends (sync, backfill, the diary and destination writes, "Create on
-    /// Strava"); starts the rewrite an edit asked for meanwhile.
+    /// Called by every run that holds `syncing` when it ends (sync, backfill, "Write to diary now", a destination's
+    /// "Write now", "Create on Strava"); starts the rewrite an edit asked for meanwhile.
     private func runWantedDiaryUpdate() {
         guard diaryUpdateWanted, !outdated else { return }
         diaryUpdateWanted = false

@@ -42,7 +42,8 @@ targets:
       Debug: Secrets.xcconfig
       Release: Secrets.xcconfig
     # Strava's https sign-in redirect returns to the app through the server's
-    # apple-app-site-association (api.nordicsports.maddin.me/.well-known/).
+    # apple-app-site-association (api.nordicsports.maddin.me/.well-known/). Same host as
+    # AppConfig.apiHost (App/AppConfig.swift): change both on a domain move.
     entitlements:
       path: App/NordicSportsCompanion.entitlements
       properties:
