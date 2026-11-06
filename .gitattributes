@@ -1,0 +1,25 @@
+# Line endings (workspace rule, see CLAUDE.md "Line endings"): the repository
+# stores LF and working copies use LF too, so what generators, scripts and
+# editors write already matches and Git prints no "LF will be replaced by CRLF"
+# warnings, although this machine's Git sets core.autocrlf=true.
+# cmd.exe needs CRLF in batch files.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Never touched.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.jar binary
+*.zip binary
+*.xlsx binary
+*.fit binary
+*.ttf binary
+*.der binary
+*.jks binary
+*.keystore binary
