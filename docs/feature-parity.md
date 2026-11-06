@@ -152,3 +152,4 @@ The first TestFlight build is the compile and device test.
   Connect with Strava button; no Strava logo on About).
 - **22:** all iOS labels from the text table, onboarding, about, changelog; then the
   release steps (roadmap step 6).
+| Activities | Card with an Entry lane (status colour: yellow to review, green written, orange action needed; Diary and Strava chips) and a Metrics lane (distance, heart rate, speed; Data and Technique chips), the blue watch tick in front of the source line; two screens behind it: Entry (Diary and Strava tabs) and a read-only Metrics screen (Data and Technique tabs); the expand chevron is gone | yes | next build (untested, not compiled: written on Windows) | | Android `ActivityEventCard`, `ActivityMetricsScreen`; iOS `ActivityCard`, `ActivityMetricsScreen`, `ActivityDetailScreen` (tabs). The list rows have no activity type icon on iOS (none exists in the app yet), Android keeps its icons |
