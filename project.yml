@@ -80,8 +80,11 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
+        # Landscape is declared for the full-screen charts only; `AppOrientationDelegate` keeps every other screen in portrait.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         # From Secrets.xcconfig (CI); empty in a build without the secrets.
         StravaClientId: $(STRAVA_CLIENT_ID)
         StravaClientSecret: $(STRAVA_CLIENT_SECRET)

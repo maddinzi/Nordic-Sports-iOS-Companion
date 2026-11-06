@@ -1,3 +1,4 @@
+import NordicSportsShared
 import SwiftUI
 
 // Moved from ActivityDetailScreen: the Metrics screen shows what the watch measured.
@@ -20,21 +21,47 @@ struct ActivityMetricsScreen: View {
     /// The wrist in the app language; the watch's own label is English.
     /// The number tiles of the technical data card in rows that belong together (as Android's `TechnicalDataCard`):
     /// time and energy, distance and pace, heart rate, climb. A row with one tile fills the width.
+    /// Each tile has the plain-language line under it (Android: the same texts). The groups fill rows of two; a lone tile fills its row.
     private var technicalRows: [[KeyFigure]] {
-        func figure(_ value: String, _ unit: String, _ key: String) -> KeyFigure { KeyFigure(value: value, unit: unit, name: L10n.get(key)) }
-        let duration = figure(Format.duration(current.elapsedSec), "", "activity_detail_duration_label")
-        let calories: KeyFigure? = current.calories > 0 ? figure("\(current.calories)", "kcal", "activity_detail_calories_label") : nil
-        let distance: KeyFigure? = current.distanceM > 0 ? figure(Format.distance(current.distanceM), "", "activity_detail_distance_label") : nil
-        // The unit of the speed pair goes into its name: both numbers and "km/h" side by side do not fit a half tile.
-        let speed: KeyFigure? = current.avgSpeedMps > 0
-            ? KeyFigure(value: String(format: "%.1f / %.1f", Double(current.avgSpeedMps) * 3.6, Double(current.maxSpeedMps) * 3.6),
-                        unit: "", name: L10n.get("activity_detail_avg_max_speed_label") + " (km/h)")
-            : nil
-        let avgHeartRate: KeyFigure? = current.avgHeartRate > 0 ? figure("\(current.avgHeartRate)", "bpm", "activity_detail_avg_hr_label") : nil
-        let maxHeartRate: KeyFigure? = current.maxHeartRate > 0 ? figure("\(current.maxHeartRate)", "bpm", "activity_detail_max_hr_label") : nil
-        let ascent: KeyFigure? = current.totalAscentM > 0 ? figure("\(Int(current.totalAscentM))", "m", "activity_detail_ascent_label") : nil
-        let descent: KeyFigure? = current.totalDescentM > 0 ? figure("\(Int(current.totalDescentM))", "m", "activity_detail_descent_label") : nil
-        return [[duration, calories], [distance, speed], [avgHeartRate, maxHeartRate], [ascent, descent]].map { $0.compactMap { $0 } }
+        func figure(_ value: String, _ unit: String, _ key: String, _ desc: String) -> KeyFigure {
+            KeyFigure(value: value, unit: unit, name: L10n.get(key), description: L10n.get(desc))
+        }
+        let figures = ActivityFigures.shared
+        let movingTime = figure(Format.duration(current.elapsedSec), "", "activity_detail_moving_time_label", "activity_detail_moving_time_desc")
+        // Wall-clock time and the pause, for a watch that sent them (0.9.120 and later): moving time alone hides a long stop.
+        let pause = figures.pauseSeconds(elapsedTimeSec: current.elapsedTimeSec, elapsedSec: current.elapsedSec)?.int32Value
+        let totalTime: KeyFigure? = pause.map { paused in
+            KeyFigure(value: Format.duration(current.elapsedTimeSec), unit: "", name: L10n.get("activity_detail_total_time_label"),
+                      description: String(format: L10n.get("activity_detail_total_time_desc"), Format.duration(paused)))
+        }
+        let calories: KeyFigure? = current.calories > 0 ? figure("\(current.calories)", "kcal", "activity_detail_calories_label", "activity_detail_calories_desc") : nil
+        let distance: KeyFigure? = current.distanceM > 0
+            ? KeyFigure(value: Format.distance(current.distanceM), unit: "", name: L10n.get("activity_detail_distance_label")) : nil
+        // Running reads as a pace (min/km), everything else as a speed. The unit goes into the name: both numbers and
+        // "km/h" side by side do not fit a half tile. Not for activities without a speed (strength).
+        var speed: KeyFigure?
+        if current.avgSpeedMps > 0 {
+            if figures.usesPace(art: current.sportArt) {
+                if let avg = figures.paceSecPerKm(speedMps: current.avgSpeedMps)?.int32Value {
+                    let best = figures.paceSecPerKm(speedMps: current.maxSpeedMps)?.int32Value
+                    let value = best.map { "\(figures.paceText(secPerKm: avg)) / \(figures.paceText(secPerKm: $0))" } ?? figures.paceText(secPerKm: avg)
+                    speed = figure(value, "", "activity_detail_avg_best_pace_label", "activity_detail_speed_desc")
+                }
+            } else {
+                speed = KeyFigure(value: String(format: "%.1f / %.1f", Double(current.avgSpeedMps) * 3.6, Double(current.maxSpeedMps) * 3.6),
+                                  unit: "", name: L10n.get("activity_detail_avg_max_speed_label") + " (km/h)",
+                                  description: L10n.get("activity_detail_speed_desc"))
+            }
+        }
+        let avgHeartRate: KeyFigure? = current.avgHeartRate > 0 ? figure("\(current.avgHeartRate)", "bpm", "activity_detail_avg_hr_label", "activity_detail_avg_hr_desc") : nil
+        let maxHeartRate: KeyFigure? = current.maxHeartRate > 0 ? figure("\(current.maxHeartRate)", "bpm", "activity_detail_max_hr_label", "activity_detail_max_hr_desc") : nil
+        let ascent: KeyFigure? = current.totalAscentM > 0 ? figure("\(Int(current.totalAscentM))", "m", "activity_detail_ascent_label", "em_ascent_desc") : nil
+        let descent: KeyFigure? = current.totalDescentM > 0 ? figure("\(Int(current.totalDescentM))", "m", "activity_detail_descent_label", "em_descent_desc") : nil
+        let groups: [[KeyFigure?]] = [[movingTime, totalTime, calories, distance, speed], [avgHeartRate, maxHeartRate], [ascent, descent]]
+        return groups.flatMap { group -> [[KeyFigure]] in
+            let tiles = group.compactMap { $0 }
+            return stride(from: 0, to: tiles.count, by: 2).map { Array(tiles[$0 ..< min($0 + 2, tiles.count)]) }
+        }
     }
 
     /// The facts that are text: start, the older-watch notes (poling averages, running share), device, wrist and place.
@@ -59,6 +86,15 @@ struct ActivityMetricsScreen: View {
         if !current.watch.isEmpty { facts.append((L10n.get("activity_detail_device_label"), current.watch)) }
         if let wrist = wristText(current) { facts.append((L10n.get("activity_detail_watch_wrist_label"), wrist)) }
         if !current.locationName.isEmpty { facts.append((L10n.get("activity_detail_location_label"), current.locationName)) }
+        // The watch app, its firmware and when the phone got the activity (Android: the same lines).
+        let app = [current.watchAppVersion, current.watchBuild].filter { !$0.isEmpty }.joined(separator: " · ")
+        if !app.isEmpty { facts.append((L10n.get("activity_detail_watch_app_label"), app)) }
+        let firmware = ([current.watchFirmware].filter { !$0.isEmpty } + (current.watchCiqVersion.isEmpty ? [] : ["Connect IQ \(current.watchCiqVersion)"]))
+            .joined(separator: " · ")
+        if !firmware.isEmpty { facts.append((L10n.get("activity_detail_watch_firmware_label"), firmware)) }
+        if current.receivedAtEpochMillis > 0 {
+            facts.append((L10n.get("activity_detail_received_label"), Format.date(current.receivedAtEpochMillis / 1000)))
+        }
         return facts
     }
 

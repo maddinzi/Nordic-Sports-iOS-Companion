@@ -1,10 +1,12 @@
 import SwiftUI
 
-/// One number of the technical data: the value, its unit (may be empty) and the name under it.
+/// One number of the technical data: the value, its unit (may be empty), the name under it and the plain-language
+/// line that says what it is (may be empty).
 struct KeyFigure {
     let value: String
     let unit: String
     let name: String
+    var description = ""
 }
 
 /// The technical data of an activity in the look of the Enhanced Metrics key data (Android: `TechnicalDataCard` in
@@ -55,6 +57,7 @@ struct TechnicalDataCard: View {
                 if !figure.unit.isEmpty { Text(figure.unit).font(.footnote).foregroundStyle(.secondary) }
             }
             Text(figure.name).font(.footnote.weight(.semibold))
+            if !figure.description.isEmpty { Text(figure.description).font(.caption).foregroundStyle(.secondary) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 12).padding(.vertical, 10)

@@ -7,6 +7,8 @@ import UserNotifications
 /// Their log is under Settings > Data logs > Developer log.
 @main
 struct NordicSportsCompanionApp: App {
+    /// Keeps every screen in portrait except a chart opened full screen (`OrientationLock`).
+    @UIApplicationDelegateAdaptor(AppOrientationDelegate.self) private var orientationDelegate
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var companion = Companion.shared
     /// Settings > App > Appearance: "" = system, "light", "dark".

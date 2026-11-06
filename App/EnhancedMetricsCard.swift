@@ -103,7 +103,7 @@ struct ToneGroup<Content: View>: View {
     }
 }
 
-private extension Color {
+extension Color {
     // Blue, green, grey by intensity (Companion `design/colour-scheme.md`, `TechniqueCatalogs.COLOR_RGB`).
     static let techniqueBlue = Color(red: 0x2A / 255, green: 0x6D / 255, blue: 0xBD / 255)
     static let techniqueMidBlue = Color(red: 0x5B / 255, green: 0x9B / 255, blue: 0xE0 / 255)
@@ -137,7 +137,7 @@ func hrZoneColor(_ zone: Int) -> Color {
 }
 
 /// Colour per catalog state: techniques (V2, V1, ...) and terrain (UP, FLAT, ...).
-private func stateColor(_ key: String) -> Color {
+func stateColor(_ key: String) -> Color {
     switch key {
     case "V2", "DIA": return .techniqueBlue
     case "V2A", "KDP": return .techniqueMidBlue
@@ -177,14 +177,14 @@ private func stateName(_ key: String) -> String {
 }
 
 /// The short code in the grid: GLIDE and OTHER in words, the rest as is.
-private func stateShort(_ key: String) -> String {
+func stateShort(_ key: String) -> String {
     switch key {
     case "GLIDE", "OTHER", "UP", "FLAT", "DOWN", "STEEP", "STEEP_DOWN": return stateName(key)
     default: return key
     }
 }
 
-private func clock(_ totalSeconds: Int) -> String {
+func clock(_ totalSeconds: Int) -> String {
     let h = totalSeconds / 3600, m = totalSeconds % 3600 / 60, s = totalSeconds % 60
     return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
 }
@@ -200,7 +200,10 @@ private struct MetricBars: View {
     var highlight: String? = nil
     /// A tap on a bar passes its key, so the bars select and clear the same state as the donut.
     var onSelect: ((String) -> Void)? = nil
+    /// Inline in the card, or the whole landscape screen (the expand button opens a second `MetricBars` for it).
+    var space = ChartSpace.inline
     @State private var grow: CGFloat = 0
+    @State private var expanded = false
     private let tone = CardTone.blue
 
     private var average: Double? { chart.average?.doubleValue }
@@ -225,12 +228,20 @@ private struct MetricBars: View {
                     .frame(width: 18, height: 10)
                     Text("Ø \(text)").font(.caption).foregroundStyle(tone.subtitle)
                 }
+                if !space.maximized { ExpandChartButton(tone: tone) { expanded = true } }
             }
             ForEach(chart.bars, id: \.key) { bar in row(bar) }
         }
         .padding(12)
         .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
         .onAppear { withAnimation(.easeOut(duration: 0.4)) { grow = 1 } }
+        .fullScreenCover(isPresented: $expanded) {
+            FullScreenChart(title: title, tone: tone, onClose: { expanded = false }) { space in
+                ScrollView {
+                    MetricBars(title: title, chart: chart, highlight: highlight, onSelect: onSelect, space: space)
+                }
+            }
+        }
     }
 
     private func row(_ bar: EmBar) -> some View {
@@ -258,7 +269,7 @@ private struct MetricBars: View {
                     }
                 }
             }
-            .frame(height: 22)
+            .frame(height: 22 * space.scale)
             Text(bar.text).font(.footnote.weight(bar.emphasis ? .bold : .regular))
                 .opacity(dim ? 0.45 : 1)
                 .frame(width: 72, alignment: .trailing)
@@ -327,11 +338,13 @@ struct EnhancedMetricsCard: View {
                     if view.balanceLeft > 0 { balance(Double(view.balanceLeft)) }
                 }
             }
-            if isRun, !view.gait.isEmpty { section(L10n.get("em_gait_title")) { gaitBar } }
+            if isRun, !view.gait.isEmpty {
+                ChartFrame(title: L10n.get("em_gait_title"), tone: tone) { space in gaitBar(space) }
+            }
             if !view.shares.isEmpty {
-                section(L10n.get(isRun ? "em_terrain_title" : "em_share_title"),
-                        hint: L10n.get(isRun ? "em_terrain_desc" : "em_share_desc")) {
-                    donut
+                VStack(alignment: .leading, spacing: 8) {
+                    ChartFrame(title: L10n.get(isRun ? "em_terrain_title" : "em_share_title"),
+                               hint: L10n.get(isRun ? "em_terrain_desc" : "em_share_desc"), tone: tone) { space in donut(space) }
                     if isRun {
                         Text(L10n.get("em_terrain_time_note")).font(.caption).foregroundStyle(tone.subtitle)
                         runCharts
@@ -397,6 +410,10 @@ struct EnhancedMetricsCard: View {
                     ForEach(view.zoneGroups, id: \.id) { group in zoneBars(group) }
                 }
             }
+            // After the heart rate section, like Android: the time -> technique -> zone Sankey (ski, watch after 0.9.120).
+            if !isRun, let byTime = view.sankeyByTime {
+                TechniqueSankeyChart(byTime: byTime, byLap: view.sankeyByLap)
+            }
             Button { explaining = true } label: {
                 Label(L10n.get("em_explain_link"), systemImage: "info.circle")
             }
@@ -414,8 +431,22 @@ struct EnhancedMetricsCard: View {
     /// Share of the heart rate time per zone as a donut with a legend, in the watch's zone colours; a tap on a legend row
     /// picks the zone (Android: `HeartRateSection`).
     private var zoneDonut: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.get("ios_hr_zones")).font(.footnote.weight(.semibold)).foregroundStyle(tone.title)
+        ChartFrame(title: L10n.get("ios_hr_zones"), tone: tone) { space in zoneDonutBody(space) }
+    }
+
+    /// The diameter of a donut: 124 pt in the card; full screen, as large as the height allows (at most half the width).
+    private func donutSize(_ space: ChartSpace) -> CGFloat {
+        space.maximized ? max(124, min(space.size.height - 24, space.size.width * 0.5)) : 124
+    }
+
+    /// The text in a donut's hole: Dynamic Type in the card, grown with the ring (`f` = ring size / 124) full screen.
+    private func centerFont(_ f: CGFloat) -> Font { f > 1 ? .system(size: 15 * f, weight: .semibold) : .subheadline.weight(.semibold) }
+    private func centerCaption(_ f: CGFloat) -> Font { f > 1 ? .system(size: 11 * f) : .caption2 }
+
+    private func zoneDonutBody(_ space: ChartSpace) -> some View {
+        let size = donutSize(space)
+        let f = size / 124
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 14) {
                 ZStack {
                     Chart(Array(zonePercents.enumerated()), id: \.offset) { index, percent in
@@ -425,15 +456,15 @@ struct EnhancedMetricsCard: View {
                             .foregroundStyle(hrZoneColor(index + 1).opacity(selectedZone == nil || selectedZone == index ? 1 : 0.3))
                     }
                     .chartLegend(.hidden)
-                    .frame(width: 124, height: 124)
+                    .frame(width: size, height: size)
                     .accessibilityLabel(L10n.get("ios_hr_zones"))
                     VStack(spacing: 0) {
                         if let zone = selectedZone {
-                            Text("\(Int(zonePercents[zone]))%").font(.subheadline.weight(.semibold))
-                            Text("Z\(zone + 1)").font(.caption2).foregroundStyle(.secondary)
+                            Text("\(Int(zonePercents[zone]))%").font(centerFont(f))
+                            Text("Z\(zone + 1)").font(centerCaption(f)).foregroundStyle(.secondary)
                         } else if view.avgHeartRate > 0 {
-                            Text("\(view.avgHeartRate)").font(.subheadline.weight(.semibold))
-                            Text("bpm").font(.caption2).foregroundStyle(.secondary)
+                            Text("\(view.avgHeartRate)").font(centerFont(f))
+                            Text("bpm").font(centerCaption(f)).foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -471,9 +502,12 @@ struct EnhancedMetricsCard: View {
         case "terrain": title = L10n.get("em_hr_by_terrain")
         default: title = L10n.get("em_hr_by_technique")
         }
-        return VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.footnote.weight(.semibold)).foregroundStyle(tone.title)
-            VStack(alignment: .leading, spacing: 10) {
+        return ChartFrame(title: title, tone: tone) { space in zoneBarRows(group, space) }
+    }
+
+    private func zoneBarRows(_ group: EmZoneGroup, _ space: ChartSpace) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10 * space.scale) {
                 ForEach(group.rows, id: \.key) { row in
                     let seconds = row.seconds.map { Int(truncating: $0) }
                     HStack(spacing: 8) {
@@ -484,7 +518,7 @@ struct EnhancedMetricsCard: View {
                             BarMark(x: .value("seconds", value)).foregroundStyle(hrZoneColor(index + 1))
                         }
                         .chartXAxis(.hidden).chartYAxis(.hidden).chartLegend(.hidden)
-                        .frame(height: 16)
+                        .frame(height: 16 * space.scale)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         Text(clock(seconds.reduce(0, +))).font(.caption).foregroundStyle(tone.subtitle)
                             .frame(width: 48, alignment: .trailing)
@@ -495,6 +529,14 @@ struct EnhancedMetricsCard: View {
             }
             .padding(12)
             .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
+            // The legend goes with the full-screen chart: what each zone colour is.
+            if space.maximized {
+                HStack(spacing: 16) {
+                    ForEach(1...5, id: \.self) { zone in
+                        legendDot(hrZoneColor(zone), "Z\(zone)")
+                    }
+                }
+            }
         }
     }
 
@@ -649,7 +691,7 @@ struct EnhancedMetricsCard: View {
         .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private var gaitBar: some View {
+    private func gaitBar(_ space: ChartSpace) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Chart(view.gait, id: \.key) { share in
                 BarMark(x: .value("share", Double(share.percent)))
@@ -658,7 +700,7 @@ struct EnhancedMetricsCard: View {
             .chartXAxis(.hidden)
             .chartLegend(.hidden)
             .chartXScale(domain: 0...100)
-            .frame(height: 18)
+            .frame(height: 18 * space.scale)
             HStack {
                 ForEach(view.gait, id: \.key) { share in
                     legendDot(stateColor(share.key),
@@ -689,8 +731,10 @@ struct EnhancedMetricsCard: View {
         selectedAngle = nil
     }
 
-    private var donut: some View {
-        HStack(spacing: 14) {
+    private func donut(_ space: ChartSpace) -> some View {
+        let size = donutSize(space)
+        let f = size / 124
+        return HStack(spacing: 14) {
             ZStack {
                 Chart(view.shares, id: \.key) { share in
                     SectorMark(angle: .value("share", Double(max(share.percent, 0.1))),
@@ -708,21 +752,21 @@ struct EnhancedMetricsCard: View {
                         if angle <= end { toggleSelection(share.key); break }
                     }
                 }
-                .frame(width: 124, height: 124)
+                .frame(width: size, height: size)
                 .accessibilityLabel(L10n.get("em_share_a11y"))
                 if let key = selectedKey, let share = view.shares.first(where: { $0.key == key }) {
                     VStack(spacing: 0) {
-                        Text("\(Int(share.percent))%").font(.subheadline.weight(.semibold))
-                        Text(stateShort(key)).font(.caption2).foregroundStyle(.secondary)
+                        Text("\(Int(share.percent))%").font(centerFont(f))
+                        Text(stateShort(key)).font(centerCaption(f)).foregroundStyle(.secondary)
                     }
                 } else if view.totalSeconds > 0 {
                     VStack(spacing: 0) {
-                        Text(clock(Int(view.totalSeconds))).font(.subheadline.weight(.semibold))
-                        Text(L10n.get("em_share_tracked")).font(.caption2).foregroundStyle(.secondary)
+                        Text(clock(Int(view.totalSeconds))).font(centerFont(f))
+                        Text(L10n.get("em_share_tracked")).font(centerCaption(f)).foregroundStyle(.secondary)
                     }
                 }
                 // The hole: a tap here clears the selection (the chart's angle selection would pick a slice).
-                Color.clear.frame(width: 64, height: 64).contentShape(Circle())
+                Color.clear.frame(width: 64 * f, height: 64 * f).contentShape(Circle())
                     .onTapGesture { clearSelection() }
             }
             VStack(alignment: .leading, spacing: 6) {
