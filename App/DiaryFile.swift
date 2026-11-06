@@ -146,13 +146,13 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
         let deadline = Date().addingTimeInterval(inBackgroundRun ? 20 : 90)
         return withWorkbook { url in
             do {
-                return try Self.coordinatedRead(url, options: [])
+                return try CoordinatedFiles.readData(url, options: [])
             } catch {
                 log("read failed: \(Self.describe(error)); \(Self.describe(url))")
                 timedOutBox.set(true)
                 if Self.waitForDownload(url, deadline: deadline, stopped: stoppedBox) {
                     log("downloaded: \(Self.describe(url))")
-                    if let data = try? Self.coordinatedRead(url, options: []) {
+                    if let data = try? CoordinatedFiles.readData(url, options: []) {
                         timedOutBox.set(false)
                         return data
                     }
@@ -162,29 +162,19 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
                 for attempt in 1...5 {
                     if Date() >= deadline || stoppedBox.get() { throw error }
                     Thread.sleep(forTimeInterval: 3)
-                    if let data = try? Self.coordinatedRead(url, options: []) {
+                    if let data = try? CoordinatedFiles.readData(url, options: []) {
                         log("read worked on retry \(attempt)")
                         timedOutBox.set(false)
                         return data
                     }
                 }
                 if Date() >= deadline || stoppedBox.get() { throw error }
-                let data = try Self.coordinatedRead(url, options: .forUploading)
+                let data = try CoordinatedFiles.readData(url, options: .forUploading)
                 log("read as a coordinated copy worked")
                 timedOutBox.set(false)
                 return data
             }
         }
-    }
-
-    private static func coordinatedRead(_ url: URL, options: NSFileCoordinator.ReadingOptions) throws -> Data {
-        var coordinatorError: NSError?
-        var result: Result<Data, Error> = .failure(CocoaError(.fileReadUnknown))
-        NSFileCoordinator().coordinate(readingItemAt: url, options: options, error: &coordinatorError) { readURL in
-            result = Result { try Data(contentsOf: readURL) }
-        }
-        if let coordinatorError { throw coordinatorError }
-        return try result.get()
     }
 
     /// Asks the provider to download [url] and waits up to a minute (or until [deadline], or a
@@ -243,36 +233,31 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
         let written: Bool? = withWorkbook { url in
             var conflict = false
             do {
-                try Self.coordinatedWrite(url, options: .forReplacing) { writeURL in
+                try CoordinatedFiles.write(url, options: .forReplacing) { writeURL in
                     if Self.hasChanged(writeURL, since: expectedRevision) {
                         conflict = true
                         return
                     }
                     if stoppedBox.get() { throw StopError() }
                     do {
-                        try Self.replaceAtomically(writeURL, with: data)
+                        try CoordinatedFiles.replaceAtomically(writeURL, with: data)
                     } catch {
                         if stoppedBox.get() { throw StopError() }
                         log("atomic replace failed: \(Self.describe(error)); writing in place")
-                        try Self.writeInPlace(writeURL, data) { try data.write(to: writeURL) }
+                        try CoordinatedFiles.writeInPlace(writeURL, data) { try data.write(to: writeURL) }
                     }
                 }
             } catch {
                 if error is StopError { throw error }
                 log("write failed: \(Self.describe(error)); \(Self.writeState(url))")
                 if stoppedBox.get() { throw StopError() }
-                try Self.coordinatedWrite(url, options: []) { writeURL in
+                try CoordinatedFiles.write(url, options: []) { writeURL in
                     if Self.hasChanged(writeURL, since: expectedRevision) {
                         conflict = true
                         return
                     }
                     if stoppedBox.get() { throw StopError() }
-                    try Self.writeInPlace(writeURL, data) {
-                        let handle = try FileHandle(forWritingTo: writeURL)
-                        defer { try? handle.close() }
-                        try handle.truncate(atOffset: 0)
-                        try handle.write(contentsOf: data)
-                    }
+                    try CoordinatedFiles.writeInPlace(writeURL, data) { try CoordinatedFiles.writeThroughHandle(writeURL, data) }
                     log("write through a file handle worked")
                 }
             }
@@ -285,54 +270,6 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
         if lastConflict { lastFailure = L10n.get("ios_diary_workbook_changed") }
         else if written == nil { log("write failed for good: \(lastFailure)") }
         return written ?? false
-    }
-
-    /// Writes [data] to a temporary file next to the system's replacement directory for [url],
-    /// checks it, and swaps it in. The original is replaced in one step or not at all.
-    private static func replaceAtomically(_ url: URL, with data: Data) throws {
-        let fileManager = FileManager.default
-        let directory = try fileManager.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: url, create: true)
-        defer { try? fileManager.removeItem(at: directory) }
-        let temporary = directory.appendingPathComponent(url.lastPathComponent)
-        try data.write(to: temporary)
-        guard try Data(contentsOf: temporary) == data else { throw CocoaError(.fileWriteUnknown) }
-        _ = try fileManager.replaceItemAt(url, withItemAt: temporary)
-    }
-
-    /// An in-place write by [write], verified by reading the file back; when it fails or does
-    /// not match, the bytes the file had before are written back and the error is rethrown.
-    private static func writeInPlace(_ url: URL, _ data: Data, _ write: () throws -> Void) throws {
-        let original = try? Data(contentsOf: url)
-        do {
-            try write()
-            guard try Data(contentsOf: url) == data else { throw CocoaError(.fileWriteUnknown) }
-        } catch {
-            if let original { restore(original, to: url) }
-            throw error
-        }
-    }
-
-    private static func restore(_ original: Data, to url: URL) {
-        if (try? original.write(to: url)) != nil { return }
-        if let handle = try? FileHandle(forWritingTo: url) {
-            defer { try? handle.close() }
-            try? handle.truncate(atOffset: 0)
-            try? handle.write(contentsOf: original)
-        }
-    }
-
-    private static func coordinatedWrite(
-        _ url: URL,
-        options: NSFileCoordinator.WritingOptions,
-        _ write: (URL) throws -> Void
-    ) throws {
-        var coordinatorError: NSError?
-        var result: Result<Void, Error> = .failure(CocoaError(.fileWriteUnknown))
-        NSFileCoordinator().coordinate(writingItemAt: url, options: options, error: &coordinatorError) { writeURL in
-            result = Result { try write(writeURL) }
-        }
-        if let coordinatorError { throw coordinatorError }
-        try result.get()
     }
 
     /// Whether iOS calls the file writable, and its POSIX permissions and lock flag.
@@ -394,7 +331,7 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
                 // A read that already waited out its deadline would only wait again with the bookmark.
                 if timedOutBox.get() || stoppedBox.get() {
                     log("with the picked URL: \(Self.describe(error)); timed out, the bookmark is not tried")
-                    return fail(error.localizedDescription, permanent: Self.isPermanent(error))
+                    return fail(error.localizedDescription, permanent: CoordinatedFiles.isPermanent(error))
                 }
                 log("with the picked URL: \(Self.describe(error)); trying the bookmark")
             }
@@ -430,15 +367,11 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
             if (error as? CocoaError)?.code == .fileWriteNoPermission {
                 return fail(L10n.get("ios_diary_readonly_error"), permanent: true)
             }
-            return fail(error.localizedDescription, permanent: Self.isPermanent(error))
+            return fail(error.localizedDescription, permanent: CoordinatedFiles.isPermanent(error))
         }
     }
 
-    /// Domain and code, for the log ("NSCocoaErrorDomain 260 ...").
-    private static func describe(_ error: Error) -> String {
-        let ns = error as NSError
-        return "\(ns.domain) \(ns.code) \(ns.localizedDescription)"
-    }
+    private static func describe(_ error: Error) -> String { CoordinatedFiles.describe(error) }
 
     /// What iOS knows about [url]: on disk or not, cloud file and its download state, size.
     private static func describe(_ url: URL) -> String {
@@ -455,13 +388,6 @@ final class FilesDiaryAccess: NSObject, DiaryFileAccess, @unchecked Sendable {
         lastFailure = message
         lastFailurePermanent = permanent
         return nil
-    }
-
-    /// Gone or no access: stays until the athlete picks the workbook again.
-    private static func isPermanent(_ error: Error) -> Bool {
-        guard let cocoa = error as? CocoaError else { return false }
-        let lasting: [CocoaError.Code] = [.fileNoSuchFile, .fileReadNoSuchFile, .fileReadNoPermission, .fileWriteNoPermission]
-        return lasting.contains(cocoa.code)
     }
 }
 

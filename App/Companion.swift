@@ -1218,7 +1218,9 @@ final class Companion: NSObject, ObservableObject {
 
     /// "Delete my data", as Android's: the shared core revokes Strava, forgets the diary and
     /// the watches' settings and empties the database; here the diary file bookmark, its
-    /// backups, exports and the diagnostics log go too. The diary workbook itself stays.
+    /// backups, the Recording Boost CSVs, the renewed folder bookmarks, exports, shared log
+    /// files and the diagnostics log go too. The diary workbook and the files in the athlete's
+    /// JSON/CSV folders stay.
     /// PRIVACY-SYNC: what "Delete my data" removes on iOS. Changing this? Re-check the
     /// Companion's design/privacy-notice-sync.md.
     func deleteAllData() async {
@@ -1229,15 +1231,19 @@ final class Companion: NSObject, ObservableObject {
             failed = [error.localizedDescription]
         }
         FilesDiaryAccess.shared.forget()
+        FolderFiles.shared.forgetRenewals()
         let files = FileManager.default
         if let documents = files.urls(for: .documentDirectory, in: .userDomainMask).first {
-            let backups = documents.appendingPathComponent(FilesDiaryAccess.backupFolder, isDirectory: true)
-            if files.fileExists(atPath: backups.path) {
-                do { try files.removeItem(at: backups) } catch { failed.append("diary backups") }
+            // As Android's PublicStorageWriter.deleteAllAppFiles: the folders this app writes in Documents.
+            for (folder, label) in [(FilesDiaryAccess.backupFolder, "diary backups"), (Self.boostFolder, "Recording Boost files")] {
+                let url = documents.appendingPathComponent(folder, isDirectory: true)
+                guard files.fileExists(atPath: url.path) else { continue }
+                do { try files.removeItem(at: url) } catch { failed.append(label) }
             }
         }
         do {
-            for name in try files.contentsOfDirectory(atPath: files.temporaryDirectory.path) where name.hasSuffix(".json") {
+            // The "my data" JSON and the shared log files (`logFile`, folder "logs").
+            for name in try files.contentsOfDirectory(atPath: files.temporaryDirectory.path) where name.hasSuffix(".json") || name == "logs" {
                 try files.removeItem(at: files.temporaryDirectory.appendingPathComponent(name))
             }
         } catch {
