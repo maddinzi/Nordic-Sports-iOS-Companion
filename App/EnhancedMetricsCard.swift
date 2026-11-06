@@ -106,6 +106,7 @@ struct ToneGroup<Content: View>: View {
 extension Color {
     // Blue, green, grey by intensity (Companion `design/colour-scheme.md`, `TechniqueCatalogs.COLOR_RGB`).
     static let techniqueBlue = Color(red: 0x2A / 255, green: 0x6D / 255, blue: 0xBD / 255)
+    static let techniqueDeepBlue = Color(red: 0x1B / 255, green: 0x4F / 255, blue: 0x8F / 255)
     static let techniqueMidBlue = Color(red: 0x5B / 255, green: 0x9B / 255, blue: 0xE0 / 255)
     static let techniqueLightBlue = Color(red: 0x9C / 255, green: 0xC7 / 255, blue: 0xF2 / 255)
     static let techniqueGreen = Color(red: 0x3F / 255, green: 0xA0 / 255, blue: 0x64 / 255)
@@ -139,6 +140,7 @@ func hrZoneColor(_ zone: Int) -> Color {
 /// Colour per catalog state: techniques (V2, V1, ...) and terrain (UP, FLAT, ...).
 func stateColor(_ key: String) -> Color {
     switch key {
+    case "KLAEBO": return .techniqueDeepBlue
     case "V2", "DIA": return .techniqueBlue
     case "V2A", "KDP": return .techniqueMidBlue
     case "V1": return .techniqueLightBlue
@@ -163,6 +165,7 @@ private func stateName(_ key: String) -> String {
     case "DP": return L10n.get("technique_name_dp")
     case "DIA": return L10n.get("technique_name_dia")
     case "KDP": return L10n.get("technique_name_kdp")
+    case "KLAEBO": return L10n.get("technique_name_klaebo")
     case "GLIDE": return L10n.get("strava_analysis_glide")
     case "OTHER": return L10n.get("strava_analysis_other")
     case "UP": return L10n.get("em_up")
@@ -180,6 +183,7 @@ private func stateName(_ key: String) -> String {
 func stateShort(_ key: String) -> String {
     switch key {
     case "GLIDE", "OTHER", "UP", "FLAT", "DOWN", "STEEP", "STEEP_DOWN": return stateName(key)
+    case "KLAEBO": return "Klæbo"   // a name, like the codes, never translated
     default: return key
     }
 }
@@ -942,6 +946,7 @@ struct EnhancedMetricsCard: View {
         case "DP": return L10n.get("em_desc_dp")
         case "DIA": return L10n.get("em_desc_dia")
         case "KDP": return L10n.get("em_desc_kdp")
+        case "KLAEBO": return L10n.get("em_desc_klaebo")
         case "GLIDE": return L10n.get("em_desc_glide")
         case "UP": return L10n.get("em_desc_up")
         case "FLAT": return L10n.get("em_desc_flat")
