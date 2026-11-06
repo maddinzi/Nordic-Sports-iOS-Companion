@@ -389,8 +389,6 @@ final class Companion: NSObject, ObservableObject {
     /// sync as on opening, in automated mode only. Returns a line for the Diagnostics log.
     func backgroundSync() async -> BackgroundOutcome {
         let access = FilesDiaryAccess.shared
-        access.beginBackgroundRun()
-        defer { access.endBackgroundRun() }
         guard !outdated else { return BackgroundOutcome(text: "this build is no longer supported, nothing run", success: true) }
         let stopped = BackgroundOutcome(text: "stopped before the diary was written (background time over)", success: false)
         let purged = await purgeExpiredStravaData()
@@ -401,8 +399,13 @@ final class Companion: NSObject, ObservableObject {
             return BackgroundOutcome(text: "neither Strava nor a diary connected", success: true)
         }
         guard !syncing else { return BackgroundOutcome(text: "a sync is already running", success: true) }
-        // No diary write is started once the stop flag is set (expiry handler, cancellation).
-        if Task.isCancelled || access.stopRequested { return stopped }
+        // Marked only now, with nothing awaited before `sync()` takes `syncing`: a run that does not sync (the refresh
+        // and the processing task can overlap, or a foreground sync runs) must not reset the stop flag or the shorter
+        // read deadline of the run that does.
+        access.beginBackgroundRun()
+        defer { access.endBackgroundRun() }
+        // No diary write is started once the task is over (expiry handler, cancellation).
+        if Task.isCancelled { return stopped }
         let outcome = await withTaskCancellationHandler {
             await sync()
         } onCancel: {
@@ -474,6 +477,7 @@ final class Companion: NSObject, ObservableObject {
             refreshDiary()
             await refresh()
         }
+        runWantedDiaryUpdate()
     }
 
     // MARK: - Strava
@@ -772,6 +776,7 @@ final class Companion: NSObject, ObservableObject {
             refreshDiary()
             await refresh()
         }
+        runWantedDiaryUpdate()
     }
 
     /// TEMPORARY (remove a few versions after 0.9.93): rewrites the entries written in the last
@@ -791,6 +796,7 @@ final class Companion: NSObject, ObservableObject {
             refreshDiary()
             await refresh()
         }
+        runWantedDiaryUpdate()
     }
 
     /// "Push to diary" for one activity; the sync log shows what was written.
@@ -898,19 +904,23 @@ final class Companion: NSObject, ObservableObject {
         await refreshFolderDestinations()
     }
 
-    /// "Write now" on one destination.
+    /// "Write now" on one destination, with a few more seconds from iOS like every diary write (`withDiaryTime`; the
+    /// folder writes do not read the stop flag, but each file is swapped in whole).
     func writeFolderDestinationNow(_ id: String) async {
         guard !syncing else { return }
         syncing = true
         defer { syncing = false }
-        do {
-            let report = try await core.writeFolderDestinationNow(id: id)
-            syncLines = report.lines
-        } catch {
-            self.report(error)
+        await withDiaryTime {
+            do {
+                let report = try await core.writeFolderDestinationNow(id: id)
+                syncLines = report.lines
+            } catch {
+                report(error)
+            }
+            refreshDiary()
+            await refresh()
         }
-        refreshDiary()
-        await refresh()
+        runWantedDiaryUpdate()
     }
 
     // MARK: - Watch settings
@@ -1428,6 +1438,7 @@ final class Companion: NSObject, ObservableObject {
             self.report(error)
         }
         await refresh()
+        runWantedDiaryUpdate()
     }
 
     func skipReview(_ activityId: String) async {
@@ -1443,7 +1454,8 @@ final class Companion: NSObject, ObservableObject {
     /// first diary write usually are): the sync that ends next runs once more, so the edit is never left behind.
     private var diaryUpdateWanted = false
 
-    /// Called when a run that held `syncing` ends; starts the rewrite an edit asked for meanwhile.
+    /// Called by every run that holds `syncing` when it ends (sync, backfill, the diary and destination writes, "Create on
+    /// Strava"); starts the rewrite an edit asked for meanwhile.
     private func runWantedDiaryUpdate() {
         guard diaryUpdateWanted, !outdated else { return }
         diaryUpdateWanted = false
