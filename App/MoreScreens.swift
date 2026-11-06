@@ -2252,13 +2252,14 @@ struct EditActivitySheet: View {
     }
 
     /// A small minutes box of a split.
-    private func minutesBox(_ label: String, text: Binding<String>, invalid: Bool) -> some View {
+    /// A zone's box has a frame in that zone's watch colour (`hrZoneColor`); an error keeps its red.
+    private func minutesBox(_ label: String, text: Binding<String>, invalid: Bool, frame: Color? = nil) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
             TextField("0", text: text)
                 .keyboardType(.numberPad)
                 .textFieldStyle(.roundedBorder)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(invalid ? Color.red : Color.clear, lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(invalid ? Color.red : (frame ?? Color.clear), lineWidth: invalid || frame == nil ? 1 : 1.5))
         }
     }
 
@@ -2288,7 +2289,7 @@ struct EditActivitySheet: View {
                 ForEach(0..<5, id: \.self) { zone in
                     minutesBox(String(format: L10n.get("activity_detail_hr_zone_short"), zone + 1),
                                text: Binding(get: { shownIntensityTexts[zone] }, set: { setIntensity(zone, $0) }),
-                               invalid: check.invalid)
+                               invalid: check.invalid, frame: hrZoneColor(zone + 1))
                 }
             }
             Text(check.invalid && Int(check.sum) != totalMinutes

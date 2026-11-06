@@ -121,6 +121,21 @@ private extension Color {
     static let terrainSteepDown = Color(red: 0x14 / 255, green: 0x53 / 255, blue: 0x2D / 255)
 }
 
+/// The watch's heart rate zone colours (`RecordingView.zoneArcColor`: light grey, blue, green, yellow, red) in Garmin's
+/// palette values; Android: `hrZoneColor`. `zone` is 1...5.
+func hrZoneColor(_ zone: Int) -> Color {
+    func rgb(_ hex: UInt32) -> Color {
+        Color(red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
+    }
+    switch zone {
+    case 1: return rgb(0xAAAAAA)
+    case 2: return rgb(0x0055FF)
+    case 3: return rgb(0x00AA00)
+    case 4: return rgb(0xFFAA00)
+    default: return rgb(0xFF0000)
+    }
+}
+
 /// Colour per catalog state: techniques (V2, V1, ...) and terrain (UP, FLAT, ...).
 private func stateColor(_ key: String) -> Color {
     switch key {
@@ -290,6 +305,8 @@ struct EnhancedMetricsCard: View {
     /// The technique or terrain picked on the donut (a state key); the legend and the bar charts follow it.
     @State private var selectedKey: String?
     @State private var selectedAngle: Double?
+    /// The heart rate zone (0...4) picked on the zone donut.
+    @State private var selectedZone: Int?
 
     private var isRun: Bool { view.kind == "run" }
 
@@ -304,19 +321,10 @@ struct EnhancedMetricsCard: View {
                     }
                 }
             }
-            if !view.climb.isEmpty {
-                section(L10n.get("em_climb_title")) { tiles(view.climb) }
-            }
             if isRun, !view.form.isEmpty || view.balanceLeft > 0 {
                 section(L10n.get("em_form_title"), badge: sourceName) {
                     tiles(view.form)
                     if view.balanceLeft > 0 { balance(Double(view.balanceLeft)) }
-                }
-            }
-            if !view.hrv.isEmpty {
-                section(L10n.get("em_hrv_title"), badge: hrvSourceName) {
-                    tiles(view.hrv)
-                    Text(L10n.get("em_hrv_note")).font(.caption).foregroundStyle(tone.subtitle)
                 }
             }
             if isRun, !view.gait.isEmpty { section(L10n.get("em_gait_title")) { gaitBar } }
@@ -375,6 +383,20 @@ struct EnhancedMetricsCard: View {
                     .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
                 }
             }
+            // The Garmin-sensor sections last, next to each other (Android: same order).
+            if !view.climb.isEmpty {
+                section(L10n.get("em_climb_title")) { tiles(view.climb) }
+            }
+            if !view.hrv.isEmpty || hasHrZones {
+                section(L10n.get("em_hrv_title"), badge: view.hrv.isEmpty ? nil : hrvSourceName) {
+                    if !view.hrv.isEmpty {
+                        tiles(view.hrv)
+                        Text(L10n.get("em_hrv_note")).font(.caption).foregroundStyle(tone.subtitle)
+                    }
+                    if hasHrZones { zoneDonut }
+                    ForEach(view.zoneGroups, id: \.id) { group in zoneBars(group) }
+                }
+            }
             Button { explaining = true } label: {
                 Label(L10n.get("em_explain_link"), systemImage: "info.circle")
             }
@@ -383,6 +405,97 @@ struct EnhancedMetricsCard: View {
                 .font(.caption2).foregroundStyle(tone.subtitle)
         }
         .sheet(isPresented: $explaining) { explanation }
+    }
+
+    private var zonePercents: [Double] { view.hrZones.map { Double(truncating: $0) } }
+
+    private var hasHrZones: Bool { zonePercents.contains { $0 > 0 } }
+
+    /// Share of the heart rate time per zone as a donut with a legend, in the watch's zone colours; a tap on a legend row
+    /// picks the zone (Android: `HeartRateSection`).
+    private var zoneDonut: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L10n.get("ios_hr_zones")).font(.footnote.weight(.semibold)).foregroundStyle(tone.title)
+            HStack(spacing: 14) {
+                ZStack {
+                    Chart(Array(zonePercents.enumerated()), id: \.offset) { index, percent in
+                        SectorMark(angle: .value("share", max(percent, 0.1)),
+                                   innerRadius: .ratio(0.62), outerRadius: .ratio(selectedZone == index ? 1.0 : 0.92),
+                                   angularInset: 0.5)
+                            .foregroundStyle(hrZoneColor(index + 1).opacity(selectedZone == nil || selectedZone == index ? 1 : 0.3))
+                    }
+                    .chartLegend(.hidden)
+                    .frame(width: 124, height: 124)
+                    .accessibilityLabel(L10n.get("ios_hr_zones"))
+                    VStack(spacing: 0) {
+                        if let zone = selectedZone {
+                            Text("\(Int(zonePercents[zone]))%").font(.subheadline.weight(.semibold))
+                            Text("Z\(zone + 1)").font(.caption2).foregroundStyle(.secondary)
+                        } else if view.avgHeartRate > 0 {
+                            Text("\(view.avgHeartRate)").font(.subheadline.weight(.semibold))
+                            Text("bpm").font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(0..<zonePercents.count, id: \.self) { index in
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { selectedZone = selectedZone == index ? nil : index }
+                        } label: {
+                            HStack(spacing: 8) {
+                                RoundedRectangle(cornerRadius: 3).fill(hrZoneColor(index + 1)).frame(width: 12, height: 12)
+                                Text(String(format: L10n.get("ios_zone_n"), index + 1))
+                                    .font(.footnote.weight(selectedZone == index ? .bold : .regular))
+                                Spacer(minLength: 4)
+                                Text("\(Int(zonePercents[index]))%").font(.footnote.weight(.bold))
+                            }
+                            .padding(.horizontal, 4).padding(.vertical, 3)
+                            .background(selectedZone == index ? Color.primary.opacity(0.08) : Color.clear,
+                                        in: RoundedRectangle(cornerRadius: 8))
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(12)
+            .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    /// One stacked bar per technique, gait or terrain state: its seconds in zones 1 to 5 (Android: `HeartRateSection`).
+    private func zoneBars(_ group: EmZoneGroup) -> some View {
+        let title: String
+        switch group.id {
+        case "gait": title = L10n.get("em_hr_by_gait")
+        case "terrain": title = L10n.get("em_hr_by_terrain")
+        default: title = L10n.get("em_hr_by_technique")
+        }
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.footnote.weight(.semibold)).foregroundStyle(tone.title)
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(group.rows, id: \.key) { row in
+                    let seconds = row.seconds.map { Int(truncating: $0) }
+                    HStack(spacing: 8) {
+                        RoundedRectangle(cornerRadius: 3).fill(stateColor(row.key)).frame(width: 10, height: 10)
+                        Text(stateShort(row.key)).font(.footnote.weight(.bold)).lineLimit(1).minimumScaleFactor(0.8)
+                            .frame(width: group.id == "terrain" ? 92 : 52, alignment: .leading)
+                        Chart(Array(seconds.enumerated()), id: \.offset) { index, value in
+                            BarMark(x: .value("seconds", value)).foregroundStyle(hrZoneColor(index + 1))
+                        }
+                        .chartXAxis(.hidden).chartYAxis(.hidden).chartLegend(.hidden)
+                        .frame(height: 16)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        Text(clock(seconds.reduce(0, +))).font(.caption).foregroundStyle(tone.subtitle)
+                            .frame(width: 48, alignment: .trailing)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(stateShort(row.key)) \(clock(seconds.reduce(0, +)))")
+                }
+            }
+            .padding(12)
+            .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
+        }
     }
 
     private var hrvSourceName: String? {
