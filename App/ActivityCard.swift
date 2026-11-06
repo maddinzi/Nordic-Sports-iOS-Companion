@@ -1,3 +1,4 @@
+import NordicSportsShared
 import SwiftUI
 
 /// Where a tap on an activity card goes: an Entry tab or a Metrics tab (Android: `ActivityTarget`).
