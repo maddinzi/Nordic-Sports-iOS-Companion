@@ -39,6 +39,12 @@ private struct TrendChartDef {
 /// (`design/metrics-dashboard.md` in the Companion). A filter bar (period, sport, style, other sports, compare), the
 /// key numbers, a swipeable row of charts that also open full screen and page there, and the activities behind the
 /// selection. A technique, zone or column tapped in one chart dims the others in every chart.
+/// A request from a Metrics screen to open Trends on one sport and style (Android: `TrendsRequest`).
+struct TrendsRequest: Equatable {
+    let family: String
+    let style: String
+}
+
 struct TrendsScreen: View {
     @EnvironmentObject var companion: Companion
     @State private var all: [TrendActivity] = []
@@ -136,6 +142,11 @@ struct TrendsScreen: View {
         .task { await reload() }
         .onChange(of: companion.activities.count) { _, _ in Task { await reload() } }
         .onAppear { registerPages() }
+        .onChange(of: companion.trendsRequest, initial: true) { _, request in
+            guard let request else { return }
+            family = request.family; style = request.style; tech = ""; picked = ""; bucket = -1
+            companion.trendsRequest = nil
+        }
         .onChange(of: visible.map { $0.id }) { _, _ in registerPages(); page = min(page, max(themes.count - 1, 0)) }
         .fullScreenCover(isPresented: Binding(get: { expandedId != nil }, set: { if !$0 { expandedId = nil } })) {
             let id = expandedId ?? ""

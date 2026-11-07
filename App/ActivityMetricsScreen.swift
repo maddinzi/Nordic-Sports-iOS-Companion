@@ -190,6 +190,13 @@ struct ActivityMetricsScreen: View {
                 .listRowBackground(CardTone.navy.container)
                 themeSections(selectedTheme)
             }
+            if current.hasWatchMetrics {
+                Section {
+                    Button(L10n.get("dash_more_like_this")) { Task { await companion.showTrends(for: current) } }
+                        .font(.footnote)
+                }
+                .listRowBackground(Color.clear)
+            }
         }
         .textSelection(.enabled)
         .task(id: item.id) { typical = await companion.typical(for: item) }

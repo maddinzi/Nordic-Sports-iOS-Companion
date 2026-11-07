@@ -335,8 +335,8 @@ struct TrendClimbChart: View {
             }
             .frame(maxWidth: .infinity, minHeight: frame.minHeight, maxHeight: frame.maxHeight)
             HStack(spacing: 12) {
-                Text("▲ \(L10n.get("trends_ascent"))").foregroundStyle(Color(red: 0.89, green: 0.34, blue: 0.12))
-                Text("▼ \(L10n.get("trends_descent"))").foregroundStyle(Color(red: 0.18, green: 0.49, blue: 0.31))
+                Text("▲ \(L10n.get("trends_ascent"))").foregroundStyle(Color(red: 0.306, green: 0.396, blue: 0.502))
+                Text("▼ \(L10n.get("trends_descent"))").foregroundStyle(Color(red: 0.639, green: 0.710, blue: 0.788))
                 if hours > 0 { Text(String(format: L10n.get("trends_vert_per_hour"), Int((Double(asc) / hours).rounded()))).foregroundStyle(data.tone.subtitle) }
             }
             .font(.caption)
@@ -372,9 +372,9 @@ struct TrendClimbChart: View {
             let hu = CGFloat(Double(b.ascentM) / nice.top) * half
             let hd = CGFloat(Double(b.descentM) / nice.top) * half
             ctx.fill(Path(roundedRect: CGRect(x: cx - bw / 2, y: mid - hu, width: bw, height: hu), cornerRadius: 2),
-                     with: .color(Color(red: 0.89, green: 0.34, blue: 0.12).opacity(dim)))
+                     with: .color(Color(red: 0.306, green: 0.396, blue: 0.502).opacity(dim)))
             ctx.fill(Path(roundedRect: CGRect(x: cx - bw / 2, y: mid, width: bw, height: hd), cornerRadius: 2),
-                     with: .color(Color(red: 0.18, green: 0.49, blue: 0.31).opacity(dim)))
+                     with: .color(Color(red: 0.639, green: 0.710, blue: 0.788).opacity(dim)))
             let selected = data.bucket == Int(b.index)
             put(&ctx, trendBucketLabel(Int(b.index), data.periodDays), cx, size.height - bottom / 2, size: fs,
                 color: selected ? data.tone.title : data.tone.subtitle, bold: selected)

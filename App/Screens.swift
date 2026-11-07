@@ -36,6 +36,9 @@ struct RootView: View {
         .onChange(of: companion.openActivityId) { _, id in
             if id != nil { tab = 0 }
         }
+        .onChange(of: companion.trendsRequest) { _, request in
+            if request != nil { tab = 2 }
+        }
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingScreen { showOnboarding = false }
                 .environmentObject(companion)

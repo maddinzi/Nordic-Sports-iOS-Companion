@@ -58,6 +58,8 @@ final class Companion: NSObject, ObservableObject {
     /// The alert shown now; further messages wait in `queuedMessages` (use `post`).
     /// The activity a tapped notification asks to show; the Activities tab opens it and clears this.
     @Published var openActivityId: String?
+    /// "More statistics in the Trends" on a Metrics screen: the Trends tab opens on this sport and style (family, style).
+    @Published var trendsRequest: TrendsRequest?
 
     @Published var message: String? {
         didSet { if message == nil, !queuedMessages.isEmpty { showNextMessageSoon() } }
@@ -174,6 +176,13 @@ final class Companion: NSObject, ObservableObject {
         let now = Int64(Date().timeIntervalSince1970)
         let offset = Int32(TimeZone.current.secondsFromGMT())
         return (try? await core.trendActivities(nowEpochSec: now, utcOffsetSec: offset)) ?? []
+    }
+
+    /// Opens the Trends tab on the sport and style of [item] (nil when its group is unknown).
+    func showTrends(for item: ActivityItem) async {
+        guard let group = try? await core.trendGroupFor(activityId: item.id, startEpochSec: Int64(item.startEpochSec)) else { return }
+        let parts = group.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        trendsRequest = TrendsRequest(family: parts.first ?? "ALL", style: parts.count > 1 && !parts[1].isEmpty ? parts[1] : "ALL")
     }
 
     /// The athlete's usual numbers for one activity (nil with fewer than three similar ones in the 30 days before).
