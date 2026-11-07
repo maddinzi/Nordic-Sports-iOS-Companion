@@ -447,6 +447,14 @@ struct EnhancedMetricsCard: View {
     private func centerFont(_ f: CGFloat) -> Font { f > 1 ? .system(size: 15 * f, weight: .semibold) : .subheadline.weight(.semibold) }
     private func centerCaption(_ f: CGFloat) -> Font { f > 1 ? .system(size: 11 * f) : .caption2 }
 
+    /// Seconds in zone `index` (0 = Z1), summed over the rows of the first zone group; nil without a tally.
+    private func zoneSeconds(_ index: Int) -> Int? {
+        guard let group = view.zoneGroups.first, !group.rows.isEmpty else { return nil }
+        return group.rows.reduce(0) { total, row in
+            index < row.seconds.count ? total + Int(truncating: row.seconds[index]) : total
+        }
+    }
+
     private func zoneDonutBody(_ space: ChartSpace) -> some View {
         let size = donutSize(space)
         let f = size / 124
@@ -482,6 +490,10 @@ struct EnhancedMetricsCard: View {
                                 Text(String(format: L10n.get("ios_zone_n"), index + 1))
                                     .font(.footnote.weight(selectedZone == index ? .bold : .regular))
                                 Spacer(minLength: 4)
+                                // Full screen: the time in the zone next to its share, when the watch sent the tally.
+                                if space.maximized, let seconds = zoneSeconds(index) {
+                                    Text(clock(seconds)).font(.footnote).foregroundStyle(.secondary)
+                                }
                                 Text("\(Int(zonePercents[index]))%").font(.footnote.weight(.bold))
                             }
                             .padding(.horizontal, 4).padding(.vertical, 3)
@@ -780,6 +792,9 @@ struct EnhancedMetricsCard: View {
                             RoundedRectangle(cornerRadius: 3).fill(stateColor(share.key)).frame(width: 12, height: 12)
                             Text(stateName(share.key)).font(.footnote.weight(selectedKey == share.key ? .bold : .regular))
                             Spacer(minLength: 4)
+                            if space.maximized, share.seconds > 0 {
+                                Text(clock(Int(share.seconds))).font(.footnote).foregroundStyle(.secondary)
+                            }
                             Text("\(Int(share.percent))%").font(.footnote.weight(.bold))
                         }
                         .padding(.horizontal, 4).padding(.vertical, 3)

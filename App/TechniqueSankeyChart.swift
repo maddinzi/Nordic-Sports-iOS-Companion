@@ -17,30 +17,26 @@ struct TechniqueSankeyChart: View {
         ChartFrame(title: L10n.get("em_timeline_title"), tone: tone) { space in
             VStack(alignment: .leading, spacing: 8) {
                 if space.maximized {
-                    // Full screen is short and wide: the two choices stand left of the chart, one above the other.
-                    HStack(alignment: .top, spacing: 12) {
-                        if byLap != nil {
-                            VStack(spacing: 8) {
-                                modeButton(L10n.get("em_timeline_by_time"), lap: false)
-                                modeButton(L10n.get("em_timeline_by_lap"), lap: true)
-                            }
-                        }
-                        canvas(space).frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // Full screen is short and wide: one slim row (the switch and the caption) above the chart and one
+                    // legend line below it; the chart keeps the rest. A swipe on the chart switches time and lap too.
+                    HStack(spacing: 12) {
+                        if byLap != nil { modePicker.frame(maxWidth: 220) }
+                        Text(caption).font(.caption).foregroundStyle(tone.subtitle).lineLimit(1)
+                        Spacer(minLength: 0)
                     }
+                    canvas(space)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .gesture(DragGesture(minimumDistance: 40).onEnded { drag in
+                            guard byLap != nil, abs(drag.translation.width) > abs(drag.translation.height) else { return }
+                            lapMode = drag.translation.width < 0
+                            selected = ""
+                        })
+                    legend
                 } else {
-                    if byLap != nil {
-                        Picker("", selection: $lapMode) {
-                            Text(L10n.get("em_timeline_by_time")).tag(false)
-                            Text(L10n.get("em_timeline_by_lap")).tag(true)
-                        }
-                        .pickerStyle(.segmented)
-                        .onChange(of: lapMode) { _, _ in selected = "" }
-                    }
+                    if byLap != nil { modePicker }
                     canvas(space).frame(maxWidth: .infinity, minHeight: 240, maxHeight: 240)
+                    Text(caption).font(.caption).foregroundStyle(tone.subtitle)
                 }
-                Text(caption).font(.caption).foregroundStyle(tone.subtitle)
-                // The legend goes with the full-screen chart: the bars too small to carry a name inline are named here.
-                if space.maximized { legend }
             }
         }
     }
@@ -51,13 +47,14 @@ struct TechniqueSankeyChart: View {
         })
     }
 
-    private func modeButton(_ title: String, lap: Bool) -> some View {
-        Button(title) {
-            lapMode = lap
-            selected = ""
+    /// The Time / Lap switch: one segmented control, in the card and full screen alike.
+    private var modePicker: some View {
+        Picker("", selection: $lapMode) {
+            Text(L10n.get("em_timeline_by_time")).tag(false)
+            Text(L10n.get("em_timeline_by_lap")).tag(true)
         }
-        .buttonStyle(.bordered)
-        .tint(lapMode == lap ? Color.accentColor : Color.secondary)
+        .pickerStyle(.segmented)
+        .onChange(of: lapMode) { _, _ in selected = "" }
     }
 
     private var caption: String {
@@ -68,16 +65,19 @@ struct TechniqueSankeyChart: View {
         return "\(sankeyLabel(node)) · \(clock(Int(node.seconds))) · \(percent)%"
     }
 
-    /// What each colour of the chart means: the techniques and the zones in it, named as the chart names them.
+    /// What each technique colour means, on ONE line (the zones name themselves at the right of the chart). A long name
+    /// shrinks and is cut rather than wrapping to a second line.
     private var legend: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), alignment: .leading)], alignment: .leading, spacing: 6) {
-            ForEach(sankey.nodes.filter { $0.column != 0 }, id: \.key) { node in
-                HStack(spacing: 6) {
+        HStack(spacing: 14) {
+            ForEach(sankey.nodes.filter { $0.column == 1 }, id: \.key) { node in
+                HStack(spacing: 5) {
                     RoundedRectangle(cornerRadius: 3).fill(sankeyColor(node)).frame(width: 12, height: 12)
-                    Text(sankeyLabel(node)).font(.footnote)
+                    Text(sankeyLabel(node)).font(.footnote).lineLimit(1).minimumScaleFactor(0.7)
                 }
             }
+            Spacer(minLength: 0)
         }
+        .lineLimit(1)
     }
 }
 
@@ -120,11 +120,13 @@ private struct SankeyFrame {
     let width: CGFloat
     let height: CGFloat
     let k: CGFloat
+    /// Full screen: the time next to a zone's share and a line under a technique name, so both bars get more room.
+    let detail: Bool
 
     private var leftLabel: CGFloat { 40 * k }
-    private var rightLabel: CGFloat { 62 * k }
+    private var rightLabel: CGFloat { (detail ? 88 : 62) * k }
     private var thin: CGFloat { 8 * k }
-    private var wide: CGFloat { 40 * k }
+    private var wide: CGFloat { (detail ? 60 : 40) * k }
     private let top: CGFloat = 6
     private var usable: CGFloat { height - 12 }
     private var timeX: CGFloat { leftLabel }
@@ -150,7 +152,7 @@ private struct SankeyCanvas: View {
 
     var body: some View {
         GeometryReader { geo in
-            let frame = SankeyFrame(width: geo.size.width, height: geo.size.height, k: textScale)
+            let frame = SankeyFrame(width: geo.size.width, height: geo.size.height, k: textScale, detail: textScale > 1)
             Canvas { context, _ in draw(&context, frame) }
                 .contentShape(Rectangle())
                 .onTapGesture { point in
@@ -178,7 +180,7 @@ private struct SankeyCanvas: View {
             let rect = frame.rect(node)
             let dim = !selected.isEmpty && node.key != selected
             context.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(colors[index].opacity(dim ? 0.45 : 1)))
-            drawLabel(&context, node, rect, colors[index], heartRateSeconds)
+            drawLabel(&context, frame, node, rect, colors[index], heartRateSeconds)
         }
     }
 
@@ -198,7 +200,7 @@ private struct SankeyCanvas: View {
         return path
     }
 
-    private func drawLabel(_ context: inout GraphicsContext, _ node: SankeyNode, _ rect: CGRect, _ fill: Color, _ heartRateSeconds: Int) {
+    private func drawLabel(_ context: inout GraphicsContext, _ frame: SankeyFrame, _ node: SankeyNode, _ rect: CGRect, _ fill: Color, _ heartRateSeconds: Int) {
         let text = sankeyLabel(node)
         if text.isEmpty { return }
         let small = Font.system(size: 10 * textScale)
@@ -209,7 +211,8 @@ private struct SankeyCanvas: View {
             // Zones 1..5 as a share of the time with a heart rate, like the donut; "no heart rate" of all time.
             let share = node.key == "zone:0" ? Int(sankey.totalSeconds) : heartRateSeconds
             let percent = share > 0 ? Int((Double(node.seconds) * 100 / Double(share)).rounded()) : 0
-            context.draw(Text("\(text) \(percent)%").font(small).foregroundStyle(tone.subtitle),
+            let timeText = frame.detail ? " · \(clock(Int(node.seconds)))" : ""
+            context.draw(Text("\(text) \(percent)%\(timeText)").font(small).foregroundStyle(tone.subtitle),
                          at: CGPoint(x: rect.maxX + 4, y: rect.midY), anchor: .leading)
         default:
             // Inside the bar, only when the bar is tall enough to hold a line and the name fits.
@@ -218,6 +221,18 @@ private struct SankeyCanvas: View {
             let label = Text(text).font(.system(size: 11 * textScale, weight: .bold)).foregroundStyle(ink)
             let size = context.resolve(label).measure(in: CGSize(width: CGFloat.infinity, height: CGFloat.infinity))
             if size.width > rect.width { return }
+            // Full screen: the share and the time under the name, when the bar has the height and the width for them.
+            if frame.detail, sankey.totalSeconds > 0 {
+                let percent = Int((Double(node.seconds) * 100 / Double(sankey.totalSeconds)).rounded())
+                let sub = Text("\(percent)% · \(clock(Int(node.seconds)))").font(.system(size: 9 * textScale)).foregroundStyle(ink)
+                let subSize = context.resolve(sub).measure(in: CGSize(width: CGFloat.infinity, height: CGFloat.infinity))
+                if subSize.width <= rect.width, rect.height >= size.height + subSize.height + 6 {
+                    let gap = (size.height + subSize.height) / 2
+                    context.draw(label, at: CGPoint(x: rect.midX, y: rect.midY - gap + size.height / 2), anchor: .center)
+                    context.draw(sub, at: CGPoint(x: rect.midX, y: rect.midY + gap - subSize.height / 2), anchor: .center)
+                    return
+                }
+            }
             context.draw(label, at: CGPoint(x: rect.midX, y: rect.midY), anchor: .center)
         }
     }
