@@ -101,10 +101,7 @@ struct ActivityRouteView: View {
 
     var body: some View {
         if let item = companion.activities.first(where: { $0.id == id }) {
-            switch target {
-            case .diary, .strava: ActivityDetailScreen(item: item, initialTab: target == .strava ? .strava : .diary)
-            case .data, .technique: ActivityMetricsScreen(item: item, initialTab: target == .technique ? .technique : .data)
-            }
+            ActivityScreen(item: item, target: target)
         } else {
             ProgressView()
         }
