@@ -2368,9 +2368,9 @@ struct EditActivitySheet: View {
                         ForEach(Self.sports, id: \.self) { Text(L10n.get($0.optionKey)).tag($0) }
                     }
                     .onChange(of: sport) { _, _ in resetDisciplineForPair() }
-                    Text(String(format: L10n.get("activity_detail_sport_garmin_hint"), L10n.get(sport.garminKey)))
-                        .font(.caption).foregroundStyle(.secondary)
-                    Text(String(format: L10n.get("activity_detail_sport_strava_hint"), L10n.get(sport.stravaKey)))
+                    // Garmin Connect and Strava hints share one line (Android: the same).
+                    Text(String(format: L10n.get("activity_detail_sport_garmin_hint"), L10n.get(sport.garminKey))
+                         + "  ·  " + String(format: L10n.get("activity_detail_sport_strava_hint"), L10n.get(sport.stravaKey)))
                         .font(.caption).foregroundStyle(.secondary)
                     if sport.hasStyle {
                         InfoPicker(label: L10n.get("activity_detail_style_label"), info: L10n.get("activity_detail_style_info"), selection: $style) {

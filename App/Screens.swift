@@ -138,6 +138,14 @@ struct ActivitiesScreen: View {
         justDone.removeAll { ids.contains($0) }
     }
 
+    /// The list's density (Android: the toggle in the status card); remembered across launches.
+    @AppStorage("list_compact") private var compactList = false
+
+    @ViewBuilder private func activityRow(_ item: ActivityItem) -> some View {
+        let open: (ActivityTarget) -> Void = { route = ActivityRoute(id: item.id, target: $0) }
+        if compactList { CompactActivityRow(item: item, onOpen: open) } else { ActivityCard(item: item, onOpen: open) }
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -156,7 +164,18 @@ struct ActivitiesScreen: View {
                 } else {
                     List {
                         if let status = companion.syncStatus {
-                            Section { SyncStatusCard(status: status) }
+                            Section {
+                                SyncStatusCard(status: status)
+                                    .padding(.trailing, 40)
+                                    .overlay(alignment: .trailing) {
+                                        Button { compactList.toggle() } label: {
+                                            Image(systemName: compactList ? "rectangle.grid.1x2" : "list.bullet")
+                                                .frame(width: 36, height: 36)
+                                        }
+                                        .buttonStyle(.borderless)
+                                        .accessibilityLabel(L10n.get(compactList ? "list_density_full" : "list_density_compact"))
+                                    }
+                            }
                                 .listRowBackground(status.total == 0 ? CardTone.green.container : CardTone.orange.container)
                         }
                         // What runs now, then the decisions asked of the athlete (one Boost card at a time).
@@ -188,18 +207,18 @@ struct ActivitiesScreen: View {
                         if !open.isEmpty {
                             Section(L10n.get("activity_list_section_open")) {
                                 ForEach(open, id: \.id) { item in
-                                    ActivityCard(item: item) { route = ActivityRoute(id: item.id, target: $0) }
+                                    activityRow(item)
                                         .listRowBackground(CardTone.blue.container)
                                 }
                             }
                         }
                         Section(open.isEmpty && finished.isEmpty ? "" : L10n.get("activity_list_section_done")) {
                             ForEach(finished, id: \.id) { item in
-                                ActivityCard(item: item) { route = ActivityRoute(id: item.id, target: $0) }
+                                activityRow(item)
                                     .listRowBackground(CardTone.blue.container)
                             }
                             ForEach(rest, id: \.id) { item in
-                                ActivityCard(item: item) { route = ActivityRoute(id: item.id, target: $0) }
+                                activityRow(item)
                                     .listRowBackground(CardTone.blue.container)
                             }
                         }

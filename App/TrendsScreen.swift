@@ -98,6 +98,19 @@ struct TrendsScreen: View {
     }
     private var visible: [TrendChartDef] { charts.filter { $0.show } }
 
+    /// Four themes with two or three charts under each other (Android: `themes` in `TrendsScreen`).
+    private var themes: [(label: String, charts: [TrendChartDef])] {
+        let shown = visible
+        let spec: [(String, [String])] = [
+            (L10n.get("trends_theme_volume"), ["load", "climb"]),
+            (L10n.get("trends_theme_intensity"), ["int", "rec"]),
+            (L10n.get("dash_tab_technique"), ["mix", "matrix"]),
+            (L10n.get("trends_theme_performance"), ["pol", "slope", "eff"]),
+        ]
+        return spec.map { (label, ids) in (label: label, charts: ids.compactMap { id in shown.first { $0.id == id } }) }
+            .filter { !$0.charts.isEmpty }
+    }
+
     // MARK: Body
 
     var body: some View {
@@ -123,7 +136,7 @@ struct TrendsScreen: View {
         .task { await reload() }
         .onChange(of: companion.activities.count) { _, _ in Task { await reload() } }
         .onAppear { registerPages() }
-        .onChange(of: visible.map { $0.id }) { _, _ in registerPages(); page = min(page, max(visible.count - 1, 0)) }
+        .onChange(of: visible.map { $0.id }) { _, _ in registerPages(); page = min(page, max(themes.count - 1, 0)) }
         .fullScreenCover(isPresented: Binding(get: { expandedId != nil }, set: { if !$0 { expandedId = nil } })) {
             let id = expandedId ?? ""
             FullScreenChart(
@@ -142,7 +155,7 @@ struct TrendsScreen: View {
     /// Every visible chart is known to the full-screen view, also those the pager has not shown yet: a swipe there pages through all of them.
     private func registerPages() {
         let fresh = ChartRegistry()
-        for chart in visible {
+        for chart in themes.flatMap({ $0.charts }) {
             fresh.register(ChartRegistry.Page(id: chart.id, title: chart.title, tone: tone, content: { space in AnyView(chartBody(chart.id, space)) }))
         }
         registry = fresh
@@ -168,11 +181,20 @@ struct TrendsScreen: View {
 
     private var filterBar: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("", selection: Binding(get: { periodDays }, set: { periodDays = $0; bucket = -1; picked = "" })) {
-                Text(L10n.get("trends_period_week")).tag(7)
-                Text(L10n.get("trends_period_month")).tag(30)
+            HStack(spacing: 10) {
+                Picker("", selection: Binding(get: { periodDays }, set: { periodDays = $0; bucket = -1; picked = "" })) {
+                    Text(L10n.get("trends_period_week")).tag(7)
+                    Text(L10n.get("trends_period_month")).tag(30)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 150)
+                miniSwitch(L10n.get("trends_compare_short"), isOn: $compare)
+                miniSwitch(L10n.get("trends_other_short"), isOn: Binding(get: { includeOther }, set: { on in
+                    includeOther = on
+                    if !on && family == "OTHER" { family = "ALL"; style = "ALL" }
+                }))
+                Spacer(minLength: 0)
             }
-            .pickerStyle(.segmented)
             let counts = Trends.shared.familyCounts(all: all, q: query)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -195,11 +217,14 @@ struct TrendsScreen: View {
                     }
                 }
             }
-            Toggle(L10n.get("trends_compare"), isOn: $compare).font(.footnote)
-            Toggle(L10n.get("trends_include_other"), isOn: Binding(get: { includeOther }, set: { on in
-                includeOther = on
-                if !on && family == "OTHER" { family = "ALL"; style = "ALL" }
-            })).font(.footnote)
+        }
+    }
+
+    /// A small switch with a short label (Android: `MiniSwitch`).
+    private func miniSwitch(_ label: String, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 2) {
+            Toggle("", isOn: isOn).labelsHidden().scaleEffect(0.65).frame(width: 38, height: 24)
+            Text(label).font(.caption).foregroundStyle(.secondary).lineLimit(1).fixedSize()
         }
     }
 
@@ -302,28 +327,27 @@ struct TrendsScreen: View {
         .background(tone.container, in: RoundedRectangle(cornerRadius: 14))
     }
 
+    /// The themes as a pill row (level 3 of the navigation), under it the selected theme's charts in cards under each other.
     private var chartPager: some View {
-        let list = visible
-        return VStack(spacing: 8) {
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(Array(list.enumerated()), id: \.offset) { i, chart in
-                            Button { withAnimation { page = i } } label: {
-                                Text(chart.title).font(.subheadline.weight(page == i ? .semibold : .regular))
-                                    .padding(.horizontal, 10).padding(.vertical, 6)
-                                    .foregroundStyle(page == i ? tone.title : tone.subtitle)
-                                    .overlay(alignment: .bottom) { Rectangle().fill(page == i ? tone.title : Color.clear).frame(height: 2) }
-                            }
-                            .buttonStyle(.plain)
-                            .id(i)
+        let list = themes
+        let current = min(page, max(list.count - 1, 0))
+        return VStack(spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(Array(list.enumerated()), id: \.offset) { i, theme in
+                        Button { page = i } label: {
+                            Text(theme.label).font(.subheadline.weight(current == i ? .semibold : .regular))
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .background(current == i ? tone.title : Color.clear, in: Capsule())
+                                .overlay(Capsule().stroke(tone.title, lineWidth: 1.5))
+                                .foregroundStyle(current == i ? Color(.systemBackground) : tone.title)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
-                .onChange(of: page) { _, i in withAnimation { proxy.scrollTo(i, anchor: .center) } }
             }
-            TabView(selection: $page) {
-                ForEach(Array(list.enumerated()), id: \.offset) { i, chart in
+            if !list.isEmpty {
+                ForEach(list[current].charts, id: \.id) { chart in
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text(chart.title).font(.subheadline.weight(.semibold)).foregroundStyle(tone.title)
@@ -331,26 +355,12 @@ struct TrendsScreen: View {
                             ExpandChartButton(tone: tone) { expandedId = chart.id }
                         }
                         chartBody(chart.id, .inline)
-                        Spacer(minLength: 0)
                     }
                     .padding(12)
-                    .frame(maxHeight: .infinity, alignment: .top)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                     .background(tone.container, in: RoundedRectangle(cornerRadius: 14))
-                    .padding(.horizontal, 1)
-                    .tag(i)
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: 470)
-            HStack(spacing: 6) {
-                ForEach(Array(list.enumerated()), id: \.offset) { i, chart in
-                    Circle().fill(tone.title.opacity(page == i ? 1 : 0.35))
-                        .frame(width: page == i ? 9 : 7, height: page == i ? 9 : 7)
-                        .onTapGesture { withAnimation { page = i } }
-                        .accessibilityLabel(chart.title)
-                }
-            }
-            .frame(maxWidth: .infinity)
             if visible.count < charts.count {
                 Text(String(format: L10n.get("trends_hidden_note"), charts.count - visible.count, charts.count))
                     .font(.caption2).foregroundStyle(.secondary).frame(maxWidth: .infinity)
@@ -444,18 +454,18 @@ func trendGroupColor(_ group: String) -> Color {
     case "XC|SKATING": return rgb(0x1B4F8F)
     case "XC|CLASSIC": return rgb(0x2A6DBD)
     case "XC|DOUBLE_POLE": return rgb(0x7DB2EA)
-    case "ROLLSKI|SKATING": return rgb(0x2F8F8A)
-    case "ROLLSKI|CLASSIC": return rgb(0x5BBDB6)
-    case "ROLLSKI|DOUBLE_POLE": return rgb(0x9ADAD4)
-    case "RUNNING|ROAD": return rgb(0xE08A1E)
-    case "RUNNING|TRAIL": return rgb(0xB5651D)
-    case "RUNNING|TRACK": return rgb(0xF0B323)
-    case "RUNNING|POLE": return rgb(0xD4A15A)
-    case "INLINE|": return rgb(0x3FA064)
+    case "ROLLSKI|SKATING": return rgb(0xC2570C)
+    case "ROLLSKI|CLASSIC": return rgb(0xE8892B)
+    case "ROLLSKI|DOUBLE_POLE": return rgb(0xF2B866)
+    case "RUNNING|ROAD": return rgb(0x2E8B57)
+    case "RUNNING|TRAIL": return rgb(0x1E6B45)
+    case "RUNNING|TRACK": return rgb(0x5FBF7F)
+    case "RUNNING|POLE": return rgb(0x9AD5AE)
+    case "INLINE|": return rgb(0x7B5EA7)
     default:
         if group.hasPrefix("XC") { return rgb(0x2A6DBD) }
-        if group.hasPrefix("ROLLSKI") { return rgb(0x5BBDB6) }
-        if group.hasPrefix("RUNNING") { return rgb(0xE08A1E) }
+        if group.hasPrefix("ROLLSKI") { return rgb(0xE8892B) }
+        if group.hasPrefix("RUNNING") { return rgb(0x2E8B57) }
         return rgb(0x8D99A6)
     }
 }

@@ -39,6 +39,50 @@ extension ActivityItem {
     }
 }
 
+/// The compact list row (Android: `CompactActivityRow`): two text lines and two icon links, to the Entry screen
+/// (tinted in the entry's status colour) and to the Metrics screen.
+struct CompactActivityRow: View {
+    let item: ActivityItem
+    let onOpen: (ActivityTarget) -> Void
+
+    private var entryColor: Color {
+        switch item.entryStatus {
+        case .attention: return .orange
+        case .review: return SyncChip.diary
+        case .written: return .green
+        case .open, .imported: return .gray
+        }
+    }
+
+    var body: some View {
+        let bodyTarget: ActivityTarget = item.entryStatus == .written && item.hasWatchMetrics ? .data : .diary
+        HStack(spacing: 4) {
+            Button { onOpen(bodyTarget) } label: {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(item.title.isEmpty ? L10n.get("activity_detail_title_fallback") : item.title)
+                        .font(.subheadline.weight(.semibold)).lineLimit(1)
+                    Text(Format.summary(item)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Button { onOpen(.diary) } label: {
+                Image(systemName: "square.and.pencil").foregroundStyle(entryColor).frame(width: 36, height: 36)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(L10n.get("card_lane_entry"))
+            if item.hasWatchMetrics {
+                Button { onOpen(.data) } label: {
+                    Image(systemName: "chart.bar.fill").foregroundStyle(Color(red: 0x2F / 255, green: 0x5F / 255, blue: 0x85 / 255)).frame(width: 36, height: 36)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(L10n.get("card_lane_metrics"))
+            }
+        }
+    }
+}
+
 /// The activity list's card (Android: `ActivityEventCard`): the identity on top (title, the blue watch tick with source,
 /// start, duration, distance) and two lanes below. The Entry lane is what the athlete declares for the diary and Strava,
 /// in the status colour (yellow to review, green written, orange action needed); its chips open the Entry screen on
