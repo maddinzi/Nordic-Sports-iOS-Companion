@@ -474,6 +474,9 @@ struct EnhancedMetricsCard: View {
                         if let zone = selectedZone {
                             Text("\(Int(zonePercents[zone]))%").font(centerFont(f))
                             Text("Z\(zone + 1)").font(centerCaption(f)).foregroundStyle(.secondary)
+                            if space.maximized, let seconds = zoneSeconds(zone) {
+                                Text(clock(seconds)).font(centerCaption(f)).foregroundStyle(.secondary)
+                            }
                         } else if view.avgHeartRate > 0 {
                             Text("\(view.avgHeartRate)").font(centerFont(f))
                             Text("bpm").font(centerCaption(f)).foregroundStyle(.secondary)
@@ -490,11 +493,13 @@ struct EnhancedMetricsCard: View {
                                 Text(String(format: L10n.get("ios_zone_n"), index + 1))
                                     .font(.footnote.weight(selectedZone == index ? .bold : .regular))
                                 Spacer(minLength: 4)
-                                // Full screen: the time in the zone next to its share, when the watch sent the tally.
-                                if space.maximized, let seconds = zoneSeconds(index) {
-                                    Text(clock(seconds)).font(.footnote).foregroundStyle(.secondary)
+                                // Full screen: the time and the share as two right-aligned columns, like a table.
+                                if space.maximized, zoneSeconds(0) != nil {
+                                    Text(zoneSeconds(index).map { clock($0) } ?? "").font(.footnote).foregroundStyle(.secondary)
+                                        .monospacedDigit().frame(width: 64, alignment: .trailing)
                                 }
                                 Text("\(Int(zonePercents[index]))%").font(.footnote.weight(.bold))
+                                    .monospacedDigit().frame(width: 48, alignment: .trailing)
                             }
                             .padding(.horizontal, 4).padding(.vertical, 3)
                             .background(selectedZone == index ? Color.primary.opacity(0.08) : Color.clear,
@@ -526,19 +531,27 @@ struct EnhancedMetricsCard: View {
             VStack(alignment: .leading, spacing: 10 * space.scale) {
                 ForEach(group.rows, id: \.key) { row in
                     let seconds = row.seconds.map { Int(truncating: $0) }
+                    let rowDim = selectedKey != nil && selectedKey != row.key
                     HStack(spacing: 8) {
                         RoundedRectangle(cornerRadius: 3).fill(stateColor(row.key)).frame(width: 10, height: 10)
                         Text(stateShort(row.key)).font(.footnote.weight(.bold)).lineLimit(1).minimumScaleFactor(0.8)
                             .frame(width: group.id == "terrain" ? 92 : 52, alignment: .leading)
                         Chart(Array(seconds.enumerated()), id: \.offset) { index, value in
-                            BarMark(x: .value("seconds", value)).foregroundStyle(hrZoneColor(index + 1))
+                            BarMark(x: .value("seconds", value))
+                                .foregroundStyle(hrZoneColor(index + 1).opacity(selectedZone == nil || selectedZone == index ? 1 : 0.25))
                         }
                         .chartXAxis(.hidden).chartYAxis(.hidden).chartLegend(.hidden)
                         .frame(height: 16 * space.scale)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
-                        Text(clock(seconds.reduce(0, +))).font(.caption).foregroundStyle(tone.subtitle)
-                            .frame(width: 48, alignment: .trailing)
+                        // A picked zone dims the other zones and the column then shows the time in that zone.
+                        Text(clock(selectedZone.map { $0 < seconds.count ? seconds[$0] : 0 } ?? seconds.reduce(0, +)))
+                            .font(.caption.weight(selectedZone == nil ? .regular : .bold))
+                            .foregroundStyle(selectedZone == nil ? tone.subtitle : Color.primary)
+                            .monospacedDigit().frame(width: 48, alignment: .trailing)
                     }
+                    .opacity(rowDim ? 0.4 : 1)
+                    .contentShape(Rectangle())
+                    .onTapGesture { toggleSelection(row.key) }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(stateShort(row.key)) \(clock(seconds.reduce(0, +)))")
                 }
@@ -550,6 +563,13 @@ struct EnhancedMetricsCard: View {
                 HStack(spacing: 16) {
                     ForEach(1...5, id: \.self) { zone in
                         legendDot(hrZoneColor(zone), "Z\(zone)")
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(selectedZone == zone - 1 ? Color.primary.opacity(0.08) : Color.clear,
+                                        in: RoundedRectangle(cornerRadius: 8))
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.easeInOut(duration: 0.2)) { selectedZone = selectedZone == zone - 1 ? nil : zone - 1 }
+                            }
                     }
                 }
             }
@@ -774,6 +794,9 @@ struct EnhancedMetricsCard: View {
                     VStack(spacing: 0) {
                         Text("\(Int(share.percent))%").font(centerFont(f))
                         Text(stateShort(key)).font(centerCaption(f)).foregroundStyle(.secondary)
+                        if space.maximized, share.seconds > 0 {
+                            Text(clock(Int(share.seconds))).font(centerCaption(f)).foregroundStyle(.secondary)
+                        }
                     }
                 } else if view.totalSeconds > 0 {
                     VStack(spacing: 0) {
@@ -792,10 +815,12 @@ struct EnhancedMetricsCard: View {
                             RoundedRectangle(cornerRadius: 3).fill(stateColor(share.key)).frame(width: 12, height: 12)
                             Text(stateName(share.key)).font(.footnote.weight(selectedKey == share.key ? .bold : .regular))
                             Spacer(minLength: 4)
-                            if space.maximized, share.seconds > 0 {
-                                Text(clock(Int(share.seconds))).font(.footnote).foregroundStyle(.secondary)
+                            if space.maximized, view.shares.contains(where: { $0.seconds > 0 }) {
+                                Text(share.seconds > 0 ? clock(Int(share.seconds)) : "").font(.footnote).foregroundStyle(.secondary)
+                                    .monospacedDigit().frame(width: 64, alignment: .trailing)
                             }
                             Text("\(Int(share.percent))%").font(.footnote.weight(.bold))
+                                .monospacedDigit().frame(width: 48, alignment: .trailing)
                         }
                         .padding(.horizontal, 4).padding(.vertical, 3)
                         .background(selectedKey == share.key ? Color.primary.opacity(0.08) : Color.clear,
@@ -837,7 +862,7 @@ struct EnhancedMetricsCard: View {
             gridRow([L10n.get("em_col_technique"), "SPM\n/min", "DPS\nm", "APID\nms", "ADC\n%"], header: true, color: nil)
             Divider()
             ForEach(view.polingRows, id: \.key) { row in
-                gridRow([stateShort(row.key)] + row.cells.map { $0 }, header: false, color: stateColor(row.key))
+                gridRow([stateShort(row.key)] + row.cells.map { $0 }, header: false, color: stateColor(row.key), key: row.key)
                 Divider().opacity(0.4)
             }
         }
@@ -877,7 +902,7 @@ struct EnhancedMetricsCard: View {
             gridRow([L10n.get(isRun ? "em_col_terrain" : "em_col_technique")] + headers, header: true, color: nil)
             Divider()
             ForEach(view.rows, id: \.key) { row in
-                gridRow([stateShort(row.key)] + row.cells.map { $0 }, header: false, color: stateColor(row.key))
+                gridRow([stateShort(row.key)] + row.cells.map { $0 }, header: false, color: stateColor(row.key), key: row.key)
                 Divider().opacity(0.4)
             }
         }
@@ -885,8 +910,12 @@ struct EnhancedMetricsCard: View {
         .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private func gridRow(_ cells: [String], header: Bool, color: Color?) -> some View {
-        HStack(alignment: header ? .bottom : .center, spacing: 4) {
+    /// One table row. With a `key` it is part of the interaction: the state picked on a chart marks it and fades the
+    /// others, and a tap picks (or clears) it (Android: `GridRow`).
+    private func gridRow(_ cells: [String], header: Bool, color: Color?, key: String? = nil) -> some View {
+        let marked = key != nil && selectedKey == key
+        let dim = key != nil && selectedKey != nil && selectedKey != key
+        return HStack(alignment: header ? .bottom : .center, spacing: 4) {
             HStack(spacing: 6) {
                 if let color { RoundedRectangle(cornerRadius: 3).fill(color).frame(width: 10, height: 10) }
                 Text(cells[0]).font(header ? .caption2 : .footnote.weight(.bold))
@@ -901,6 +930,11 @@ struct EnhancedMetricsCard: View {
             }
         }
         .padding(.vertical, header ? 6 : 8)
+        .padding(.horizontal, 4)
+        .background(marked ? Color.primary.opacity(0.10) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+        .opacity(dim ? 0.45 : 1)
+        .contentShape(Rectangle())
+        .onTapGesture { if let key { toggleSelection(key) } }
     }
 
     private var explanation: some View {
