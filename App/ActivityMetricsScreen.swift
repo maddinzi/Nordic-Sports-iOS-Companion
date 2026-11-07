@@ -203,7 +203,10 @@ struct ActivityMetricsScreen: View {
     @ViewBuilder private func themeSections(_ entry: MetricsTheme) -> some View {
         switch entry {
         case .enhanced(let part):
-            if let metrics = current.enhancedMetrics {
+            if let metrics = current.enhancedMetrics, part == .timeline {
+                Section { TimelineSection(view: metrics) }
+                    .listRowBackground(CardTone.blue.container)
+            } else if let metrics = current.enhancedMetrics {
                 Section { EnhancedMetricsCard(view: metrics, theme: part).id(part) }
                     .listRowBackground(CardTone.blue.container)
             }
@@ -242,6 +245,7 @@ enum MetricsTheme: Hashable {
         case .enhanced(.terrain): return L10n.get("dash_tab_terrain")
         case .enhanced(.form): return L10n.get("dash_tab_form")
         case .enhanced(.heartRate): return L10n.get("dash_tab_heart_rate")
+        case .enhanced(.timeline): return L10n.get("dash_tab_timeline")
         case .allData: return L10n.get("dash_tab_all_data")
         }
     }

@@ -157,7 +157,7 @@ func stateColor(_ key: String) -> Color {
 }
 
 /// Athlete-facing name of a state ("V2A" -> "Symmetric 2:1 (V2A)"), also for GLIDE, OTHER and the terrain.
-private func stateName(_ key: String) -> String {
+func stateName(_ key: String) -> String {
     switch key {
     case "V2": return L10n.get("technique_name_v2")
     case "V2A": return L10n.get("technique_name_v2a")
@@ -311,7 +311,7 @@ private func tileTexts(_ key: String) -> (name: String, desc: String, abbreviati
 /// `EnhancedMetricsView`; the texts are the `em_*` and `technique_name_*` strings.
 /// The themes of the Metrics screen (Android: `DashTab`) that Enhanced Metrics sections belong to.
 enum EnhancedTheme: Hashable {
-    case overview, technique, terrain, form, heartRate
+    case overview, technique, terrain, form, heartRate, timeline
 }
 
 extension EnhancedMetricsView {
@@ -330,6 +330,7 @@ extension EnhancedMetricsView {
         if hasTerrainTheme || (isRunKind && !climb.isEmpty) { out.append(.terrain) }
         if isRunKind && (!form.isEmpty || balanceLeft > 0) { out.append(.form) }
         if hasHeart { out.append(.heartRate) }
+        if timeline != nil || runBlocks.count >= 2 { out.append(.timeline) }
         return out
     }
 }
