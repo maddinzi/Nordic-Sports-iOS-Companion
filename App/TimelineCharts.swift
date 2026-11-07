@@ -86,6 +86,7 @@ private struct StackedBlocks: View {
                     }
                     .contentShape(Rectangle())
                     .gesture(DragGesture(minimumDistance: 0).onEnded { drag in
+                        guard abs(drag.translation.width) < 12 else { return }
                         let i = min(max(Int(drag.location.x / slot), 0), blocks.count - 1)
                         block = block == i ? nil : i
                     })
@@ -176,6 +177,7 @@ private struct RunBlocks: View {
             }
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0).onEnded { drag in
+                guard abs(drag.translation.width) < 12 else { return }
                 let i = min(max(Int(drag.location.x / slot), 0), values.count - 1)
                 if values[i] != nil { block = block == i ? nil : i }
             })

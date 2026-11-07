@@ -844,6 +844,9 @@ struct ActivityDetailScreen: View {
         }
         // Long-press copies a value (SPM, DPS, ...), as on Android.
         .textSelection(.enabled)
+        // Denser than the default list: less height per row and between the sections (Android: tighter Entry cards).
+        .environment(\.defaultMinListRowHeight, 34)
+        .listSectionSpacing(.compact)
         .navigationTitle(L10n.get("card_lane_entry"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

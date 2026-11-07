@@ -338,6 +338,13 @@ struct TrendsScreen: View {
         .background(tone.container, in: RoundedRectangle(cornerRadius: 14))
     }
 
+    /// A clearly horizontal swipe moves to the next or previous theme (Android: the pager).
+    private func swipeTheme(_ drag: DragGesture.Value) {
+        guard abs(drag.translation.width) > 80, abs(drag.translation.width) > abs(drag.translation.height) * 2 else { return }
+        let next = (drag.translation.width < 0 ? page + 1 : page - 1)
+        if themes.indices.contains(next) { withAnimation { page = next } }
+    }
+
     /// The themes as a pill row (level 3 of the navigation), under it the selected theme's charts in cards under each other.
     private var chartPager: some View {
         let list = themes
@@ -371,6 +378,7 @@ struct TrendsScreen: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .background(tone.container, in: RoundedRectangle(cornerRadius: 14))
                 }
+                .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded(swipeTheme))
             }
             if visible.count < charts.count {
                 Text(String(format: L10n.get("trends_hidden_note"), charts.count - visible.count, charts.count))

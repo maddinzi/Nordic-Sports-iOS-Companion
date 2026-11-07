@@ -193,6 +193,16 @@ struct ActivityMetricsScreen: View {
             }
         }
         .textSelection(.enabled)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 40).onEnded { drag in
+                // Only a clearly horizontal swipe changes the theme; the list still scrolls.
+                guard abs(drag.translation.width) > 80, abs(drag.translation.width) > abs(drag.translation.height) * 2 else { return }
+                let list = themes
+                guard let index = list.firstIndex(of: selectedTheme) else { return }
+                let next = drag.translation.width < 0 ? index + 1 : index - 1
+                if list.indices.contains(next) { withAnimation { theme = list[next] } }
+            }
+        )
         .environment(\.chartRegistry, registry)
         .background(alignment: .topLeading) { hiddenThemes }
         .task(id: item.id) { typical = await companion.typical(for: item) }
