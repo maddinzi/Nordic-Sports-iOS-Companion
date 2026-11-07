@@ -94,6 +94,8 @@ struct RootView: View {
 struct ActivityRoute: Hashable {
     let id: String
     var target: ActivityTarget = .diary
+    /// A technique or terrain picked on the Metrics screen.
+    var pick: String?
 }
 
 /// The detail of the activity with [id]; a spinner until the list has loaded it.
@@ -101,10 +103,11 @@ struct ActivityRouteView: View {
     @EnvironmentObject var companion: Companion
     let id: String
     var target: ActivityTarget = .diary
+    var pick: String?
 
     var body: some View {
         if let item = companion.activities.first(where: { $0.id == id }) {
-            ActivityScreen(item: item, target: target)
+            ActivityScreen(item: item, target: target, pick: pick)
         } else {
             ProgressView()
         }
@@ -227,12 +230,14 @@ struct ActivitiesScreen: View {
             }
             .navigationTitle(L10n.get("ios_tab_activities"))
             .navigationDestination(item: $route) { route in
-                ActivityRouteView(id: route.id, target: route.target)
+                ActivityRouteView(id: route.id, target: route.target, pick: route.pick)
             }
             .onChange(of: companion.openActivityId, initial: true) { _, id in
                 guard let id else { return }
-                route = ActivityRoute(id: id)
+                let pick = companion.openPick
+                route = ActivityRoute(id: id, target: pick == nil ? .diary : .data, pick: pick)
                 companion.openActivityId = nil
+                companion.openPick = nil
             }
             .onChange(of: openItems.map { $0.id }, initial: true) { _, ids in trackOpen(Set(ids)) }
             .onAppear { companion.refreshWatchCards() }
@@ -658,20 +663,7 @@ struct ActivityDetailScreen: View {
 
     var body: some View {
         Form {
-            // Where this activity is synced to, as Android's header box.
-            Section {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 16) {
-                        SyncChip(name: L10n.get("sync_presence_destination_watch"), on: current.origin == "watch", tint: SyncChip.watch)
-                        SyncChip(name: "Strava", on: !current.stravaActivityId.isEmpty, tint: SyncChip.strava)
-                        if companion.diaryReceives {
-                            SyncChip(name: L10n.get("settings_diary_short_name"),
-                                     on: current.diaryWritten && !current.diaryOutdated, tint: SyncChip.diary)
-                        }
-                    }
-                }
-            }
-            .listRowBackground(CardTone.blue.container)
+            // The sync ticks and the demo declaration are in the top card of ActivityScreen.
             if showStravaTab {
                 Section {
                     Picker("", selection: $tab) {
@@ -681,12 +673,6 @@ struct ActivityDetailScreen: View {
                     .pickerStyle(.segmented)
                 }
                 .listRowBackground(Color.clear)
-            }
-            if current.isDemo {
-                Section {
-                    Label(L10n.get("demo_badge"), systemImage: "testtube.2")
-                    Text(L10n.get("demo_nothing_sent")).font(.footnote).foregroundStyle(.secondary)
-                }
             }
             if current.reviewPending {
                 Section(L10n.get("activity_detail_review_heading")) {

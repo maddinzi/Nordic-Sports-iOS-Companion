@@ -391,7 +391,10 @@ struct TrendsScreen: View {
             Text(String(format: L10n.get("trends_activities_in_view"), shown.count))
                 .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             ForEach(Array(shown.prefix(8)), id: \.id) { a in
-                Button { companion.openActivityId = a.id } label: { activityRow(a) }
+                Button {
+                    companion.openPick = tech.isEmpty ? nil : tech
+                    companion.openActivityId = a.id
+                } label: { activityRow(a) }
                     .buttonStyle(.plain)
             }
         }

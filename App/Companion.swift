@@ -58,6 +58,8 @@ final class Companion: NSObject, ObservableObject {
     /// The alert shown now; further messages wait in `queuedMessages` (use `post`).
     /// The activity a tapped notification asks to show; the Activities tab opens it and clears this.
     @Published var openActivityId: String?
+    /// With [openActivityId]: a technique or terrain to pick on the Metrics screen (a row of Trends opens it that way).
+    @Published var openPick: String?
     /// "More statistics in the Trends" on a Metrics screen: the Trends tab opens on this sport and style (family, style).
     @Published var trendsRequest: TrendsRequest?
 

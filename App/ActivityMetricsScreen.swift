@@ -13,8 +13,11 @@ struct ActivityMetricsScreen: View {
     @State private var typical: TrendTypical?
     @State private var vsTypical = false
 
-    init(item: ActivityItem, initialTab: MetricsTab = .data) {
+    init(item: ActivityItem, initialTab: MetricsTab = .data, pick: String? = nil) {
         self.item = item
+        let start = MetricsPick()
+        start.key = pick
+        _pick = StateObject(wrappedValue: start)
         // The themes open on their first page (the overview); the data target, from the old tabs, opens All data.
         _theme = State(initialValue: initialTab == .data && !item.hasTechniqueMetrics ? .allData : nil)
     }
@@ -133,18 +136,7 @@ struct ActivityMetricsScreen: View {
 
     var body: some View {
         Form {
-            Section {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(current.title.isEmpty ? L10n.get("activity_detail_title_fallback") : current.title).font(.headline)
-                    HStack(spacing: 4) {
-                        Image(systemName: current.origin == "watch" ? "checkmark.circle.fill" : "circle")
-                            .font(.caption)
-                            .foregroundStyle(current.origin == "watch" ? SyncChip.watch : Color.secondary)
-                        Text(Format.summary(current)).font(.subheadline).foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .listRowBackground(CardTone.blue.container)
+            // The title, sync ticks and demo declaration are in the top card of ActivityScreen.
             // Level 3 of the navigation: the themes as a pill row; the first numbers stay above every theme but All data.
             if themes.count > 1 {
                 Section {
