@@ -8,11 +8,33 @@ import SwiftUI
 struct ActivityMetricsScreen: View {
     @EnvironmentObject var companion: Companion
     let item: ActivityItem
-    @State private var tab: MetricsTab
+    @State private var theme: MetricsTheme?
 
     init(item: ActivityItem, initialTab: MetricsTab = .data) {
         self.item = item
-        _tab = State(initialValue: initialTab == .technique && item.hasTechniqueMetrics ? .technique : .data)
+        // The themes open on their first page (the overview); the data target, from the old tabs, opens All data.
+        _theme = State(initialValue: initialTab == .data && !item.hasTechniqueMetrics ? .allData : nil)
+    }
+
+    /// The themes of this activity in the order of the pill row (Android: `dashboardPages`).
+    private var themes: [MetricsTheme] {
+        var out: [MetricsTheme] = []
+        if hasLegacyLines { out.append(.legacy) }
+        if let metrics = current.enhancedMetrics { out += metrics.themes.map { MetricsTheme.enhanced($0) } }
+        out.append(.allData)
+        return out
+    }
+
+    /// Older watch versions and hand-over formats: technique lines that have no chart.
+    private var hasLegacyLines: Bool {
+        (current.techniqueCatalog == "rollski" && !current.techniqueSharePercent.isEmpty)
+            || (!current.analysisLines.isEmpty && current.enhancedMetrics == nil)
+    }
+
+    private var selectedTheme: MetricsTheme {
+        let list = themes
+        if let theme, list.contains(theme) { return theme }
+        return list.first ?? .allData
     }
 
     /// The row as the list has it now.
@@ -120,20 +142,35 @@ struct ActivityMetricsScreen: View {
                 }
             }
             .listRowBackground(CardTone.blue.container)
-            if current.hasTechniqueMetrics {
+            // Level 3 of the navigation: the themes as a pill row; the first numbers stay above every theme but All data.
+            if themes.count > 1 {
                 Section {
-                    Picker("", selection: $tab) {
-                        Text(L10n.get("card_chip_data")).tag(MetricsTab.data)
-                        Text(L10n.get("card_chip_technique")).tag(MetricsTab.technique)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(themes, id: \.self) { entry in
+                                let on = entry == selectedTheme
+                                Button { theme = entry } label: {
+                                    Text(entry.label).font(.subheadline.weight(on ? .semibold : .regular))
+                                        .padding(.horizontal, 12).padding(.vertical, 6)
+                                        .background(on ? Color.accentColor : Color.clear, in: Capsule())
+                                        .overlay(Capsule().stroke(Color.accentColor, lineWidth: 1.5))
+                                        .foregroundStyle(on ? Color(.systemBackground) : Color.accentColor)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
                     }
-                    .pickerStyle(.segmented)
                 }
                 .listRowBackground(Color.clear)
             }
-            if tab == .data || !current.hasTechniqueMetrics {
+            if selectedTheme == .allData {
                 dataSections
             } else {
-                techniqueSections
+                Section {
+                    TechnicalDataCard(title: "", rows: Array(technicalRows.prefix(2)), facts: [])
+                }
+                .listRowBackground(CardTone.navy.container)
+                themeSections(selectedTheme)
             }
         }
         .textSelection(.enabled)
@@ -162,29 +199,50 @@ struct ActivityMetricsScreen: View {
         }
     }
 
-    /// The watch's Enhanced Metrics (ski activity or run), the technique shares and the analysis block.
-    @ViewBuilder private var techniqueSections: some View {
-        // The watch's Enhanced Metrics (ski activity or run) as one collapsible card.
-        if let metrics = current.enhancedMetrics {
-            Section { EnhancedMetricsCard(view: metrics) }
+    /// The charts of one theme: a part of the watch's Enhanced Metrics, or the older technique lines.
+    @ViewBuilder private func themeSections(_ entry: MetricsTheme) -> some View {
+        switch entry {
+        case .enhanced(let part):
+            if let metrics = current.enhancedMetrics {
+                Section { EnhancedMetricsCard(view: metrics, theme: part).id(part) }
+                    .listRowBackground(CardTone.blue.container)
+            }
+        case .legacy:
+            if current.techniqueCatalog == "rollski", !current.techniqueSharePercent.isEmpty {
+                Section(L10n.get("activity_detail_technique_share_rollski_label")) {
+                    ForEach(Array(current.techniqueSharePercent.enumerated()), id: \.offset) { index, percent in
+                        LabeledContent(L10n.get("technique_labels_rollski_\(index)"), value: String(format: "%.0f%%", percent.doubleValue))
+                    }
+                }
+            }
+            // The watch's analysis as the Strava description block says it (shared AnalysisDescription.body).
+            let analysisLines = current.analysisLines
+            if !analysisLines.isEmpty, current.enhancedMetrics == nil {
+                Section(current.analysisTitle) {
+                    ForEach(Array(analysisLines.enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                    }
+                }
                 .listRowBackground(CardTone.blue.container)
-        }
-        if current.techniqueCatalog == "rollski", !current.techniqueSharePercent.isEmpty {
-            Section(L10n.get("activity_detail_technique_share_rollski_label")) {
-                ForEach(Array(current.techniqueSharePercent.enumerated()), id: \.offset) { index, percent in
-                    LabeledContent(L10n.get("technique_labels_rollski_\(index)"), value: String(format: "%.0f%%", percent.doubleValue))
-                }
             }
+        case .allData:
+            EmptyView()
         }
-        // The watch's analysis as the Strava description block says it (shared AnalysisDescription.body).
-        let analysisLines = current.analysisLines
-        if !analysisLines.isEmpty, current.enhancedMetrics == nil {
-            Section(current.analysisTitle) {
-                ForEach(Array(analysisLines.enumerated()), id: \.offset) { _, line in
-                    Text(line)
-                }
-            }
-            .listRowBackground(CardTone.blue.container)
+    }
+}
+
+/// The themes of the Metrics screen (Android: `DashTab`): the Enhanced Metrics parts, the older technique lines and All data.
+enum MetricsTheme: Hashable {
+    case enhanced(EnhancedTheme), legacy, allData
+
+    var label: String {
+        switch self {
+        case .legacy, .enhanced(.overview): return L10n.get("dash_tab_overview")
+        case .enhanced(.technique): return L10n.get("dash_tab_technique")
+        case .enhanced(.terrain): return L10n.get("dash_tab_terrain")
+        case .enhanced(.form): return L10n.get("dash_tab_form")
+        case .enhanced(.heartRate): return L10n.get("dash_tab_heart_rate")
+        case .allData: return L10n.get("dash_tab_all_data")
         }
     }
 }

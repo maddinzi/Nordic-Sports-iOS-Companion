@@ -309,8 +309,35 @@ private func tileTexts(_ key: String) -> (name: String, desc: String, abbreviati
 /// The watch's Enhanced Metrics of a ski activity or a run in one collapsible blue card (Android:
 /// `EnhancedMetricsCard.kt` / `RunningMetricsCard.kt`). The numbers come from the shared
 /// `EnhancedMetricsView`; the texts are the `em_*` and `technique_name_*` strings.
+/// The themes of the Metrics screen (Android: `DashTab`) that Enhanced Metrics sections belong to.
+enum EnhancedTheme: Hashable {
+    case overview, technique, terrain, form, heartRate
+}
+
+extension EnhancedMetricsView {
+    var isRunKind: Bool { kind == "run" }
+    /// A run with terrain shares or tables has a Terrain theme; the climb totals go there, else to the overview.
+    var hasTerrainTheme: Bool { isRunKind && (!shares.isEmpty || !rows.isEmpty || !geoRows.isEmpty || !climbRows.isEmpty || !splits.isEmpty) }
+
+    /// The themes that have something to show, in the order of the pill row.
+    var themes: [EnhancedTheme] {
+        let hasHeart = !hrv.isEmpty || hrZones.contains { Double(truncating: $0) > 0 } || !zoneGroups.isEmpty || (isRunKind && !headline.isEmpty)
+        var out: [EnhancedTheme] = []
+        if (isRunKind && !gait.isEmpty) || (!isRunKind && (!shares.isEmpty || sankeyByTime != nil)) || (!climb.isEmpty && !hasTerrainTheme) {
+            out.append(.overview)
+        }
+        if !isRunKind && (!headline.isEmpty || !rows.isEmpty || !polingRows.isEmpty) { out.append(.technique) }
+        if hasTerrainTheme || (isRunKind && !climb.isEmpty) { out.append(.terrain) }
+        if isRunKind && (!form.isEmpty || balanceLeft > 0) { out.append(.form) }
+        if hasHeart { out.append(.heartRate) }
+        return out
+    }
+}
+
 struct EnhancedMetricsCard: View {
     let view: EnhancedMetricsView
+    /// The theme of the Metrics screen this card shows a part of (nil: the whole card).
+    var theme: EnhancedTheme?
     private let tone = CardTone.blue
     @State private var explaining = false
     @State private var polingOpen = false
@@ -328,8 +355,23 @@ struct EnhancedMetricsCard: View {
     private var isRun: Bool { view.kind == "run" }
 
     var body: some View {
-        ToneGroup(title: L10n.get("em_title"),
-                  subtitle: L10n.get(isRun ? "em_run_subtitle" : "em_subtitle"), tone: tone) {
+        Group {
+            if theme == nil {
+                ToneGroup(title: L10n.get("em_title"),
+                          subtitle: L10n.get(isRun ? "em_run_subtitle" : "em_subtitle"), tone: tone) { sections }
+            } else {
+                VStack(alignment: .leading, spacing: 12) { sections }
+            }
+        }
+        .sheet(isPresented: $explaining) { explanation }
+        .environment(\.chartRegistry, registry)
+    }
+
+    /// Whether the section of [theme] is shown: always without a theme (the whole card), else only in its own theme.
+    private func shows(_ t: EnhancedTheme) -> Bool { theme == nil || theme == t }
+
+    @ViewBuilder private var sections: some View {
+            if shows(isRun ? .heartRate : .technique) {
             if !view.headline.isEmpty {
                 section(L10n.get(isRun ? "em_run_eff_title" : "em_poling_title")) {
                     tiles(view.headline)
@@ -338,15 +380,21 @@ struct EnhancedMetricsCard: View {
                     }
                 }
             }
+            }
+            if shows(.form) {
             if isRun, !view.form.isEmpty || view.balanceLeft > 0 {
                 section(L10n.get("em_form_title"), badge: sourceName) {
                     tiles(view.form)
                     if view.balanceLeft > 0 { balance(Double(view.balanceLeft)) }
                 }
             }
+            }
+            if shows(.overview) {
             if isRun, !view.gait.isEmpty {
                 ChartFrame(title: L10n.get("em_gait_title"), tone: tone) { space in gaitBar(space) }
             }
+            }
+            if shows(isRun ? .terrain : .overview) {
             if !view.shares.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     ChartFrame(title: L10n.get(isRun ? "em_terrain_title" : "em_share_title"),
@@ -357,10 +405,14 @@ struct EnhancedMetricsCard: View {
                     }
                 }
             }
+            }
+            if shows(isRun ? .terrain : .technique) {
             if !view.rows.isEmpty {
                 section(L10n.get(isRun ? "em_terrain_table_title" : "em_table_title"),
                         hint: L10n.get(isRun ? "em_terrain_table_desc" : "em_table_desc")) { grid }
             }
+            }
+            if shows(.technique) {
             if !isRun, !view.polingRows.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Button { withAnimation(.easeInOut(duration: 0.25)) { polingOpen.toggle() } } label: {
@@ -382,12 +434,18 @@ struct EnhancedMetricsCard: View {
                     }
                 }
             }
+            }
+            if shows(.terrain) {
             if isRun, !view.geoRows.isEmpty {
                 section(L10n.get("em_geo_title"), hint: L10n.get("em_geo_desc")) { geoGrid }
             }
+            }
+            if shows(.terrain) {
             if isRun, !view.climbRows.isEmpty {
                 section(L10n.get("em_climb_geo_title"), hint: L10n.get("em_climb_geo_desc")) { climbGrid }
             }
+            }
+            if shows(.terrain) {
             if !view.splits.isEmpty {
                 section(L10n.get("em_splits_title")) {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 8) {
@@ -402,10 +460,14 @@ struct EnhancedMetricsCard: View {
                     .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
                 }
             }
+            }
             // The Garmin-sensor sections last, next to each other (Android: same order).
+            if shows(view.hasTerrainTheme ? .terrain : .overview) {
             if !view.climb.isEmpty {
                 section(L10n.get("em_climb_title")) { tiles(view.climb) }
             }
+            }
+            if shows(.heartRate) {
             if !view.hrv.isEmpty || hasHrZones {
                 section(L10n.get("em_hrv_title"), badge: view.hrv.isEmpty ? nil : hrvSourceName) {
                     if !view.hrv.isEmpty {
@@ -416,12 +478,15 @@ struct EnhancedMetricsCard: View {
                     ForEach(view.zoneGroups, id: \.id) { group in zoneBars(group) }
                 }
             }
+            }
             // After the heart rate section, like Android: the time -> technique -> zone Sankey (ski, watch after 0.9.120).
+            if shows(.overview) {
             if !isRun, let byTime = view.sankeyByTime {
                 TechniqueSankeyChart(byTime: byTime, byLap: view.sankeyByLap)
             }
+            }
             // A sport without technique (kind "sensor": climb, heart rate zones, HRV) has nothing to explain or estimate.
-            if view.kind != "sensor" {
+            if view.kind != "sensor" && shows(.overview) {
                 Button { explaining = true } label: {
                     Label(L10n.get("em_explain_link"), systemImage: "info.circle")
                 }
@@ -429,9 +494,6 @@ struct EnhancedMetricsCard: View {
                 Text(L10n.get(isRun ? "em_run_footnote" : "em_footnote"))
                     .font(.caption2).foregroundStyle(tone.subtitle)
             }
-        }
-        .sheet(isPresented: $explaining) { explanation }
-        .environment(\.chartRegistry, registry)
     }
 
     private var zonePercents: [Double] { view.hrZones.map { Double(truncating: $0) } }
