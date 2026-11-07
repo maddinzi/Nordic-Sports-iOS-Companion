@@ -176,6 +176,11 @@ final class Companion: NSObject, ObservableObject {
         return (try? await core.trendActivities(nowEpochSec: now, utcOffsetSec: offset)) ?? []
     }
 
+    /// The athlete's usual numbers for one activity (nil with fewer than three similar ones in the 30 days before).
+    func typical(for item: ActivityItem) async -> TrendTypical? {
+        try? await core.typicalFor(activityId: item.id, startEpochSec: Int64(item.startEpochSec))
+    }
+
     func refresh() async {
         await refreshFolderDestinations()
         do {

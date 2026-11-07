@@ -9,6 +9,9 @@ struct ActivityMetricsScreen: View {
     @EnvironmentObject var companion: Companion
     let item: ActivityItem
     @State private var theme: MetricsTheme?
+    @StateObject private var pick = MetricsPick()
+    @State private var typical: TrendTypical?
+    @State private var vsTypical = false
 
     init(item: ActivityItem, initialTab: MetricsTab = .data) {
         self.item = item
@@ -163,17 +166,33 @@ struct ActivityMetricsScreen: View {
                 }
                 .listRowBackground(Color.clear)
             }
+            if !pick.isEmpty && selectedTheme != .allData {
+                Section {
+                    Button(L10n.get("dash_pick_clear")) { pick.clear() }.font(.footnote)
+                }
+                .listRowBackground(Color.clear)
+            }
             if selectedTheme == .allData {
                 dataSections
             } else {
                 Section {
-                    TechnicalDataCard(title: "", rows: Array(technicalRows.prefix(2)), facts: [])
+                    KeyFiguresStrip(item: current, typical: vsTypical ? typical : nil, jump: { theme = $0 })
+                    if let typical {
+                        Toggle(isOn: $vsTypical) {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(L10n.get("dash_vs_typical")).font(.subheadline)
+                                Text(String(format: L10n.get("dash_vs_typical_hint"), Int(typical.count)))
+                                    .font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                 }
                 .listRowBackground(CardTone.navy.container)
                 themeSections(selectedTheme)
             }
         }
         .textSelection(.enabled)
+        .task(id: item.id) { typical = await companion.typical(for: item) }
         .navigationTitle(L10n.get("card_lane_metrics"))
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -204,10 +223,10 @@ struct ActivityMetricsScreen: View {
         switch entry {
         case .enhanced(let part):
             if let metrics = current.enhancedMetrics, part == .timeline {
-                Section { TimelineSection(view: metrics) }
+                Section { TimelineSection(view: metrics, pick: pick) }
                     .listRowBackground(CardTone.blue.container)
             } else if let metrics = current.enhancedMetrics {
-                Section { EnhancedMetricsCard(view: metrics, theme: part).id(part) }
+                Section { EnhancedMetricsCard(view: metrics, theme: part, pick: pick).id(part) }
                     .listRowBackground(CardTone.blue.container)
             }
         case .legacy:
@@ -232,6 +251,17 @@ struct ActivityMetricsScreen: View {
             EmptyView()
         }
     }
+}
+
+/// What the athlete picked in any chart of the Metrics screen (Android: `MetricsPick`): a technique or terrain, a heart rate
+/// zone and a time block. Every chart reads it, so a pick in one shows in all of them, across the themes.
+final class MetricsPick: ObservableObject {
+    @Published var key: String?
+    @Published var zone: Int?
+    @Published var block: Int?
+
+    var isEmpty: Bool { key == nil && zone == nil && block == nil }
+    func clear() { key = nil; zone = nil; block = nil }
 }
 
 /// The themes of the Metrics screen (Android: `DashTab`): the Enhanced Metrics parts, the older technique lines and All data.

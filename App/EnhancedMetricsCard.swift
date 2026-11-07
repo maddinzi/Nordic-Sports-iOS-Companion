@@ -346,10 +346,18 @@ struct EnhancedMetricsCard: View {
     @State private var openChart: String?
     @State private var selectedChart: String?
     /// The technique or terrain picked on the donut (a state key); the legend and the bar charts follow it.
-    @State private var selectedKey: String?
+    /// The pick of the whole Metrics screen: a technique or terrain (key), a heart rate zone (0...4) and a time block follow through all charts.
+    @ObservedObject var pick: MetricsPick
+    private var selectedKey: String? {
+        get { pick.key }
+        nonmutating set { pick.key = newValue }
+    }
     @State private var selectedAngle: Double?
     /// The heart rate zone (0...4) picked on the zone donut.
-    @State private var selectedZone: Int?
+    private var selectedZone: Int? {
+        get { pick.zone }
+        nonmutating set { pick.zone = newValue }
+    }
     /// The card's charts, for paging through them with a swipe while one is full screen.
     @State private var registry = ChartRegistry()
 

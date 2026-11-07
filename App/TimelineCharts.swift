@@ -7,10 +7,16 @@ import SwiftUI
 struct TimelineSection: View {
     let view: EnhancedMetricsView
     private let tone = CardTone.blue
-    @State private var block: Int?
-    /// A zone ("Z3") or technique picked in a legend; the other segments dim.
-    @State private var zoneKey = ""
-    @State private var techKey = ""
+    @ObservedObject var pick: MetricsPick
+    private var block: Binding<Int?> { Binding(get: { pick.block }, set: { pick.block = $0 }) }
+    /// A zone ("Z3") or technique picked in a legend or any other chart; the other segments dim.
+    private var zoneKey: Binding<String> {
+        Binding(get: { pick.zone.map { "Z\($0 + 1)" } ?? "" },
+                set: { pick.zone = $0.isEmpty ? nil : (Int($0.dropFirst()).map { $0 - 1 }) })
+    }
+    private var techKey: Binding<String> {
+        Binding(get: { pick.key ?? "" }, set: { pick.key = $0.isEmpty ? nil : $0 })
+    }
     /// The charts of this theme, for paging through them with a swipe while one is full screen.
     @State private var registry = ChartRegistry()
 
@@ -18,19 +24,19 @@ struct TimelineSection: View {
         VStack(alignment: .leading, spacing: 12) {
             if let blocks = view.timeline {
                 ChartFrame(title: L10n.get("tl_zones_title"), tone: tone) { space in
-                    StackedBlocks(blocks: blocks.byZone, blockSec: Int(blocks.blockSec), block: $block, pickedKey: $zoneKey,
+                    StackedBlocks(blocks: blocks.byZone, blockSec: Int(blocks.blockSec), block: block, pickedKey: zoneKey,
                                   color: { $0.isEmpty ? Color.techniqueLight : hrZoneColor(Int($0.dropFirst()) ?? 1) },
                                   name: { $0.isEmpty ? L10n.get("em_timeline_no_hr") : $0 }, space: space)
                 }
                 ChartFrame(title: L10n.get("tl_tech_title"), tone: tone) { space in
-                    StackedBlocks(blocks: blocks.byTechnique, blockSec: Int(blocks.blockSec), block: $block, pickedKey: $techKey,
+                    StackedBlocks(blocks: blocks.byTechnique, blockSec: Int(blocks.blockSec), block: block, pickedKey: techKey,
                                   color: { $0.isEmpty ? Color.techniqueLight : stateColor($0) },
                                   name: { $0.isEmpty ? L10n.get("em_timeline_none") : stateName($0) }, space: space)
                 }
             }
             if view.runBlocks.count >= 2 {
                 ChartFrame(title: L10n.get("tl_run_title"), tone: tone) { space in
-                    RunBlocks(blocks: view.runBlocks, block: $block, space: space)
+                    RunBlocks(blocks: view.runBlocks, block: block, space: space)
                 }
             }
         }
