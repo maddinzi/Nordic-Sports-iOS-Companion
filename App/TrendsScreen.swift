@@ -135,6 +135,7 @@ struct TrendsScreen: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .navigationTitle(L10n.get("trends_tab_trends"))
             .navigationBarTitleDisplayMode(.inline)
@@ -192,7 +193,8 @@ struct TrendsScreen: View {
 
     private var filterBar: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+              HStack(spacing: 10) {
                 Picker("", selection: Binding(get: { periodDays }, set: { periodDays = $0; bucket = -1; picked = "" })) {
                     Text(L10n.get("trends_period_week")).tag(7)
                     Text(L10n.get("trends_period_month")).tag(30)
@@ -204,7 +206,7 @@ struct TrendsScreen: View {
                     includeOther = on
                     if !on && family == "OTHER" { family = "ALL"; style = "ALL" }
                 }))
-                Spacer(minLength: 0)
+              }
             }
             let counts = Trends.shared.familyCounts(all: all, q: query)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -338,13 +340,6 @@ struct TrendsScreen: View {
         .background(tone.container, in: RoundedRectangle(cornerRadius: 14))
     }
 
-    /// A clearly horizontal swipe moves to the next or previous theme (Android: the pager).
-    private func swipeTheme(_ drag: DragGesture.Value) {
-        guard abs(drag.translation.width) > 80, abs(drag.translation.width) > abs(drag.translation.height) * 2 else { return }
-        let next = (drag.translation.width < 0 ? page + 1 : page - 1)
-        if themes.indices.contains(next) { withAnimation { page = next } }
-    }
-
     /// The themes as a pill row (level 3 of the navigation), under it the selected theme's charts in cards under each other.
     private var chartPager: some View {
         let list = themes
@@ -378,7 +373,6 @@ struct TrendsScreen: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .background(tone.container, in: RoundedRectangle(cornerRadius: 14))
                 }
-                .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded(swipeTheme))
             }
             if visible.count < charts.count {
                 Text(String(format: L10n.get("trends_hidden_note"), charts.count - visible.count, charts.count))
