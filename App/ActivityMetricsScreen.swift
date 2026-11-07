@@ -12,6 +12,8 @@ struct ActivityMetricsScreen: View {
     @StateObject private var pick = MetricsPick()
     @State private var typical: TrendTypical?
     @State private var vsTypical = false
+    /// The charts of every theme, so the full-screen view pages through all of them (the other themes are composed out of sight).
+    @State private var registry = ChartRegistry()
 
     init(item: ActivityItem, initialTab: MetricsTab = .data, pick: String? = nil) {
         self.item = item
@@ -191,6 +193,8 @@ struct ActivityMetricsScreen: View {
             }
         }
         .textSelection(.enabled)
+        .environment(\.chartRegistry, registry)
+        .background(alignment: .topLeading) { hiddenThemes }
         .task(id: item.id) { typical = await companion.typical(for: item) }
         .navigationTitle(L10n.get("card_lane_metrics"))
         .navigationBarTitleDisplayMode(.inline)
@@ -215,6 +219,26 @@ struct ActivityMetricsScreen: View {
             }
             .listRowBackground(CardTone.grey.container)
         }
+    }
+
+    /// The themes that are not open, composed at no size and not drawn: their charts register with the screen's registry.
+    private var hiddenThemes: some View {
+        VStack {
+            ForEach(themes.filter { $0 != selectedTheme }, id: \.self) { entry in
+                if case .enhanced(let part) = entry, let metrics = current.enhancedMetrics {
+                    if part == .timeline {
+                        TimelineSection(view: metrics, pick: pick)
+                    } else {
+                        EnhancedMetricsCard(view: metrics, theme: part, pick: pick)
+                    }
+                }
+            }
+        }
+        .frame(width: 0, height: 0)
+        .clipped()
+        .opacity(0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     /// The charts of one theme: a part of the watch's Enhanced Metrics, or the older technique lines.

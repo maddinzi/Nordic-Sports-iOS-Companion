@@ -19,6 +19,7 @@ struct TimelineSection: View {
     }
     /// The charts of this theme, for paging through them with a swipe while one is full screen.
     @State private var registry = ChartRegistry()
+    @Environment(\.chartRegistry) private var outerRegistry
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -40,7 +41,7 @@ struct TimelineSection: View {
                 }
             }
         }
-        .environment(\.chartRegistry, registry)
+        .environment(\.chartRegistry, outerRegistry ?? registry)
     }
 }
 

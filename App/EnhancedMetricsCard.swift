@@ -360,6 +360,8 @@ struct EnhancedMetricsCard: View {
     }
     /// The card's charts, for paging through them with a swipe while one is full screen.
     @State private var registry = ChartRegistry()
+    /// The Metrics screen's registry, which holds the charts of all its themes.
+    @Environment(\.chartRegistry) private var outerRegistry
 
     private var isRun: Bool { view.kind == "run" }
 
@@ -373,7 +375,7 @@ struct EnhancedMetricsCard: View {
             }
         }
         .sheet(isPresented: $explaining) { explanation }
-        .environment(\.chartRegistry, registry)
+        .environment(\.chartRegistry, outerRegistry ?? registry)
     }
 
     /// Whether the section of [theme] is shown: always without a theme (the whole card), else only in its own theme.
