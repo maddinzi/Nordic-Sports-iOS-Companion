@@ -420,12 +420,15 @@ struct EnhancedMetricsCard: View {
             if !isRun, let byTime = view.sankeyByTime {
                 TechniqueSankeyChart(byTime: byTime, byLap: view.sankeyByLap)
             }
-            Button { explaining = true } label: {
-                Label(L10n.get("em_explain_link"), systemImage: "info.circle")
+            // A sport without technique (kind "sensor": climb, heart rate zones, HRV) has nothing to explain or estimate.
+            if view.kind != "sensor" {
+                Button { explaining = true } label: {
+                    Label(L10n.get("em_explain_link"), systemImage: "info.circle")
+                }
+                .buttonStyle(.borderless)
+                Text(L10n.get(isRun ? "em_run_footnote" : "em_footnote"))
+                    .font(.caption2).foregroundStyle(tone.subtitle)
             }
-            .buttonStyle(.borderless)
-            Text(L10n.get(isRun ? "em_run_footnote" : "em_footnote"))
-                .font(.caption2).foregroundStyle(tone.subtitle)
         }
         .sheet(isPresented: $explaining) { explanation }
         .environment(\.chartRegistry, registry)
