@@ -39,6 +39,39 @@ struct ChartSpace {
     static let inline = ChartSpace()
 }
 
+/// The charts of one card in the order they appeared (top to bottom): while a chart is full screen, a swipe left or right
+/// pages to the next or the previous one (Android: `ChartGroup`). A `ChartFrame` registers itself here; the card puts the
+/// registry into the environment.
+final class ChartRegistry {
+    struct Page: Identifiable {
+        let id: String
+        let title: String
+        let tone: CardTone
+        let content: (ChartSpace) -> AnyView
+    }
+
+    private(set) var pages: [Page] = []
+
+    func register(_ page: Page) {
+        if let index = pages.firstIndex(where: { $0.id == page.id }) {
+            pages[index] = page
+        } else {
+            pages.append(page)
+        }
+    }
+}
+
+private struct ChartRegistryKey: EnvironmentKey {
+    static let defaultValue: ChartRegistry? = nil
+}
+
+extension EnvironmentValues {
+    var chartRegistry: ChartRegistry? {
+        get { self[ChartRegistryKey.self] }
+        set { self[ChartRegistryKey.self] = newValue }
+    }
+}
+
 /// A chart with its title and an expand button at the top right (Android: `ChartFrame`). The chart is drawn by `content`
 /// twice over: in the card (told `.inline`) and, after the button, on the whole screen turned to landscape, with the
 /// same state, so a selection made in one shows in the other. What belongs to the chart (legend, caption) is part of
@@ -49,6 +82,7 @@ struct ChartFrame<Content: View>: View {
     var tone: CardTone = .blue
     @ViewBuilder let content: (ChartSpace) -> Content
     @State private var expanded = false
+    @Environment(\.chartRegistry) private var registry
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -60,8 +94,12 @@ struct ChartFrame<Content: View>: View {
             if let hint { Text(hint).font(.caption).foregroundStyle(tone.subtitle) }
             content(.inline)
         }
+        .onAppear {
+            registry?.register(ChartRegistry.Page(id: title, title: title, tone: tone, content: { space in AnyView(content(space)) }))
+        }
         .fullScreenCover(isPresented: $expanded) {
-            FullScreenChart(title: title, tone: tone, onClose: { expanded = false }, content: content)
+            FullScreenChart(title: title, tone: tone, onClose: { expanded = false },
+                            pages: registry?.pages ?? [], startId: title, content: content)
         }
     }
 }
@@ -91,13 +129,35 @@ struct FullScreenChart<Content: View>: View {
     let title: String
     let tone: CardTone
     let onClose: () -> Void
+    /// The card's other charts; with two or more, a swipe pages through them and `startId` is the one that was opened.
+    var pages: [ChartRegistry.Page] = []
+    var startId = ""
     @ViewBuilder let content: (ChartSpace) -> Content
+    @State private var currentId: String?
+
+    private var paged: Bool { pages.count > 1 && pages.contains(where: { $0.id == startId }) }
+    private var selection: Binding<String> {
+        Binding(get: { currentId ?? startId }, set: { currentId = $0 })
+    }
+    private var shownPage: ChartRegistry.Page? { pages.first(where: { $0.id == selection.wrappedValue }) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(title).font(.headline).foregroundStyle(tone.title)
+                Text(paged ? (shownPage?.title ?? title) : title).font(.headline).foregroundStyle(tone.title).lineLimit(1)
                 Spacer()
+                if paged {
+                    // Page dots: where this chart stands among the card's charts.
+                    HStack(spacing: 6) {
+                        ForEach(pages) { page in
+                            Circle()
+                                .fill(tone.title.opacity(page.id == selection.wrappedValue ? 1 : 0.35))
+                                .frame(width: page.id == selection.wrappedValue ? 9 : 7, height: page.id == selection.wrappedValue ? 9 : 7)
+                                .onTapGesture { withAnimation { currentId = page.id } }
+                        }
+                    }
+                    .padding(.trailing, 8)
+                }
                 Button(action: onClose) {
                     Image(systemName: "xmark")
                         .font(.body.weight(.semibold))
@@ -109,8 +169,20 @@ struct FullScreenChart<Content: View>: View {
                 .accessibilityLabel(L10n.get("chart_close"))
             }
             GeometryReader { box in
-                content(ChartSpace(maximized: true, size: box.size))
-                    .frame(width: box.size.width, height: box.size.height, alignment: .topLeading)
+                if paged {
+                    TabView(selection: selection) {
+                        ForEach(pages) { page in
+                            page.content(ChartSpace(maximized: true, size: box.size))
+                                .frame(width: box.size.width, height: box.size.height, alignment: .topLeading)
+                                .tag(page.id)
+                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .frame(width: box.size.width, height: box.size.height)
+                } else {
+                    content(ChartSpace(maximized: true, size: box.size))
+                        .frame(width: box.size.width, height: box.size.height, alignment: .topLeading)
+                }
             }
         }
         .padding(.horizontal, 16)

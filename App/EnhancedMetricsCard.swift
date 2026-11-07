@@ -322,6 +322,8 @@ struct EnhancedMetricsCard: View {
     @State private var selectedAngle: Double?
     /// The heart rate zone (0...4) picked on the zone donut.
     @State private var selectedZone: Int?
+    /// The card's charts, for paging through them with a swipe while one is full screen.
+    @State private var registry = ChartRegistry()
 
     private var isRun: Bool { view.kind == "run" }
 
@@ -426,6 +428,7 @@ struct EnhancedMetricsCard: View {
                 .font(.caption2).foregroundStyle(tone.subtitle)
         }
         .sheet(isPresented: $explaining) { explanation }
+        .environment(\.chartRegistry, registry)
     }
 
     private var zonePercents: [Double] { view.hrZones.map { Double(truncating: $0) } }
@@ -531,7 +534,7 @@ struct EnhancedMetricsCard: View {
             VStack(alignment: .leading, spacing: 10 * space.scale) {
                 ForEach(group.rows, id: \.key) { row in
                     let seconds = row.seconds.map { Int(truncating: $0) }
-                    let rowDim = selectedKey != nil && selectedKey != row.key
+                    let rowDim = group.rows.contains(where: { $0.key == selectedKey }) && selectedKey != row.key
                     HStack(spacing: 8) {
                         RoundedRectangle(cornerRadius: 3).fill(stateColor(row.key)).frame(width: 10, height: 10)
                         Text(stateShort(row.key)).font(.footnote.weight(.bold)).lineLimit(1).minimumScaleFactor(0.8)
@@ -731,7 +734,7 @@ struct EnhancedMetricsCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Chart(view.gait, id: \.key) { share in
                 BarMark(x: .value("share", Double(share.percent)))
-                    .foregroundStyle(stateColor(share.key))
+                    .foregroundStyle(stateColor(share.key).opacity(gaitDim(share.key) ? 0.3 : 1))
             }
             .chartXAxis(.hidden)
             .chartLegend(.hidden)
@@ -741,6 +744,9 @@ struct EnhancedMetricsCard: View {
                 ForEach(view.gait, id: \.key) { share in
                     legendDot(stateColor(share.key),
                               "\(stateName(share.key)) \(Int(share.percent))% · \(clock(Int(share.seconds)))")
+                        .opacity(gaitDim(share.key) ? 0.4 : 1)
+                        .contentShape(Rectangle())
+                        .onTapGesture { toggleSelection(share.key) }
                     Spacer()
                 }
             }
@@ -749,11 +755,22 @@ struct EnhancedMetricsCard: View {
         .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
     }
 
+    /// Whether a walk/run state fades because the other one is picked (on this bar or on the zone bars).
+    private func gaitDim(_ key: String) -> Bool {
+        view.gait.contains(where: { $0.key == selectedKey }) && selectedKey != key
+    }
+
     private func legendDot(_ color: Color, _ text: String) -> some View {
         HStack(spacing: 6) {
             RoundedRectangle(cornerRadius: 3).fill(color).frame(width: 12, height: 12)
             Text(text).font(.footnote)
         }
+    }
+
+    /// The picked state when it is one of the donut's slices (a gait picked on the walk/run bar is not).
+    private var terrainKey: String? {
+        guard let key = selectedKey, view.shares.contains(where: { $0.key == key }) else { return nil }
+        return key
     }
 
     /// A second tap on the picked state, or the legend row again, clears the selection.
@@ -774,9 +791,9 @@ struct EnhancedMetricsCard: View {
             ZStack {
                 Chart(view.shares, id: \.key) { share in
                     SectorMark(angle: .value("share", Double(max(share.percent, 0.1))),
-                               innerRadius: .ratio(0.62), outerRadius: .ratio(selectedKey == share.key ? 1.0 : 0.92),
+                               innerRadius: .ratio(0.62), outerRadius: .ratio(terrainKey == share.key ? 1.0 : 0.92),
                                angularInset: 0.5)
-                        .foregroundStyle(stateColor(share.key).opacity(selectedKey == nil || selectedKey == share.key ? 1 : 0.3))
+                        .foregroundStyle(stateColor(share.key).opacity(terrainKey == nil || terrainKey == share.key ? 1 : 0.3))
                 }
                 .chartLegend(.hidden)
                 .chartAngleSelection(value: $selectedAngle)
@@ -790,7 +807,7 @@ struct EnhancedMetricsCard: View {
                 }
                 .frame(width: size, height: size)
                 .accessibilityLabel(L10n.get("em_share_a11y"))
-                if let key = selectedKey, let share = view.shares.first(where: { $0.key == key }) {
+                if let key = terrainKey, let share = view.shares.first(where: { $0.key == key }) {
                     VStack(spacing: 0) {
                         Text("\(Int(share.percent))%").font(centerFont(f))
                         Text(stateShort(key)).font(centerCaption(f)).foregroundStyle(.secondary)
@@ -813,7 +830,7 @@ struct EnhancedMetricsCard: View {
                     Button { toggleSelection(share.key) } label: {
                         HStack(spacing: 8) {
                             RoundedRectangle(cornerRadius: 3).fill(stateColor(share.key)).frame(width: 12, height: 12)
-                            Text(stateName(share.key)).font(.footnote.weight(selectedKey == share.key ? .bold : .regular))
+                            Text(stateName(share.key)).font(.footnote.weight(terrainKey == share.key ? .bold : .regular))
                             Spacer(minLength: 4)
                             if space.maximized, view.shares.contains(where: { $0.seconds > 0 }) {
                                 Text(share.seconds > 0 ? clock(Int(share.seconds)) : "").font(.footnote).foregroundStyle(.secondary)
@@ -823,7 +840,7 @@ struct EnhancedMetricsCard: View {
                                 .monospacedDigit().frame(width: 48, alignment: .trailing)
                         }
                         .padding(.horizontal, 4).padding(.vertical, 3)
-                        .background(selectedKey == share.key ? Color.primary.opacity(0.08) : Color.clear,
+                        .background(terrainKey == share.key ? Color.primary.opacity(0.08) : Color.clear,
                                     in: RoundedRectangle(cornerRadius: 8))
                         .contentShape(Rectangle())
                     }
@@ -849,7 +866,7 @@ struct EnhancedMetricsCard: View {
                      L10n.get("em_col_slope")], header: true, color: nil)
             Divider()
             ForEach(view.geoRows, id: \.key) { row in
-                gridRow([stateShort(row.key)] + row.cells.map { $0 }, header: false, color: stateColor(row.key))
+                gridRow([stateShort(row.key)] + row.cells.map { $0 }, header: false, color: stateColor(row.key), key: row.key)
                 Divider().opacity(0.4)
             }
         }
@@ -875,7 +892,7 @@ struct EnhancedMetricsCard: View {
             gridRow([L10n.get("em_col_terrain"), L10n.get("em_col_gain"), L10n.get("em_col_loss")], header: true, color: nil)
             Divider()
             ForEach(view.climbRows, id: \.key) { row in
-                gridRow([stateShort(row.key)] + row.cells.map { $0 }, header: false, color: stateColor(row.key))
+                gridRow([stateShort(row.key)] + row.cells.map { $0 }, header: false, color: stateColor(row.key), key: row.key)
                 Divider().opacity(0.4)
             }
         }

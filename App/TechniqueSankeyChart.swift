@@ -18,7 +18,7 @@ struct TechniqueSankeyChart: View {
             VStack(alignment: .leading, spacing: 8) {
                 if space.maximized {
                     // Full screen is short and wide: one slim row (the switch and the caption) above the chart and one
-                    // legend line below it; the chart keeps the rest. A swipe on the chart switches time and lap too.
+                    // legend line below it; the chart keeps the rest. (A swipe pages to the card's next chart.)
                     HStack(spacing: 12) {
                         if byLap != nil { modePicker.frame(maxWidth: 220) }
                         Text(caption).font(.caption).foregroundStyle(tone.subtitle).lineLimit(1)
@@ -26,11 +26,6 @@ struct TechniqueSankeyChart: View {
                     }
                     canvas(space)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .gesture(DragGesture(minimumDistance: 40).onEnded { drag in
-                            guard byLap != nil, abs(drag.translation.width) > abs(drag.translation.height) else { return }
-                            lapMode = drag.translation.width < 0
-                            selected = ""
-                        })
                     legend
                 } else {
                     if byLap != nil { modePicker }
