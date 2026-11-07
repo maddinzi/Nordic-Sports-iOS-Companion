@@ -491,7 +491,7 @@ struct EnhancedMetricsCard: View {
             // After the heart rate section, like Android: the time -> technique -> zone Sankey (ski, watch after 0.9.120).
             if shows(.overview) {
             if !isRun, let byTime = view.sankeyByTime {
-                TechniqueSankeyChart(byTime: byTime, byLap: view.sankeyByLap)
+                TechniqueSankeyChart(byTime: byTime, byLap: view.sankeyByLap, pick: pick)
             }
             }
             // A sport without technique (kind "sensor": climb, heart rate zones, HRV) has nothing to explain or estimate.

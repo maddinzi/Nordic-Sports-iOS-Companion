@@ -7,11 +7,36 @@ import SwiftUI
 struct TechniqueSankeyChart: View {
     let byTime: TechniqueSankey
     let byLap: TechniqueSankey?
+    /// The pick of the Metrics screen: a technique or zone tapped here is picked in every chart, and the other way round.
+    @ObservedObject var pick: MetricsPick
     @State private var lapMode = false
-    @State private var selected = ""
+    /// A time slice or lap bar tapped here (those are not part of the shared pick).
+    @State private var local = ""
     private let tone = CardTone.blue
 
     private var sankey: TechniqueSankey { lapMode ? (byLap ?? byTime) : byTime }
+
+    /// The bar that is marked: a local time or lap bar, else the shared pick as a node key.
+    private var selected: String {
+        if !local.isEmpty { return local }
+        if let key = pick.key { return "tech:\(key)" }
+        if let zone = pick.zone { return "zone:\(zone + 1)" }
+        return ""
+    }
+
+    private func select(_ key: String) {
+        if key.hasPrefix("tech:") {
+            local = ""; pick.zone = nil
+            let state = String(key.dropFirst(5))
+            pick.key = pick.key == state ? nil : state
+        } else if key.hasPrefix("zone:"), let zone = Int(key.dropFirst(5)), zone >= 1 {
+            local = ""; pick.key = nil
+            pick.zone = pick.zone == zone - 1 ? nil : zone - 1
+        } else {
+            pick.key = nil; pick.zone = nil
+            local = local == key ? "" : key
+        }
+    }
 
     var body: some View {
         ChartFrame(title: L10n.get("em_timeline_title"), tone: tone) { space in
@@ -37,9 +62,7 @@ struct TechniqueSankeyChart: View {
     }
 
     private func canvas(_ space: ChartSpace) -> some View {
-        SankeyCanvas(sankey: sankey, selected: selected, textScale: space.scale, onSelect: { key in
-            selected = selected == key ? "" : key
-        })
+        SankeyCanvas(sankey: sankey, selected: selected, textScale: space.scale, onSelect: { key in select(key) })
     }
 
     /// The Time / Lap switch: one segmented control, in the card and full screen alike.
@@ -49,7 +72,7 @@ struct TechniqueSankeyChart: View {
             Text(L10n.get("em_timeline_by_lap")).tag(true)
         }
         .pickerStyle(.segmented)
-        .onChange(of: lapMode) { _, _ in selected = "" }
+        .onChange(of: lapMode) { _, _ in local = "" }
     }
 
     private var caption: String {
