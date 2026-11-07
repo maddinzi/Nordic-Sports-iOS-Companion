@@ -25,6 +25,9 @@ struct RootView: View {
             ActivitiesScreen()
                 .tabItem { Label(L10n.get("ios_tab_activities"), systemImage: "list.bullet") }
                 .tag(0)
+            TrendsScreen()
+                .tabItem { Label(L10n.get("trends_tab_trends"), systemImage: "chart.bar.xaxis") }
+                .tag(2)
             SettingsScreen()
                 .tabItem { Label(L10n.get("status_title"), systemImage: "gearshape") }
                 .tag(1)

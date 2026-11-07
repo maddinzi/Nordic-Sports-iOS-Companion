@@ -169,6 +169,13 @@ final class Companion: NSObject, ObservableObject {
 
     // MARK: - Activities
 
+    /// The last two months of activities for the Trends tab (not limited to the list's 300).
+    func trendActivities() async -> [TrendActivity] {
+        let now = Int64(Date().timeIntervalSince1970)
+        let offset = Int32(TimeZone.current.secondsFromGMT())
+        return (try? await core.trendActivities(nowEpochSec: now, utcOffsetSec: offset)) ?? []
+    }
+
     func refresh() async {
         await refreshFolderDestinations()
         do {
