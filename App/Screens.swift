@@ -710,7 +710,14 @@ struct ActivityDetailScreen: View {
                 Section(L10n.get("ios_hr_zones")) {
                     ForEach(Array(zones.enumerated()), id: \.offset) { index, percent in
                         HStack {
-                            Text(String(format: L10n.get("ios_zone_n"), index + 1)).frame(width: 70, alignment: .leading)
+                            // The zone with the athlete's range under it, when the watch sent the limits.
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(String(format: L10n.get("ios_zone_n"), index + 1))
+                                if let range = HrZoneBounds.shared.rangeText(bounds: current.hrZoneBounds, zone: Int32(index + 1)) {
+                                    Text("\(range) bpm").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            }
+                            .frame(width: 90, alignment: .leading)
                             ProgressView(value: Double(percent), total: 100)
                             Text("\(Int(percent.rounded())) %").frame(width: 50, alignment: .trailing)
                         }
