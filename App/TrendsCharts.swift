@@ -592,7 +592,8 @@ struct TrendPolingChart: View {
             } else {
                 TrendScatter(
                     dots: dots, means: [], xStep: view == 2 ? 10 : 5, xLabel: { trim($0) }, yLabel: { trim($0) },
-                    yFloor: view == 2 ? 100 : nil,
+                    // Puls × Tempo has speed (km/h) on the y axis: no floor (100 put every dot below the chart).
+                    yFloor: nil,
                     axisTitle: view == 0 ? L10n.get("trends_ay_rate") : view == 1 ? L10n.get("trends_ay_imp") : L10n.get("trends_ay_hr"),
                     curves: view == 0 ? [3, 4, 5, 6, 7] : [], curveY: view == 0 ? { v, x in v * 60 / x } : nil, data: data, space: space
                 )
