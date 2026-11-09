@@ -142,6 +142,7 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
     // The exact Objective-C selectors, so the SDK finds them whatever Swift calls them.
     @objc(deviceStatusChanged:status:)
     func deviceStatusChanged(_ device: IQDevice!, status: IQDeviceStatus) {
+        guard let device else { return }
         let name = Self.name(of: status)
         let deviceUuid: UUID = device.uuid
         let deviceId = Self.deviceId(device)
@@ -168,6 +169,11 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
 
     @objc(receivedMessage:fromApp:)
     func receivedMessage(_ message: Any!, from app: IQApp!) {
+        // The SDK headers carry no nullability: a message without its app would crash at the first use below.
+        guard let app else {
+            add("message without an app ignored")
+            return
+        }
         let dict = message as? [String: Any]
         let type = dict?["type"] as? String ?? (dict?["startTime"] != nil ? "activity" : "?")
         // Type and size only: the payload (coordinates, heart rate) stays out of the log.
