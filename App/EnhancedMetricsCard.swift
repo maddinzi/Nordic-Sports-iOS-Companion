@@ -184,6 +184,7 @@ func stateShort(_ key: String) -> String {
     switch key {
     case "GLIDE", "OTHER", "UP", "FLAT", "DOWN", "STEEP", "STEEP_DOWN": return stateName(key)
     case "KLAEBO": return "Klæbo"   // a name, like the codes, never translated
+    case "RUN", "WALK": return stateName(key)
     default: return key
     }
 }
@@ -741,11 +742,13 @@ struct EnhancedMetricsCard: View {
         Grid(horizontalSpacing: 8, verticalSpacing: 8) {
             ForEach(Array(stride(from: 0, to: values.count, by: 2)), id: \.self) { start in
                 GridRow {
-                    tile(values[start])
                     if start + 1 < values.count {
+                        tile(values[start])
                         tile(values[start + 1])
                     } else {
-                        Color.clear.frame(maxWidth: .infinity)
+                        // A tile on its own (only the watch's contact time from the wrist, or the last of an odd
+                        // number) takes the whole width: no half-empty card (Android alike).
+                        tile(values[start]).gridCellColumns(2)
                     }
                 }
             }
