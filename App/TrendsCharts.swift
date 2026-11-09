@@ -509,10 +509,15 @@ private struct TrendScatter: View {
             ctx.stroke(line, with: .color(data.tone.subtitle.opacity(0.25)), lineWidth: 1)
             put(&ctx, yLabel(y), left - 6, py(y, size.height), size: fs, color: data.tone.subtitle, anchor: .trailing)
         }
-        var gx = ceil(x0 / xStep) * xStep
+        // At most 5 labels in the card (8 full screen): the step grows by 1, 2, 5, 10 ... times xStep, so labels never
+        // overlap (impulse in ms spans hundreds at a 5 ms step). As Android's ScatterCanvas.
+        let maxLabels: Double = space.maximized ? 8 : 5
+        let labelStep = [1.0, 2, 5, 10, 20, 50, 100, 200, 500, 1000].map { $0 * xStep }
+            .first { (x1 - x0) / $0 <= maxLabels } ?? xStep * 1000
+        var gx = ceil(x0 / labelStep) * labelStep
         while gx <= x1 {
             put(&ctx, xLabel(gx), px(gx, size.width), size.height - bottom / 2, size: fs, color: data.tone.subtitle)
-            gx += xStep
+            gx += labelStep
         }
         put(&ctx, axisTitle, left, topPad - 12, size: fs, color: data.tone.title, anchor: .leading, bold: true)
         if let curveY {

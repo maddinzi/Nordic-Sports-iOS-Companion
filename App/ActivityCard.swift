@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Where a tap on an activity card goes: an Entry tab or a Metrics tab (Android: `ActivityTarget`).
 enum ActivityTarget: String, Hashable {
-    case diary, strava, data, technique
+    case diary, strava, data, technique, sensor
 }
 
 /// The tabs of the Entry screen: what goes to the diary, and what goes to Strava.
@@ -186,6 +186,10 @@ struct ActivityCard: View {
                     chip(L10n.get("card_chip_data"), symbol: "list.bullet") { onOpen(.data) }
                     if item.hasTechniqueMetrics {
                         chip(L10n.get("card_chip_technique"), symbol: "waveform.path.ecg") { onOpen(.technique) }
+                    }
+                    // The Sensor Records of this activity (Android: the Sensor lane of the card).
+                    if item.sensorRecordCount > 0 {
+                        chip("\(L10n.get("card_lane_sensor")) (\(item.sensorRecordCount))", symbol: "dot.radiowaves.left.and.right") { onOpen(.sensor) }
                     }
                 }
             }

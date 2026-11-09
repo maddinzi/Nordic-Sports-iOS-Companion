@@ -285,7 +285,11 @@ struct ActivitiesScreen: View {
 /// A recording on a watch (its `activityStart`), as Android's card: which watch, activity
 /// and training type, since when and how long, and the start position.
 struct WatchLiveCard: View {
+    @EnvironmentObject var companion: Companion
     let live: LiveActivityView
+    @State private var showRecording = false
+    /// Recordings whose screen opened by itself already (once per recording and app run, as on Android).
+    private static var autoOpened = Set<Int64>()
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -309,8 +313,23 @@ struct WatchLiveCard: View {
                 }
             }
             .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            // A tap opens the Recording screen (live values and the track with instant mode), as on Android.
+            .onTapGesture { if !live.discarded { showRecording = true } }
         }
         .listRowBackground(live.discarded ? CardTone.grey.container : CardTone.blue.container)
+        // A recording that just started opens its screen by itself, once.
+        .onAppear {
+            let age = Int64(Date().timeIntervalSince1970) - live.startEpochSec
+            if !live.discarded && age < 120 && !Self.autoOpened.contains(live.startEpochSec) {
+                Self.autoOpened.insert(live.startEpochSec)
+                showRecording = true
+            }
+        }
+        .fullScreenCover(isPresented: $showRecording) {
+            RecordingScreen(startEpochSec: live.startEpochSec).environmentObject(companion)
+        }
     }
 }
 

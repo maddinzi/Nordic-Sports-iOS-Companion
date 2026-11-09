@@ -80,6 +80,8 @@ struct ChartFrame<Content: View>: View {
     let title: String
     var hint: String? = nil
     var tone: CardTone = .blue
+    /// How to read the chart, behind an (i) next to the expand button instead of as text in the card (Android: the same).
+    var info: String? = nil
     @ViewBuilder let content: (ChartSpace) -> Content
     @State private var expanded = false
     @Environment(\.chartRegistry) private var registry
@@ -89,6 +91,7 @@ struct ChartFrame<Content: View>: View {
             HStack {
                 Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(tone.title)
                 Spacer()
+                if let info { ChartInfoButton(title: title, text: info) }
                 ExpandChartButton(tone: tone) { expanded = true }
             }
             if let hint { Text(hint).font(.caption).foregroundStyle(tone.subtitle) }
@@ -101,6 +104,22 @@ struct ChartFrame<Content: View>: View {
             FullScreenChart(title: title, tone: tone, onClose: { expanded = false },
                             pages: registry?.pages ?? [], startId: title, content: content)
         }
+    }
+}
+
+/// An (i) that shows how to read a chart or a control in an alert (Android `ChartInfoButton`).
+struct ChartInfoButton: View {
+    let title: String
+    let text: String
+    @State private var open = false
+
+    var body: some View {
+        Button { open = true } label: { Image(systemName: "info.circle") }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(L10n.get("chart_info"))
+            .alert(title, isPresented: $open) {
+                Button(L10n.get("common_ok"), role: .cancel) {}
+            } message: { Text(text) }
     }
 }
 
