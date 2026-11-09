@@ -48,7 +48,8 @@ struct RecordingScreen: View {
         .onChange(of: live == nil) { _, gone in if gone { mapFull = false; dismiss() } }
         .fullScreenCover(isPresented: $mapFull) {
             if let feed, !feed.trackLat.isEmpty {
-                LiveMapFullScreen(feed: feed, startEpochSec: startEpochSec, choices: mapChoices, latestRecord: bursts.last) { mapFull = false }
+                LiveMapFullScreen(feed: feed, startEpochSec: startEpochSec, watchName: live?.watchName ?? "", choices: mapChoices,
+                                  latestRecord: bursts.last) { mapFull = false }
             } else {
                 Color.clear.onAppear { mapFull = false }
             }
@@ -60,7 +61,9 @@ struct RecordingScreen: View {
             List {
                 Section {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(String(format: L10n.get(live.discarded ? "watch_live_discarded_title" : "watch_live_title"), live.watchName))
+                        // The recording source: it runs on this watch.
+                        Label(String(format: L10n.get(live.discarded ? "watch_live_discarded_title" : "watch_live_title"), live.watchName),
+                              systemImage: "watch.analog")
                             .font(.caption).foregroundStyle(.secondary)
                         Text(live.title).font(.headline)
                         let running = max(0, Int(context.date.timeIntervalSince1970) - Int(live.startEpochSec))
@@ -421,6 +424,8 @@ struct LiveTrackMap: View {
 struct LiveMapFullScreen: View {
     let feed: LiveFeedView
     let startEpochSec: Int64
+    /// The recording source, first in the data bar with a watch icon.
+    let watchName: String
     @ObservedObject var choices: LiveMapChoices
     /// The newest Sensor Record of this recording, as a pill above the legend; nil when there is none.
     var latestRecord: RecordingBoostView? = nil
@@ -478,6 +483,13 @@ struct LiveMapFullScreen: View {
             .accessibilityLabel(L10n.get("chart_close"))
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 14) {
+                    // The recording source: the watch it runs on.
+                    if !watchName.isEmpty {
+                        Label(watchName, systemImage: "watch.analog")
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(ink).lineLimit(1)
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(ink.opacity(0.08), in: Capsule())
+                    }
                     ForEach(values.indices, id: \.self) { i in
                         Text(values[i])
                             .font(i == 0 ? .title2.weight(.bold) : .headline)
