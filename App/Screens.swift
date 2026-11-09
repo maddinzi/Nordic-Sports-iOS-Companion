@@ -746,6 +746,18 @@ struct ActivityDetailScreen: View {
             }
             // What goes to Strava (title, sport type, description), built by the shared code from the
             // same blocks the write uses (StravaWritePreview), so it is clear before anything is sent.
+            // An activity recorded elsewhere has no preview (the app never changes it on Strava): say so (Android
+            // `activity_detail_strava_imported_*`).
+            if onStravaTab && current.origin != "watch" {
+                Section {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(L10n.get("activity_detail_strava_imported_title")).font(.headline)
+                        Text(L10n.get("activity_detail_strava_imported_body")).font(.subheadline)
+                    }
+                    .padding(.vertical, 2)
+                }
+                .listRowBackground(SyncChip.strava.opacity(0.10))
+            }
             if onStravaTab, let preview = current.stravaPreview {
                 Section {
                     if !preview.title.isEmpty {
