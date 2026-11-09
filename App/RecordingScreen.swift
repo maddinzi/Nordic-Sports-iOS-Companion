@@ -59,28 +59,27 @@ struct RecordingScreen: View {
     private func content(_ live: LiveActivityView) -> some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             List {
+                // What the athlete reads at a glance: source, clock and the live values in one card (Android
+                // `RecordingHero`).
                 Section {
-                    VStack(alignment: .leading, spacing: 4) {
-                        // The recording source: it runs on this watch.
-                        Label(String(format: L10n.get(live.discarded ? "watch_live_discarded_title" : "watch_live_title"), live.watchName),
-                              systemImage: "watch.analog")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Text(live.title).font(.headline)
-                        let running = max(0, Int(context.date.timeIntervalSince1970) - Int(live.startEpochSec))
-                        Text(Self.clockText(running)).font(.largeTitle.weight(.semibold)).monospacedDigit()
-                    }
-                    .padding(.vertical, 4)
+                    hero(live, running: max(0, Int(context.date.timeIntervalSince1970) - Int(live.startEpochSec)))
+                        .padding(.vertical, 4)
                 }
                 .listRowBackground(live.discarded ? CardTone.grey.container : CardTone.blue.container)
-                if !live.discarded { liveSection(live) }
-                Section {
-                    LabeledContent(L10n.get("recording_detail_watch"), value: live.watchName)
-                    LabeledContent(L10n.get("recording_detail_started"),
-                                   value: Date(timeIntervalSince1970: TimeInterval(live.startEpochSec)).formatted(date: .abbreviated, time: .shortened))
-                    if live.hasPosition {
-                        LabeledContent(L10n.get("recording_detail_position"), value: String(format: "%.4f, %.4f", live.lat, live.lon))
+                // The track so far, high up; its height follows the screen.
+                if !live.discarded, let feed, !feed.trackLat.isEmpty {
+                    Section {
+                        LiveTrackMap(points: TrackPoints(feed), automatic: feed.baseMap, choices: mapChoices,
+                                     onExpand: { mapFull = true })
+                            .frame(height: min(360, max(260, UIScreen.main.bounds.height * 0.42)))
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .listRowInsets(EdgeInsets())
                     }
                 }
+                // The recording's details right under the map: start, place, position (tap copies it).
+                Section { detailChips(live) }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
                 // The Sensor Records of this recording, only once one has arrived: a pill per record opens its charts.
                 if !bursts.isEmpty {
                     Section {
@@ -93,61 +92,124 @@ struct RecordingScreen: View {
         }
     }
 
-    /// Instant mode's values (or the hint to switch it on): heart rate, speed, technique now and so far, the track.
+    /// Seconds since the last live message counted as stale: about two missed messages (Android `STALE_AFTER_S`).
+    static let staleAfter = 15
+
+    /// The top card: the activity, the recording source (the watch, with a dot that turns amber when the live data is
+    /// stale), the running clock large, then instant mode's six values and the technique shares, or the hint.
     @ViewBuilder
-    private func liveSection(_ live: LiveActivityView) -> some View {
-        Section(L10n.get("recording_live_title")) {
-            if let feed {
-                let age = Int(feed.ageSeconds)
-                Text(String(format: L10n.get(age > 30 ? "recording_live_stale" : "recording_live_age"), age))
-                    .font(.footnote).foregroundStyle(age > 30 ? .red : .secondary)
-                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-                    GridRow {
-                        value(L10n.get("recording_live_hr"), feed.heartRate >= 0 ? "\(feed.heartRate) bpm" : "–")
-                        value(L10n.get("recording_live_speed"), feed.speedKmh.isNaN ? "–" : String(format: "%.1f km/h", feed.speedKmh))
-                        value(L10n.get("recording_live_technique"), feed.techniqueKey.isEmpty ? "–" : stateShort(feed.techniqueKey))
-                    }
-                    GridRow {
-                        value(L10n.get("recording_live_grade"), feed.gradePct.isNaN ? "–" : String(format: "%+.1f %%", feed.gradePct))
-                        value(L10n.get("recording_live_distance"), feed.distanceM >= 0 ? String(format: "%.2f km", Double(feed.distanceM) / 1000) : "–")
-                        value("", feed.poleRate >= 0 ? "\(feed.poleRate) / min" : "")
+    private func hero(_ live: LiveActivityView, running: Int) -> some View {
+        let tone = live.discarded ? CardTone.grey : CardTone.blue
+        let age = feed.map { Int($0.ageSeconds) }
+        let stale = (age ?? 0) >= Self.staleAfter
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "watch.analog").font(.footnote)
+                Text(String(format: L10n.get(live.discarded ? "watch_live_discarded_title" : "watch_live_title"), live.watchName))
+                    .font(.footnote).lineLimit(1)
+                if let age, !live.discarded {
+                    Circle().fill(stale ? Self.staleColour : Self.freshColour).frame(width: 8, height: 8)
+                    if stale {
+                        Text(String(format: L10n.get("recording_live_ago"), age)).font(.caption).foregroundStyle(Self.staleColour)
                     }
                 }
-                if !feed.shares.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(L10n.get("recording_live_shares")).font(.caption.weight(.semibold))
-                        GeometryReader { geo in
-                            HStack(spacing: 0) {
-                                ForEach(feed.shares, id: \.key) { share in
-                                    stateColor(share.key).frame(width: geo.size.width * CGFloat(share.percent) / 100)
+            }
+            .foregroundStyle(tone.title)
+            Text(live.title).font(.headline).lineLimit(2)
+            Text(Self.clockText(running)).font(.system(size: 48, weight: .bold)).monospacedDigit()
+            if !live.discarded {
+                if let feed {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+                            let figures = Self.figures(feed)
+                            GridRow { ForEach(0..<3, id: \.self) { i in stat(figures[i]) } }
+                            GridRow { ForEach(3..<6, id: \.self) { i in stat(figures[i]) } }
+                        }
+                        if !feed.shares.isEmpty {
+                            GeometryReader { geo in
+                                HStack(spacing: 0) {
+                                    ForEach(feed.shares, id: \.key) { share in
+                                        stateColor(share.key).frame(width: geo.size.width * CGFloat(share.percent) / 100)
+                                    }
                                 }
                             }
+                            .frame(height: 10).clipShape(Capsule())
+                            Text(feed.shares.map { "\(stateShort($0.key)) \(Int($0.percent)) %" }.joined(separator: " · "))
+                                .font(.caption).foregroundStyle(.secondary)
                         }
-                        .frame(height: 14).clipShape(Capsule())
-                        Text(feed.shares.map { "\(stateShort($0.key)) \(Int($0.percent)) %" }.joined(separator: " · "))
-                            .font(.caption).foregroundStyle(.secondary)
                     }
+                    // Stale: the values fade, so an old number is never read as now.
+                    .opacity(stale ? 0.5 : 1)
+                } else {
+                    Text(L10n.get("recording_live_hint")).font(.footnote).foregroundStyle(.secondary)
                 }
-                if !feed.trackLat.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(L10n.get("recording_live_track")).font(.caption.weight(.semibold))
-                        LiveTrackMap(points: TrackPoints(feed), automatic: feed.baseMap, choices: mapChoices,
-                                     onExpand: { mapFull = true })
-                            .frame(height: 260)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                }
-            } else {
-                Text(L10n.get("recording_live_hint")).font(.footnote).foregroundStyle(.secondary)
             }
         }
     }
 
-    private func value(_ label: String, _ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(text).font(.headline).lineLimit(1).minimumScaleFactor(0.8)
-            if !label.isEmpty { Text(label).font(.caption2).foregroundStyle(.secondary) }
+    static let freshColour = Color(red: 0x2E / 255, green: 0x9E / 255, blue: 0x5B / 255)
+    static let staleColour = Color(red: 0xC7 / 255, green: 0x77 / 255, blue: 0x00 / 255)
+
+    /// A live value's number, unit (nil for text like a technique) and label; nil for a missing pole rate.
+    struct Figure {
+        let value: String
+        let unit: String?
+        let label: String
+    }
+
+    /// The six live values of [feed] (Android `liveFigures`), "–" where the watch had no reading.
+    static func figures(_ feed: LiveFeedView) -> [Figure?] {
+        [
+            Figure(value: feed.heartRate >= 0 ? "\(feed.heartRate)" : "–", unit: "bpm", label: L10n.get("recording_live_hr")),
+            Figure(value: feed.speedKmh.isNaN ? "–" : String(format: "%.1f", feed.speedKmh), unit: "km/h", label: L10n.get("recording_live_speed")),
+            Figure(value: feed.techniqueKey.isEmpty ? "–" : stateShort(feed.techniqueKey), unit: nil, label: L10n.get("recording_live_technique")),
+            Figure(value: feed.distanceM >= 0 ? String(format: "%.2f", Double(feed.distanceM) / 1000) : "–", unit: "km", label: L10n.get("recording_live_distance")),
+            Figure(value: feed.gradePct.isNaN ? "–" : String(format: "%+.1f", feed.gradePct), unit: "%", label: L10n.get("recording_live_grade")),
+            feed.poleRate >= 0 ? Figure(value: "\(feed.poleRate)", unit: "/min", label: L10n.get("recording_live_pole_rate")) : nil,
+        ]
+    }
+
+    /// One live value: the number large with a smaller unit, the label under it.
+    @ViewBuilder
+    private func stat(_ figure: Figure?) -> some View {
+        if let figure {
+            VStack(alignment: .leading, spacing: 1) {
+                (Text(figure.value).font(.system(size: 24, weight: .semibold))
+                    + Text(figure.unit.map { $0 == "%" ? $0 : " \($0)" } ?? "").font(.system(size: 14, weight: .medium)))
+                    .monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                Text(figure.label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
         }
+    }
+
+    /// The recording's details as small chips: start (the date only when not today), place, position (tap copies it).
+    private func detailChips(_ live: LiveActivityView) -> some View {
+        let start = Date(timeIntervalSince1970: TimeInterval(live.startEpochSec))
+        let startText = Calendar.current.isDateInToday(start)
+            ? start.formatted(date: .omitted, time: .shortened)
+            : start.formatted(date: .numeric, time: .shortened)
+        let position = live.hasPosition ? String(format: "%.4f, %.4f", live.lat, live.lon) : nil
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { chips(startText, position) }
+            VStack(alignment: .leading, spacing: 8) { chips(startText, position) }
+        }
+    }
+
+    @ViewBuilder
+    private func chips(_ startText: String, _ position: String?) -> some View {
+        chip("\(L10n.get("recording_detail_started")) \(startText)")
+        if let position {
+            Button { UIPasteboard.general.string = position } label: { chip(position) }.buttonStyle(.plain)
+        }
+    }
+
+    private func chip(_ text: String) -> some View {
+        Text(text).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
     }
 
     /// "1:05:09" / "5:09": the running time, to the second.
@@ -329,22 +391,24 @@ struct LiveTrackMap: View {
                 .padding(.top, topInset)
                 Spacer()
                 HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: 4) {
+                    // The legend and the credit share one plate (the credit always visible).
+                    VStack(alignment: .leading, spacing: 3) {
                         legend(colours)
                         Text(style == "OSM" ? "(c) OpenStreetMap contributors" : "(c) swisstopo")
-                            .font(.system(size: 10)).foregroundStyle(.black)
-                            .padding(.horizontal, 4).background(Color.white.opacity(0.7))
+                            .font(.system(size: 10)).foregroundStyle(Self.ink.opacity(0.75))
                     }
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(Self.plate, in: RoundedRectangle(cornerRadius: 10))
                     Spacer()
                     if !following {
                         Button { following = true } label: {
-                            Image(systemName: "location.fill").padding(10).background(.white.opacity(0.9), in: Circle())
+                            Image(systemName: "location.fill").frame(width: 48, height: 48).background(Self.plate, in: Circle())
                         }
                         .accessibilityLabel(L10n.get("recording_map_follow"))
                     }
                     if let onExpand {
                         Button(action: onExpand) {
-                            Image(systemName: "arrow.up.left.and.arrow.down.right").padding(10).background(.white.opacity(0.9), in: Circle())
+                            Image(systemName: "arrow.up.left.and.arrow.down.right").frame(width: 48, height: 48).background(Self.plate, in: Circle())
                         }
                         .accessibilityLabel(L10n.get("chart_expand"))
                     }
@@ -354,20 +418,26 @@ struct LiveTrackMap: View {
         }
     }
 
+    /// Map overlays stay light on the map in both themes (readable in sunlight): a near-white plate, dark ink.
+    static let plate = Color.white.opacity(0.95)
+    static let ink = Color(red: 0x11 / 255, green: 0x18 / 255, blue: 0x27 / 255)
+
+    /// A segmented switch over the map: 40 points high, 13 pt, for gloves (Android `MapSwitch`).
     private func pill<Key: Equatable>(_ items: [(Key, String)], selected: Key, onPick: @escaping (Key) -> Void) -> some View {
         HStack(spacing: 0) {
             ForEach(items.indices, id: \.self) { i in
                 let (key, label) = items[i]
                 Button { onPick(key) } label: {
-                    Text(label).font(.caption)
-                        .padding(.horizontal, 9).padding(.vertical, 5)
+                    Text(label).font(.system(size: 13, weight: selected == key ? .semibold : .medium)).lineLimit(1)
+                        .padding(.horizontal, 11).frame(minHeight: 40)
                         .foregroundStyle(selected == key ? Color.white : Color.accentColor)
                         .background(selected == key ? Color.accentColor : Color.clear, in: Capsule())
+                        .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
         }
-        .background(Color.white.opacity(0.9), in: Capsule())
+        .background(Self.plate, in: Capsule())
     }
 
     private var colourSwitch: some View {
@@ -383,38 +453,34 @@ struct LiveTrackMap: View {
     /// The techniques that occur, or the ramp with the track's lowest and highest value (one value when flat).
     @ViewBuilder
     private func legend(_ c: TrackColours) -> some View {
-        let text = Color(red: 0x1F / 255, green: 0x29 / 255, blue: 0x37 / 255)
+        let text = Self.ink
         if choices.colourBy == .technique {
             if !c.used.isEmpty {
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
                     ForEach(c.used, id: \.self) { key in
-                        HStack(spacing: 3) {
-                            Circle().fill(stateColor(key)).frame(width: 8, height: 8)
-                            Text(stateShort(key)).font(.system(size: 10)).foregroundStyle(text)
+                        HStack(spacing: 4) {
+                            Circle().fill(stateColor(key)).frame(width: 10, height: 10)
+                            Text(stateShort(key)).font(.system(size: 12)).foregroundStyle(text)
                         }
                     }
                 }
-                .padding(.horizontal, 6).padding(.vertical, 4)
-                .background(Color.white.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
             }
         } else if let low = c.low, let high = c.high {
             let speed = choices.colourBy == .speed
             let unit = speed ? "km/h" : "m"
             let fmt = speed ? "%.1f" : "%.0f"
             let (a, b) = TrackColours.ramp(choices.colourBy)
-            HStack(spacing: 5) {
+            HStack(spacing: 6) {
                 if c.flat {
-                    Circle().fill(Color(c.colours.first { $0 != TrackColours.noValue } ?? TrackColours.noValue)).frame(width: 8, height: 8)
-                    Text(String(format: "\(fmt) %@", (low + high) / 2, unit)).font(.system(size: 10)).foregroundStyle(text)
+                    Circle().fill(Color(c.colours.first { $0 != TrackColours.noValue } ?? TrackColours.noValue)).frame(width: 10, height: 10)
+                    Text(String(format: "\(fmt) %@", (low + high) / 2, unit)).font(.system(size: 12)).foregroundStyle(text)
                 } else {
-                    Text(String(format: fmt, low)).font(.system(size: 10)).foregroundStyle(text)
+                    Text(String(format: fmt, low)).font(.system(size: 12)).foregroundStyle(text)
                     LinearGradient(colors: [Color(a), Color(b)], startPoint: .leading, endPoint: .trailing)
-                        .frame(width: 56, height: 7).clipShape(Capsule())
-                    Text(String(format: "\(fmt) %@", high, unit)).font(.system(size: 10)).foregroundStyle(text)
+                        .frame(width: 80, height: 8).clipShape(Capsule())
+                    Text(String(format: "\(fmt) %@", high, unit)).font(.system(size: 12)).foregroundStyle(text)
                 }
             }
-            .padding(.horizontal, 6).padding(.vertical, 4)
-            .background(Color.white.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
         }
     }
 }
@@ -432,6 +498,8 @@ struct LiveMapFullScreen: View {
     let onClose: () -> Void
     @State private var barHeight: CGFloat = 52
     @State private var openRecord: String?
+    /// Compact height: the phone is turned, the data bar takes one row.
+    @Environment(\.verticalSizeClass) private var verticalSize
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -446,7 +514,7 @@ struct LiveMapFullScreen: View {
                         Spacer()
                         Button { openRecord = record.id } label: { SensorRecordPill(burst: record, onMap: true) }
                             .buttonStyle(.plain)
-                            .padding(.bottom, 56)
+                            .padding(.bottom, 76)
                     }
                 }
             }
@@ -464,42 +532,54 @@ struct LiveMapFullScreen: View {
         .onDisappear { OrientationLock.set(landscape: false) }
     }
 
+    /// The key data over the map's top (Android `LiveMapFullScreen`): upright two rows (close, watch, clock; then five
+    /// values), turned one row. Never scrolls sideways; the safe area keeps it clear of the notch.
     private func dataBar(running: Int) -> some View {
-        let ink = Color(red: 0x1F / 255, green: 0x29 / 255, blue: 0x37 / 255)
-        let values: [String] = ([
-            RecordingScreen.clockText(running),
-            feed.heartRate >= 0 ? "\(feed.heartRate) bpm" : nil,
-            feed.speedKmh.isNaN ? nil : String(format: "%.1f km/h", feed.speedKmh),
-            feed.techniqueKey.isEmpty ? nil : stateShort(feed.techniqueKey),
-            feed.distanceM >= 0 ? String(format: "%.2f km", Double(feed.distanceM) / 1000) : nil,
-            feed.gradePct.isNaN ? nil : String(format: "%+.1f %%", feed.gradePct),
-        ] as [String?]).compactMap { $0 }
-        return HStack(spacing: 4) {
+        let ink = Color(red: 0x11 / 255, green: 0x18 / 255, blue: 0x27 / 255)
+        let wide = verticalSize == .compact
+        let figures = RecordingScreen.figures(feed).prefix(5).compactMap { $0 }
+        let top = HStack(spacing: 6) {
             Button(action: onClose) {
                 Image(systemName: "xmark").font(.body.weight(.semibold)).foregroundStyle(ink)
                     .frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(L10n.get("chart_close"))
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 14) {
-                    // The recording source: the watch it runs on.
-                    if !watchName.isEmpty {
-                        Label(watchName, systemImage: "watch.analog")
-                            .font(.subheadline.weight(.semibold)).foregroundStyle(ink).lineLimit(1)
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(ink.opacity(0.08), in: Capsule())
-                    }
-                    ForEach(values.indices, id: \.self) { i in
-                        Text(values[i])
-                            .font(i == 0 ? .title2.weight(.bold) : .headline)
-                            .monospacedDigit().foregroundStyle(ink).lineLimit(1)
-                    }
+            // The recording source: the watch it runs on.
+            Label(watchName, systemImage: "watch.analog")
+                .font(.subheadline).foregroundStyle(ink).lineLimit(1)
+                .frame(maxWidth: wide ? 180 : .infinity, alignment: .leading)
+            Text(RecordingScreen.clockText(running))
+                .font(.system(size: 28, weight: .bold)).monospacedDigit().foregroundStyle(ink).lineLimit(1)
+                .layoutPriority(1)
+        }
+        return VStack(spacing: 2) {
+            if wide {
+                HStack(spacing: 12) {
+                    top
+                    ForEach(figures.indices, id: \.self) { i in figure(figures[i], ink: ink, size: 22) }
                 }
+            } else {
+                top
+                HStack(spacing: 4) {
+                    ForEach(figures.indices, id: \.self) { i in figure(figures[i], ink: ink, size: 20) }
+                }
+                .padding(.bottom, 6)
             }
         }
-        .padding(.horizontal, 4).padding(.vertical, 2)
-        .background(Color.white.opacity(0.9), in: RoundedRectangle(cornerRadius: 14))
+        .padding(.leading, 2).padding(.trailing, 12).padding(.vertical, 2)
+        .background(Color.white.opacity(0.95), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.black.opacity(0.12), lineWidth: 1))
+    }
+
+    /// A value of the data bar: the number over its unit (or its label for a technique), centred.
+    private func figure(_ f: RecordingScreen.Figure, ink: Color, size: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            Text(f.value).font(.system(size: size, weight: .semibold)).monospacedDigit().foregroundStyle(ink).lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(f.unit ?? f.label).font(.system(size: size >= 22 ? 13 : 11)).foregroundStyle(ink.opacity(0.7)).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
