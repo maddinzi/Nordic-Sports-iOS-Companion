@@ -140,9 +140,12 @@ private struct SankeyFrame {
     let k: CGFloat
     /// Full screen: the time next to a zone's share and a line under a technique name, so both bars get more room.
     let detail: Bool
+    /// The widest time and zone label: the label columns are at least that wide.
+    var leftNeed: CGFloat = 0
+    var rightNeed: CGFloat = 0
 
-    private var leftLabel: CGFloat { 40 * k }
-    private var rightLabel: CGFloat { (detail ? 88 : 62) * k }
+    private var leftLabel: CGFloat { max(40 * k, leftNeed + 6) }
+    private var rightLabel: CGFloat { max((detail ? 88 : 62) * k, rightNeed + 6) }
     private var thin: CGFloat { 8 * k }
     private var wide: CGFloat { (detail ? 60 : 40) * k }
     private let top: CGFloat = 6
@@ -170,7 +173,9 @@ private struct SankeyCanvas: View {
 
     var body: some View {
         GeometryReader { geo in
-            let frame = SankeyFrame(width: geo.size.width, height: geo.size.height, k: textScale, detail: textScale > 1)
+            let frame = SankeyFrame(width: geo.size.width, height: geo.size.height, k: textScale, detail: textScale > 1,
+                                    leftNeed: labelWidth(column: 0, suffix: ""),
+                                    rightNeed: labelWidth(column: 2, suffix: " 100%" + (textScale > 1 ? " · 0:00:00" : "")))
             Canvas { context, _ in draw(&context, frame) }
                 .contentShape(Rectangle())
                 .onTapGesture { point in
@@ -182,6 +187,15 @@ private struct SankeyCanvas: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L10n.get("em_timeline_desc"))
+    }
+
+    /// The widest label of a column in points (Android alike): the label columns are at least that wide, so "No heart
+    /// rate" and "1:00:00" are never cut.
+    private func labelWidth(column: Int32, suffix: String) -> CGFloat {
+        let font = UIFont.systemFont(ofSize: 10 * textScale)
+        return sankey.nodes.filter { $0.column == column }
+            .map { ((sankeyLabel($0) + suffix) as NSString).size(withAttributes: [.font: font]).width }
+            .max() ?? 0
     }
 
     private func draw(_ context: inout GraphicsContext, _ frame: SankeyFrame) {
