@@ -1182,13 +1182,17 @@ struct OnboardingScreen: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L10n.get("onboarding_guide_skill_level_title")).font(.title3.bold())
             Text(L10n.get("onboarding_guide_skill_level_body"))
-            HStack(spacing: 8) {
+            // One full-width button per level (Android `SkillLevelStep`): side by side the longer
+            // labels ("Fortgeschritten") did not fit a phone's width.
+            VStack(spacing: 8) {
                 ForEach(
                     [("watch_option_skill_level_beginner", Int32(1)), ("watch_option_skill_level_intermediate", Int32(2)),
                      ("watch_option_skill_level_expert", Int32(3))], id: \.1
                 ) { label, value in
-                    Button(L10n.get(label)) { chooseSkillLevel(watch, value) }
-                        .buttonStyle(.bordered)
+                    Button { chooseSkillLevel(watch, value) } label: {
+                        Text(L10n.get(label)).frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
                 }
             }
         }
