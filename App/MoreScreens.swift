@@ -990,7 +990,21 @@ struct OnboardingScreen: View {
     @State private var reviewImported = false
     @State private var importedTouched = false
 
-    private let steps = 8
+    /// Steps: 0 nickname, 1 demo, 2 watch, 3 wrist, 4 skill level, 5 Strava, 6 diary, 7 review, 8 "You're set"
+    /// (Android `OnboardingGuideStep` order). The ones that show for this athlete, for "Step n of N" without gaps.
+    private var plan: [Int] {
+        var p = [0, 1]
+        if !useDemo { p.append(2) }
+        if wristUnsetWatch != nil { p.append(3) }
+        if skillUnsetWatch != nil { p.append(4) }
+        p += [5, 6]
+        if anythingConnected { p.append(7) }
+        p.append(8)
+        return p
+    }
+
+    /// The review question means something only once Strava or a diary receives the activities.
+    private var anythingConnected: Bool { companion.stravaConnected || companion.diaryReceives }
 
     /// Saves the review step's choice; both of its buttons do (iOS has no new-install marker, so "Not now" applies the
     /// preset, off, as a new Android install reads it).
@@ -1028,9 +1042,10 @@ struct OnboardingScreen: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(String(format: L10n.get("onboarding_guide_step"), step + 1, steps))
+                    let number = (plan.firstIndex(of: step) ?? plan.filter { $0 < step }.count) + 1
+                    Text(String(format: L10n.get("onboarding_guide_step"), number, max(plan.count, number)))
                         .font(.footnote).foregroundStyle(.secondary)
-                    ProgressView(value: Double(step + 1), total: Double(steps))
+                    ProgressView(value: Double(number), total: Double(max(plan.count, number)))
                 }
                 .padding([.horizontal, .top])
                 ScrollView {
@@ -1072,6 +1087,9 @@ struct OnboardingScreen: View {
             } else {
                 Text(L10n.get("onboarding_guide_watch_check_title")).font(.title2.bold())
                 Text(L10n.get("onboarding_guide_watch_check_body"))
+                // What the watch shows once the app is open: its start menu (a cut-out watch screenshot).
+                Image(["de", "gsw"].contains(Locale.current.language.languageCode?.identifier ?? "") ? "OnboardingWatchAppDe" : "OnboardingWatchApp")
+                    .resizable().scaledToFit().frame(height: 170).frame(maxWidth: .infinity)
                 if companion.watchEverSeen {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(L10n.get("onboarding_guide_watch_ok_title")).font(.headline)
@@ -1108,7 +1126,19 @@ struct OnboardingScreen: View {
                 Color.clear.frame(height: 1).onAppear { next() }
             }
         case 5:
-            // Whether new (and imported) activities wait for a review before the diary write.
+            Text(L10n.get("onboarding_guide_strava_title")).font(.title2.bold())
+            Text(L10n.get("onboarding_guide_strava_body"))
+            Text(L10n.get("onboarding_guide_strava_how")).font(.footnote).foregroundStyle(.secondary)
+            StravaConnectButton { companion.connectStrava() }
+        case 6:
+            Text(L10n.get("onboarding_guide_diary_title")).font(.title2.bold())
+            Text(L10n.get("onboarding_guide_diary_body"))
+            Text(L10n.get("onboarding_guide_diary_how")).font(.footnote).foregroundStyle(.secondary)
+        case 7:
+            // Whether new (and imported) activities wait for a review before Strava or the diary; skipped while
+            // neither is connected (the question is about them).
+            // Skipped, the preset (no review) is still stored: iOS has no new-install marker like Android.
+            if !anythingConnected { Color.clear.frame(height: 1).onAppear { saveReview() } }
             Text(L10n.get("onboarding_guide_interaction_title")).font(.title2.bold())
             Text(L10n.get("onboarding_guide_interaction_body"))
             Toggle(L10n.get("settings_review_new_activities"), isOn: Binding(
@@ -1122,18 +1152,24 @@ struct OnboardingScreen: View {
                 set: { reviewImported = $0; importedTouched = true }
             ))
             Text(L10n.get("settings_review_imported_activities_description")).font(.footnote).foregroundStyle(.secondary)
-        case 6:
-            Text(L10n.get("onboarding_guide_strava_title")).font(.title2.bold())
-            Text(L10n.get("onboarding_guide_strava_body"))
-            Text(L10n.get("onboarding_guide_strava_how")).font(.footnote).foregroundStyle(.secondary)
-            StravaConnectButton { companion.connectStrava() }
-            Text(L10n.get("onboarding_guide_place_names_notice")).font(.footnote).foregroundStyle(.secondary)
         default:
-            Text(L10n.get("onboarding_guide_diary_title")).font(.title2.bold())
-            Text(L10n.get("onboarding_guide_diary_body"))
-            Text(L10n.get("onboarding_guide_diary_how")).font(.footnote).foregroundStyle(.secondary)
+            // "You're set": what now happens by itself, and the place-name lookup with its notice and switch.
+            Text(L10n.get("onboarding_guide_done_title")).font(.title2.bold())
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L10n.get("onboarding_guide_done_body"))
+                if anythingConnected {
+                    Text(L10n.get(companion.reviewNewActivities ? "onboarding_guide_done_review_on" : "onboarding_guide_done_review_off"))
+                }
+            }
+            .padding().frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color.green.opacity(0.15)))
+            Toggle(L10n.get("status_place_names_switch"), isOn: Binding(
+                get: { companion.placeNamesEnabled },
+                set: { companion.setPlaceNamesEnabled($0) }
+            ))
+            Text(L10n.get("onboarding_guide_place_names_notice")).font(.footnote).foregroundStyle(.secondary)
         }
-        if step == 6 || step == 7 {
+        if step == 5 || step == 6 {
             Text(L10n.get("onboarding_guide_later")).font(.footnote).foregroundStyle(.secondary)
         }
     }
@@ -1177,18 +1213,22 @@ struct OnboardingScreen: View {
                         .buttonStyle(.borderedProminent)
                         .disabled(!companion.watchEverSeen)
                 }
-            case 5:
+            case 7:
                 Button(L10n.get("onboarding_guide_not_now")) { saveReview() }
                 Spacer()
                 Button(L10n.get("common_continue")) { saveReview() }
                     .buttonStyle(.borderedProminent)
-            case 3, 4, 6:
+            case 3, 4, 5:
                 Button(L10n.get("onboarding_guide_not_now")) { next() }
                 Spacer()
-            default:
-                Button(L10n.get("onboarding_guide_not_now")) { finish() }
+            case 6:
+                Button(L10n.get("onboarding_guide_not_now")) { next() }
                 Spacer()
                 Button(L10n.get("onboarding_guide_choose_diary")) { diaryShown = true }
+                    .buttonStyle(.borderedProminent)
+            default:
+                Spacer()
+                Button(L10n.get("onboarding_guide_done_start")) { finish() }
                     .buttonStyle(.borderedProminent)
             }
         }

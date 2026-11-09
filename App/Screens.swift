@@ -302,7 +302,7 @@ struct WatchLiveCard: View {
                 if live.discarded {
                     Text(String(format: L10n.get("watch_live_discarded_detail"), started)).font(.subheadline)
                 } else {
-                    let running = max(0, Int(context.date.timeIntervalSince1970) - Int(live.startEpochSec))
+                    let running = max(0, (live.discardedEpochSec > 0 ? Int(live.discardedEpochSec) : Int(context.date.timeIntervalSince1970)) - Int(live.startEpochSec))
                     Text(String(format: L10n.get("watch_live_since"), started, Format.duration(Int32(clamping: running)))).font(.subheadline)
                 }
                 if live.hasPosition {
@@ -746,6 +746,18 @@ struct ActivityDetailScreen: View {
             }
             // What goes to Strava (title, sport type, description), built by the shared code from the
             // same blocks the write uses (StravaWritePreview), so it is clear before anything is sent.
+            // An activity recorded elsewhere has no preview (the app never changes it on Strava): say so (Android
+            // `activity_detail_strava_imported_*`).
+            if onStravaTab && current.origin != "watch" {
+                Section {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(L10n.get("activity_detail_strava_imported_title")).font(.headline)
+                        Text(L10n.get("activity_detail_strava_imported_body")).font(.subheadline)
+                    }
+                    .padding(.vertical, 2)
+                }
+                .listRowBackground(SyncChip.strava.opacity(0.10))
+            }
             if onStravaTab, let preview = current.stravaPreview {
                 Section {
                     if !preview.title.isEmpty {
