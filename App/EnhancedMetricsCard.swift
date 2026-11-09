@@ -184,6 +184,7 @@ func stateShort(_ key: String) -> String {
     switch key {
     case "GLIDE", "OTHER", "UP", "FLAT", "DOWN", "STEEP", "STEEP_DOWN": return stateName(key)
     case "KLAEBO": return "Klæbo"   // a name, like the codes, never translated
+    case "RUN", "WALK": return stateName(key)
     default: return key
     }
 }
