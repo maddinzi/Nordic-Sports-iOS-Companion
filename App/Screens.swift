@@ -969,18 +969,21 @@ struct SettingsScreen: View {
                         } label: {
                             LabeledContent(L10n.get("settings_tile_watch"),
                                            value: watch.devices.first?.friendlyName ?? L10n.get("settings_value_none"))
+                                .settingsIcon(.watch, connected: watch.devices.first != nil)
                         }
                         NavigationLink {
                             SettingsStravaPage()
                         } label: {
                             LabeledContent(String(format: L10n.get("settings_tile_repository_named"), "Strava"),
                                            value: L10n.get(companion.stravaConnected ? "settings_value_connected" : "settings_value_not_connected"))
+                                .settingsIcon(.strava, connected: companion.stravaConnected)
                         }
                         NavigationLink {
                             SettingsDiaryPage()
                         } label: {
                             LabeledContent(diaryTitle,
                                            value: companion.diaryConnected ? companion.diaryName : L10n.get("settings_value_not_connected"))
+                                .settingsIcon(.diary, connected: companion.diaryConnected)
                         }
                         ForEach(companion.folderDestinations, id: \.id) { destination in
                             NavigationLink {
@@ -990,15 +993,16 @@ struct SettingsScreen: View {
                                     L10n.get(destination.format == "CSV_MONTHLY" ? "destination_format_csv" : "destination_format_json"),
                                     value: destination.name
                                 )
+                                .settingsIcon(.files, connected: destination.enabled && destination.issue.isEmpty)
                             }
                         }
                         NavigationLink(L10n.get("settings_add_connection")) { DiaryLocationsScreen() }
                     }
                     Section(L10n.get("settings_group_general")) {
-                        NavigationLink(L10n.get("sync_mode_section_title")) { SettingsSyncPage() }
-                        NavigationLink(L10n.get("settings_group_app")) { SettingsAppPage() }
-                        NavigationLink(L10n.get("settings_page_privacy")) { SettingsPrivacyPage() }
-                        NavigationLink(L10n.get("status_data_logs_heading")) { SettingsLogsPage() }
+                        NavigationLink { SettingsSyncPage() } label: { Text(L10n.get("sync_mode_section_title")).settingsIcon(.sync) }
+                        NavigationLink { SettingsAppPage() } label: { Text(L10n.get("settings_group_app")).settingsIcon(.app) }
+                        NavigationLink { SettingsPrivacyPage() } label: { Text(L10n.get("settings_page_privacy")).settingsIcon(.privacy) }
+                        NavigationLink { SettingsLogsPage() } label: { Text(L10n.get("status_data_logs_heading")).settingsIcon(.logs) }
                     }
                     Section {
                         NavigationLink(L10n.get("status_about_button")) { AboutScreen() }
@@ -1200,8 +1204,12 @@ struct SettingsStravaPage: View {
                     if !companion.stravaConfigured {
                         Text(L10n.get("ios_no_strava_config")).foregroundStyle(.secondary)
                     } else if companion.stravaConnected {
-                        Label(L10n.get("status_strava_connected_status"), systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
+                        // The Strava mark in orange says "connected" (Android: the same, instead of the old cable icon).
+                        Label {
+                            Text(L10n.get("status_strava_connected_status"))
+                        } icon: {
+                            SettingsRowIcon(kind: .strava, connected: true)
+                        }
                         Button(L10n.get("status_backfill_sync_now")) { Task { await companion.sync() } }
                             .disabled(companion.syncing)
                         Button(L10n.get("ios_pull_strava_7")) { Task { await companion.backfill(days: 7) } }
@@ -1220,7 +1228,12 @@ struct SettingsStravaPage: View {
                                 Text(L10n.get("status_disconnect_confirm_body_strava"))
                             }
                     } else {
-                        StravaConnectButton { companion.connectStrava() }
+                        // The grey mark says "not connected", next to Strava's own Connect button.
+                        HStack(spacing: 12) {
+                            SettingsRowIcon(kind: .strava, connected: false)
+                            Spacer()
+                            StravaConnectButton { companion.connectStrava() }
+                        }
                     }
                     if companion.stravaConfigured { PoweredByStrava() }
                 }
