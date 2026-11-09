@@ -66,7 +66,8 @@ struct WatchSettingsScreen: View {
                 ForEach(watch.groups, id: \.title) { group in
                     Section(group.title) {
                         ForEach(group.items, id: \.key) { item in
-                            WatchSettingRow(deviceId: watch.deviceId, item: item)
+                            WatchSettingRow(deviceId: watch.deviceId, item: item,
+                                            instantModeOn: watch.groups.flatMap { $0.items }.contains { $0.key == "InstantMode" && $0.value != 0 })
                         }
                         // Auto lap and auto pause per sport end the Recording group, next to the main settings
                         // (only a watch that reports per-sport values, 0.9.117+).
@@ -723,14 +724,37 @@ private struct WatchSettingRow: View {
     @EnvironmentObject var companion: Companion
     let deviceId: Int64
     let item: WatchSettingItem
+    /// Instant Mode sets Sensor Records aside on the watch (the setting is kept): the Sensor Record row is dimmed
+    /// with a line while it is on, and both carry an info icon (Android `WatchSettingRow`).
+    var instantModeOn = false
+
+    private var paused: Bool { item.key == "RecordingBoostEnabled" && item.value != 0 && instantModeOn }
+    private var info: String? {
+        switch item.key {
+        case "InstantMode": return L10n.get("watch_setting_instant_mode_info")
+        case "RecordingBoostEnabled": return L10n.get("watch_setting_recording_boost_info")
+        default: return nil
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if item.isToggle {
-                Toggle(item.label, isOn: Binding(
+                Toggle(isOn: Binding(
                     get: { item.value != 0 },
                     set: { companion.changeWatchSetting(deviceId: deviceId, key: item.key, value: $0 ? 1 : 0) }
-                ))
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(item.label)
+                            if let info { ChartInfoButton(title: item.label, text: info) }
+                        }
+                        if paused {
+                            Text(L10n.get("watch_setting_recording_boost_paused")).font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .opacity(paused ? 0.6 : 1)
             } else {
                 Picker(item.label, selection: Binding(
                     get: { item.value },
