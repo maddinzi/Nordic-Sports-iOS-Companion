@@ -192,18 +192,20 @@ struct RecordingScreen: View {
         let startText = Calendar.current.isDateInToday(start)
             ? start.formatted(date: .omitted, time: .shortened)
             : start.formatted(date: .numeric, time: .shortened)
-        let position = live.hasPosition ? String(format: "%.4f, %.4f", live.lat, live.lon) : nil
+        // Two decimals (about 1 km) on the chip; a tap copies the exact position.
+        let position = live.hasPosition ? String(format: "%.2f, %.2f", live.lat, live.lon) : nil
+        let exact = live.hasPosition ? String(format: "%.4f, %.4f", live.lat, live.lon) : nil
         return ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) { chips(startText, position) }
-            VStack(alignment: .leading, spacing: 8) { chips(startText, position) }
+            HStack(spacing: 8) { chips(startText, position, exact) }
+            VStack(alignment: .leading, spacing: 8) { chips(startText, position, exact) }
         }
     }
 
     @ViewBuilder
-    private func chips(_ startText: String, _ position: String?) -> some View {
+    private func chips(_ startText: String, _ position: String?, _ exact: String?) -> some View {
         chip("\(L10n.get("recording_detail_started")) \(startText)")
         if let position {
-            Button { UIPasteboard.general.string = position } label: { chip(position) }.buttonStyle(.plain)
+            Button { UIPasteboard.general.string = exact ?? position } label: { chip(position) }.buttonStyle(.plain)
         }
     }
 
