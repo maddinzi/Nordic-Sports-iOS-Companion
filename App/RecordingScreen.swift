@@ -46,6 +46,16 @@ struct RecordingScreen: View {
             }
         }
         .onChange(of: live == nil) { _, gone in if gone { mapFull = false; dismiss() } }
+        // Discarded on the watch: the full-screen map closes at once, the screen after a moment showing "Discarded"
+        // (Android: RecordingScreen DISCARDED_CLOSE_MS).
+        .onChange(of: live?.discarded ?? false) { _, discarded in
+            guard discarded else { return }
+            mapFull = false
+            Task {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                dismiss()
+            }
+        }
         .fullScreenCover(isPresented: $mapFull) {
             if let feed, !feed.trackLat.isEmpty {
                 LiveMapFullScreen(feed: feed, startEpochSec: startEpochSec, watchName: live?.watchName ?? "", choices: mapChoices,
@@ -389,7 +399,8 @@ struct LiveTrackMap: View {
                 HStack(alignment: .top) {
                     colourSwitch
                     Spacer(minLength: 8)
-                    if style != "OSM" { seasonSwitch }
+                    // Summer / Winter only on the full-screen map; the small one follows the activity type (Android alike).
+                    if style != "OSM" && onExpand == nil { seasonSwitch }
                 }
                 .padding(.top, topInset)
                 Spacer()

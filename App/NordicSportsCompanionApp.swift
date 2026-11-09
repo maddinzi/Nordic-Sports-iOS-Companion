@@ -26,6 +26,8 @@ struct NordicSportsCompanionApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                // Holds the screen while delete-all-data or a Strava overwrite runs (Companion.busyText).
+                .overlay { if let text = companion.busyText { BusyOverlayView(text: text) } }
                 // Built again when the app language changes, so every text is in the new one.
                 .id(companion.language)
                 .environmentObject(companion)
