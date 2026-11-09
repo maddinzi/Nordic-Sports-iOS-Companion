@@ -9,8 +9,14 @@ enum OrientationLock {
 
     /// Turns the screen to landscape, or back to portrait. A failed turn (no scene yet, the user's rotation lock) leaves
     /// the chart readable in portrait: nothing depends on it.
-    static func set(landscape: Bool) {
-        mask = landscape ? .landscape : .portrait
+    static func set(landscape: Bool) { apply(landscape ? .landscape : .portrait) }
+
+    /// Lets the screen turn with the phone (the full-screen live map); `set(landscape: false)` brings portrait back.
+    /// iOS's own rotation lock still wins: then the map stays in portrait.
+    static func allowTurning() { apply(.allButUpsideDown) }
+
+    private static func apply(_ newMask: UIInterfaceOrientationMask) {
+        mask = newMask
         guard let scene = UIApplication.shared.connectedScenes.first(where: { $0 is UIWindowScene }) as? UIWindowScene else { return }
         var controller = scene.keyWindow?.rootViewController
         while let current = controller {
