@@ -766,6 +766,9 @@ private struct WatchSettingRow: View {
                         }
                         if paused {
                             Text(L10n.get("watch_setting_recording_boost_paused")).font(.footnote).foregroundStyle(.secondary)
+                        } else if item.key == "InstantMode" {
+                            // Instant Mode works only with the phone nearby (it receives the live messages).
+                            Text(L10n.get("watch_setting_instant_mode_phone")).font(.footnote).foregroundStyle(.secondary)
                         }
                     }
                 }
