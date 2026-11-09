@@ -94,7 +94,6 @@ struct ActivityCard: View {
 
     private enum Tick { case none, todo, done, problem }
 
-    private static let metricsColor = Color(red: 0x2F / 255, green: 0x5F / 255, blue: 0x85 / 255)
 
     private var entryColor: Color {
         switch item.entryStatus {
@@ -120,12 +119,46 @@ struct ActivityCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Button { onOpen(bodyTarget) } label: { identity }
                 .buttonStyle(.plain)
-            HStack(alignment: .top, spacing: 8) {
-                entryLane
-                metricsLane
+            // One slim row instead of the Entry / Metrics boxes (Android `ActivityEventCard`, 2026-11-09): on one line
+            // when it fits, else chips and numbers on two.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) { entryChips; metricsItems }
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) { entryChips }
+                    HStack(spacing: 6) { metricsItems }
+                }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
+    }
+
+    /// What waits for the athlete (only then a word), then the diary and Strava chips with their ticks.
+    @ViewBuilder private var entryChips: some View {
+        if item.entryStatus == .review || item.entryStatus == .attention {
+            chip(entryText, symbol: "square.and.pencil", accent: entryColor) { onOpen(.diary) }
+        }
+        chip(L10n.get("sync_presence_destination_diary"), symbol: "book.closed",
+             tick: item.diaryWritten ? .done : .todo, tickColor: SyncChip.diary) { onOpen(.diary) }
+        chip("Strava", symbol: "chevron.up.2",
+             tick: item.stravaConflict || item.stravaUnavailable ? .problem
+                 : (item.stravaActivityId.isEmpty ? .todo : .done),
+             tickColor: SyncChip.strava) { onOpen(.strava) }
+    }
+
+    /// The Metrics link: one chip with the Metrics symbol and the key numbers ("8.0 km · 158 bpm · 10.4 km/h",
+    /// "Metrics" without numbers), then the Sensor Records.
+    @ViewBuilder private var metricsItems: some View {
+        if item.hasWatchMetrics {
+            let numbers = [
+                item.distanceM > 0 ? String(format: "%.1f km", Double(item.distanceM) / 1000) : nil,
+                item.avgHeartRate > 0 ? "\(item.avgHeartRate) bpm" : nil,
+                item.avgSpeedMps > 0 ? String(format: "%.1f km/h", Double(item.avgSpeedMps) * 3.6) : nil,
+            ].compactMap { $0 }.joined(separator: " · ")
+            chip(numbers.isEmpty ? L10n.get("card_lane_metrics") : numbers, symbol: "chart.bar.fill") { onOpen(.data) }
+        }
+        if item.sensorRecordCount > 0 {
+            chip("\(item.sensorRecordCount)", symbol: "dot.radiowaves.left.and.right") { onOpen(.sensor) }
+        }
     }
 
     private var identity: some View {
@@ -158,84 +191,9 @@ struct ActivityCard: View {
         .contentShape(Rectangle())
     }
 
-    private var entryLane: some View {
-        lane(title: L10n.get("card_lane_entry"), symbol: "square.and.pencil", color: entryColor,
-             onHeader: { onOpen(.diary) }) {
-            Text(entryText).font(.subheadline.weight(.semibold))
-            VStack(alignment: .leading, spacing: 5) {
-                chip(L10n.get("sync_presence_destination_diary"), symbol: "book.closed",
-                     tick: item.diaryWritten ? .done : .todo, tickColor: SyncChip.diary) { onOpen(.diary) }
-                chip("Strava", symbol: "chevron.up.2",
-                     tick: item.stravaConflict || item.stravaUnavailable ? .problem
-                         : (item.stravaActivityId.isEmpty ? .todo : .done),
-                     tickColor: SyncChip.strava) { onOpen(.strava) }
-            }
-        }
-    }
-
-    @ViewBuilder private var metricsLane: some View {
-        if item.hasWatchMetrics {
-            lane(title: L10n.get("card_lane_metrics"), symbol: "chart.bar.fill", color: Self.metricsColor,
-                 onHeader: { onOpen(.data) }) {
-                HStack(alignment: .top, spacing: 10) {
-                    if item.distanceM > 0 { number(String(format: "%.1f", Double(item.distanceM) / 1000), "km") }
-                    if item.avgHeartRate > 0 { number("\(item.avgHeartRate)", "bpm") }
-                    if item.avgSpeedMps > 0 { number(String(format: "%.1f", Double(item.avgSpeedMps) * 3.6), "km/h") }
-                }
-                VStack(alignment: .leading, spacing: 5) {
-                    chip(L10n.get("card_chip_data"), symbol: "list.bullet") { onOpen(.data) }
-                    if item.hasTechniqueMetrics {
-                        chip(L10n.get("card_chip_technique"), symbol: "waveform.path.ecg") { onOpen(.technique) }
-                    }
-                    // The Sensor Records of this activity (Android: the Sensor lane of the card).
-                    if item.sensorRecordCount > 0 {
-                        chip("\(L10n.get("card_lane_sensor")) (\(item.sensorRecordCount))", symbol: "dot.radiowaves.left.and.right") { onOpen(.sensor) }
-                    }
-                }
-            }
-        } else {
-            lane(title: L10n.get("card_lane_metrics"), symbol: "chart.bar.fill", color: .gray, onHeader: nil) {
-                Text(L10n.get("card_no_watch_data")).font(.subheadline).foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func number(_ value: String, _ unit: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(value).font(.subheadline.weight(.semibold))
-            Text(unit).font(.caption2).foregroundStyle(.secondary)
-        }
-    }
-
-    /// One lane: a tinted, framed box with an icon title; [onHeader] makes the title a link.
-    private func lane<Content: View>(title: String, symbol: String, color: Color, onHeader: (() -> Void)?,
-                                     @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            if let onHeader {
-                Button(action: onHeader) { laneHeader(title, symbol, color, link: true) }.buttonStyle(.plain)
-            } else {
-                laneHeader(title, symbol, color, link: false)
-            }
-            content()
-        }
-        .padding(9)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(color, lineWidth: 1.5))
-    }
-
-    private func laneHeader(_ title: String, _ symbol: String, _ color: Color, link: Bool) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: symbol).font(.caption).foregroundStyle(color)
-            Text(title.uppercased()).font(.caption2.weight(.bold)).foregroundStyle(.primary)
-            Spacer(minLength: 0)
-            if link { Image(systemName: "chevron.right").font(.caption2).foregroundStyle(color) }
-        }
-        .contentShape(Rectangle())
-    }
-
+    /// A tappable chip; a [tick] says whether the destination has the activity, an [accent] marks a status chip.
     private func chip(_ label: String, symbol: String, tick: Tick = .none, tickColor: Color = .green,
-                      action: @escaping () -> Void) -> some View {
+                      accent: Color? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Image(systemName: symbol).font(.caption2).foregroundStyle(.secondary)
@@ -249,8 +207,8 @@ struct ActivityCard: View {
             }
             .padding(.horizontal, 7)
             .padding(.vertical, 5)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(.separator), lineWidth: 1))
+            .background(accent?.opacity(0.18) ?? Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(accent ?? Color(.separator), lineWidth: accent != nil ? 1.5 : 1))
         }
         .buttonStyle(.borderless)
     }
