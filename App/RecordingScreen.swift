@@ -62,7 +62,8 @@ struct RecordingScreen: View {
                 // What the athlete reads at a glance: source, clock and the live values in one card (Android
                 // `RecordingHero`).
                 Section {
-                    hero(live, running: max(0, Int(context.date.timeIntervalSince1970) - Int(live.startEpochSec)))
+                    // Discarded on the watch: the clock stops at that moment.
+                    hero(live, running: max(0, (live.discardedEpochSec > 0 ? Int(live.discardedEpochSec) : Int(context.date.timeIntervalSince1970)) - Int(live.startEpochSec)))
                         .padding(.vertical, 4)
                 }
                 .listRowBackground(live.discarded ? CardTone.grey.container : CardTone.blue.container)

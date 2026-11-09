@@ -302,7 +302,7 @@ struct WatchLiveCard: View {
                 if live.discarded {
                     Text(String(format: L10n.get("watch_live_discarded_detail"), started)).font(.subheadline)
                 } else {
-                    let running = max(0, Int(context.date.timeIntervalSince1970) - Int(live.startEpochSec))
+                    let running = max(0, (live.discardedEpochSec > 0 ? Int(live.discardedEpochSec) : Int(context.date.timeIntervalSince1970)) - Int(live.startEpochSec))
                     Text(String(format: L10n.get("watch_live_since"), started, Format.duration(Int32(clamping: running)))).font(.subheadline)
                 }
                 if live.hasPosition {
