@@ -984,8 +984,21 @@ struct OnboardingScreen: View {
     @State private var diaryShown = false
     /// "Your watch": 0 asks whether the athlete has the watch app, 1 waits for the watch to talk to this app.
     @State private var watchPhase = 0
+    /// Step 6 (review): preset off for a new install (Android `InteractionStep`); the imported-activity review follows
+    /// the first switch until it is touched.
+    @State private var reviewNew = false
+    @State private var reviewImported = false
+    @State private var importedTouched = false
 
-    private let steps = 7
+    private let steps = 8
+
+    /// Saves the review step's choice; both of its buttons do (iOS has no new-install marker, so "Not now" applies the
+    /// preset, off, as a new Android install reads it).
+    private func saveReview() {
+        companion.setReviewNewActivities(reviewNew)
+        companion.setReviewImportedActivities(reviewImported)
+        next()
+    }
 
     /// A watch that reported its settings with the wrist not set (value 0); the wrist is asked for it.
     private var wristUnsetWatch: WatchSettingsView? {
@@ -1095,6 +1108,21 @@ struct OnboardingScreen: View {
                 Color.clear.frame(height: 1).onAppear { next() }
             }
         case 5:
+            // Whether new (and imported) activities wait for a review before the diary write.
+            Text(L10n.get("onboarding_guide_interaction_title")).font(.title2.bold())
+            Text(L10n.get("onboarding_guide_interaction_body"))
+            Toggle(L10n.get("settings_review_new_activities"), isOn: Binding(
+                get: { reviewNew },
+                set: { reviewNew = $0; if !importedTouched { reviewImported = $0 } }
+            ))
+            Text(L10n.get(reviewNew ? "interaction_option_interactive_description" : "interaction_option_passive_description"))
+                .font(.footnote).foregroundStyle(.secondary)
+            Toggle(L10n.get("settings_review_imported_activities"), isOn: Binding(
+                get: { reviewImported },
+                set: { reviewImported = $0; importedTouched = true }
+            ))
+            Text(L10n.get("settings_review_imported_activities_description")).font(.footnote).foregroundStyle(.secondary)
+        case 6:
             Text(L10n.get("onboarding_guide_strava_title")).font(.title2.bold())
             Text(L10n.get("onboarding_guide_strava_body"))
             Text(L10n.get("onboarding_guide_strava_how")).font(.footnote).foregroundStyle(.secondary)
@@ -1105,7 +1133,7 @@ struct OnboardingScreen: View {
             Text(L10n.get("onboarding_guide_diary_body"))
             Text(L10n.get("onboarding_guide_diary_how")).font(.footnote).foregroundStyle(.secondary)
         }
-        if step == 5 || step == 6 {
+        if step == 6 || step == 7 {
             Text(L10n.get("onboarding_guide_later")).font(.footnote).foregroundStyle(.secondary)
         }
     }
@@ -1149,7 +1177,12 @@ struct OnboardingScreen: View {
                         .buttonStyle(.borderedProminent)
                         .disabled(!companion.watchEverSeen)
                 }
-            case 3, 4, 5:
+            case 5:
+                Button(L10n.get("onboarding_guide_not_now")) { saveReview() }
+                Spacer()
+                Button(L10n.get("common_continue")) { saveReview() }
+                    .buttonStyle(.borderedProminent)
+            case 3, 4, 6:
                 Button(L10n.get("onboarding_guide_not_now")) { next() }
                 Spacer()
             default:
