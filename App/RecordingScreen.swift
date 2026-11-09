@@ -12,6 +12,9 @@ struct RecordingScreen: View {
     let startEpochSec: Int64
     @State private var feed: LiveFeedView?
     @State private var bursts: [RecordingBoostView] = []
+    /// The map on the whole screen (it may turn with the phone there); its colouring and Summer/Winter are shared.
+    @State private var mapFull = false
+    @StateObject private var mapChoices = LiveMapChoices()
 
     /// The card's data, live: nil once the recording is over (saved, or discarded and shown for a few seconds).
     private var live: LiveActivityView? { companion.liveActivities.first { $0.startEpochSec == startEpochSec } }
@@ -42,7 +45,14 @@ struct RecordingScreen: View {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
-        .onChange(of: live == nil) { _, gone in if gone { dismiss() } }
+        .onChange(of: live == nil) { _, gone in if gone { mapFull = false; dismiss() } }
+        .fullScreenCover(isPresented: $mapFull) {
+            if let feed, !feed.trackLat.isEmpty {
+                LiveMapFullScreen(feed: feed, startEpochSec: startEpochSec, choices: mapChoices) { mapFull = false }
+            } else {
+                Color.clear.onAppear { mapFull = false }
+            }
+        }
     }
 
     private func content(_ live: LiveActivityView) -> some View {
@@ -124,8 +134,8 @@ struct RecordingScreen: View {
                 if !feed.trackLat.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(L10n.get("recording_live_track")).font(.caption.weight(.semibold))
-                        LiveTrackMap(lat: feed.trackLat.map { $0.doubleValue }, lon: feed.trackLon.map { $0.doubleValue },
-                                     automatic: feed.baseMap)
+                        LiveTrackMap(points: TrackPoints(feed), automatic: feed.baseMap, choices: mapChoices,
+                                     onExpand: { mapFull = true })
                             .frame(height: 260)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
@@ -154,32 +164,140 @@ struct RecordingScreen: View {
 
 // MARK: - Live track map
 
-/// The track so far on a map, after the Trail app's map concept (Android `LiveTrackMap`): swisstopo's winter map for snow
-/// activities, its summer map for the others, OpenStreetMap outside Switzerland ([automatic], from the shared
-/// `MapChoice`), a Summer / Winter switch for this screen only, the credit always visible. It follows the whole track
-/// until the athlete drags or pinches; the button brings the following back.
-struct LiveTrackMap: View {
+/// What the track is coloured by (Android `TrackColour`).
+enum TrackColour: CaseIterable {
+    case technique, speed, altitude
+
+    var label: String {
+        switch self {
+        case .technique: return L10n.get("recording_map_colour_technique")
+        case .speed: return L10n.get("recording_map_colour_speed")
+        case .altitude: return L10n.get("recording_map_colour_altitude")
+        }
+    }
+}
+
+/// The map's choices (colouring, Summer/Winter), shared by the small map and its full screen so both show the same.
+final class LiveMapChoices: ObservableObject {
+    @Published var colourBy: TrackColour = .technique
+    /// Summer / Winter picked by hand; nil follows the automatic map.
+    @Published var season: String?
+}
+
+/// The track as plain arrays: per point the technique key ("" none), speed in km/h and altitude in m (NaN none).
+struct TrackPoints {
     let lat: [Double]
     let lon: [Double]
+    let technique: [String]
+    let speedKmh: [Double]
+    let altitudeM: [Double]
+
+    init(_ feed: LiveFeedView) {
+        lat = feed.trackLat.map { $0.doubleValue }
+        lon = feed.trackLon.map { $0.doubleValue }
+        technique = feed.trackTechnique
+        speedKmh = feed.trackSpeedKmh.map { $0.doubleValue }
+        altitudeM = feed.trackAltitudeM.map { $0.doubleValue }
+    }
+
+    var count: Int { min(lat.count, lon.count) }
+}
+
+/// The colour of each track point (the stretch that ends there) and what the legend shows (Android `trackColours`):
+/// the technique's colour, or a step of the mode's ramp between the track's lowest and highest value. Speed runs blue
+/// to red, altitude pink to deep purple, so the two never look alike; missing values are grey.
+struct TrackColours {
+    let colours: [UIColor]
+    let used: [String]
+    let low: Double?
+    let high: Double?
+    /// Lowest and highest hardly differ (a flat track, a steady pace): one colour and one value in the legend.
+    var flat: Bool { if let low, let high { return high - low < 1 } else { return false } }
+
+    static let steps = 10
+    static let noValue = UIColor(red: 0x9A / 255, green: 0xA4 / 255, blue: 0xAE / 255, alpha: 1)
+    static func ramp(_ mode: TrackColour) -> (UIColor, UIColor) {
+        mode == .altitude
+            ? (UIColor(red: 0xF4 / 255, green: 0x8F / 255, blue: 0xC8 / 255, alpha: 1), UIColor(red: 0x5B / 255, green: 0x21 / 255, blue: 0xB6 / 255, alpha: 1))
+            : (UIColor(red: 0x2F / 255, green: 0x6F / 255, blue: 0xDB / 255, alpha: 1), UIColor(red: 0xD6 / 255, green: 0x45 / 255, blue: 0x45 / 255, alpha: 1))
+    }
+
+    init(_ t: TrackPoints, _ mode: TrackColour) {
+        let n = t.count
+        if mode == .technique {
+            let keys = Array(t.technique.prefix(n))
+            colours = keys.map { $0.isEmpty ? Self.noValue : UIColor(stateColor($0)) }
+            var seen: [String] = []
+            for k in keys where !k.isEmpty && !seen.contains(k) { seen.append(k) }
+            used = seen; low = nil; high = nil
+            return
+        }
+        let values = Array((mode == .speed ? t.speedKmh : t.altitudeM).prefix(n))
+        let present = values.filter { !$0.isNaN }
+        let lo = present.min(), hi = present.max()
+        let span = (lo != nil && hi != nil) ? hi! - lo! : 0
+        let (a, b) = Self.ramp(mode)
+        colours = values.map { v in
+            guard !v.isNaN, let lo else { return Self.noValue }
+            let step = span < 1 ? Self.steps / 2 : min(Self.steps - 1, max(0, Int((v - lo) / span * Double(Self.steps - 1))))
+            return Self.mix(a, b, CGFloat(step) / CGFloat(Self.steps - 1))
+        }
+        used = []; low = lo; high = hi
+    }
+
+    /// Same colour by its components (UIColor objects made from SwiftUI colours are not equal by identity).
+    static func same(_ a: UIColor, _ b: UIColor) -> Bool {
+        var (r1, g1, b1, a1, r2, g2, b2, a2): (CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0, 0, 0, 0, 0)
+        a.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        b.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        return abs(r1 - r2) < 0.002 && abs(g1 - g2) < 0.002 && abs(b1 - b2) < 0.002
+    }
+
+    static func mix(_ a: UIColor, _ b: UIColor, _ f: CGFloat) -> UIColor {
+        var (r1, g1, b1, a1, r2, g2, b2, a2): (CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0, 0, 0, 0, 0)
+        a.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        b.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        return UIColor(red: r1 + (r2 - r1) * f, green: g1 + (g2 - g1) * f, blue: b1 + (b2 - b1) * f, alpha: 1)
+    }
+}
+
+/// The track so far on a map, after the Trail app's map concept (Android `LiveTrackMap`): swisstopo's winter map for snow
+/// activities, its summer map for the others, OpenStreetMap outside Switzerland ([automatic], from the shared
+/// `MapChoice`), a Summer / Winter switch, the credit always visible. The track is coloured by technique, speed or
+/// altitude (switch top left, legend bottom left). It follows the whole track until the athlete drags or pinches; the
+/// button brings the following back. [onExpand] shows the button to the full screen; [topInset] keeps room for the
+/// full screen's data bar; [fullScreen] lets the map run under the notch and home indicator (the controls do not).
+struct LiveTrackMap: View {
+    let points: TrackPoints
     let automatic: String
-    @State private var chosen: String?
+    @ObservedObject var choices: LiveMapChoices
+    var onExpand: (() -> Void)? = nil
+    var topInset: CGFloat = 0
+    var fullScreen = false
     @State private var following = true
 
-    private var style: String { chosen ?? automatic }
+    private var style: String { choices.season ?? automatic }
 
     var body: some View {
+        let colours = TrackColours(points, choices.colourBy)
         ZStack {
-            TrackMapView(lat: lat, lon: lon, style: style, following: $following)
-            VStack {
-                HStack {
-                    Spacer()
+            TrackMapView(points: points, colours: colours, mode: choices.colourBy, style: style, following: $following)
+                .ignoresSafeArea(edges: fullScreen ? .all : [])
+            VStack(spacing: 0) {
+                HStack(alignment: .top) {
+                    colourSwitch
+                    Spacer(minLength: 8)
                     if style != "OSM" { seasonSwitch }
                 }
+                .padding(.top, topInset)
                 Spacer()
                 HStack(alignment: .bottom) {
-                    Text(style == "OSM" ? "(c) OpenStreetMap contributors" : "(c) swisstopo")
-                        .font(.system(size: 10)).foregroundStyle(.black)
-                        .padding(.horizontal, 4).background(Color.white.opacity(0.7))
+                    VStack(alignment: .leading, spacing: 4) {
+                        legend(colours)
+                        Text(style == "OSM" ? "(c) OpenStreetMap contributors" : "(c) swisstopo")
+                            .font(.system(size: 10)).foregroundStyle(.black)
+                            .padding(.horizontal, 4).background(Color.white.opacity(0.7))
+                    }
                     Spacer()
                     if !following {
                         Button { following = true } label: {
@@ -187,33 +305,152 @@ struct LiveTrackMap: View {
                         }
                         .accessibilityLabel(L10n.get("recording_map_follow"))
                     }
+                    if let onExpand {
+                        Button(action: onExpand) {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right").padding(10).background(.white.opacity(0.9), in: Circle())
+                        }
+                        .accessibilityLabel(L10n.get("chart_expand"))
+                    }
                 }
             }
             .padding(8)
         }
     }
 
-    private var seasonSwitch: some View {
+    private func pill<Key: Equatable>(_ items: [(Key, String)], selected: Key, onPick: @escaping (Key) -> Void) -> some View {
         HStack(spacing: 0) {
-            ForEach([("SUMMER", "recording_map_summer"), ("WINTER", "recording_map_winter")], id: \.0) { key, label in
-                Button { chosen = key } label: {
-                    Text(L10n.get(label)).font(.caption)
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .foregroundStyle(style == key ? Color.white : Color.accentColor)
-                        .background(style == key ? Color.accentColor : Color.clear, in: Capsule())
+            ForEach(items.indices, id: \.self) { i in
+                let (key, label) = items[i]
+                Button { onPick(key) } label: {
+                    Text(label).font(.caption)
+                        .padding(.horizontal, 9).padding(.vertical, 5)
+                        .foregroundStyle(selected == key ? Color.white : Color.accentColor)
+                        .background(selected == key ? Color.accentColor : Color.clear, in: Capsule())
                 }
                 .buttonStyle(.plain)
             }
         }
         .background(Color.white.opacity(0.9), in: Capsule())
     }
+
+    private var colourSwitch: some View {
+        pill(TrackColour.allCases.map { ($0, $0.label) }, selected: choices.colourBy) { choices.colourBy = $0 }
+    }
+
+    private var seasonSwitch: some View {
+        pill([("SUMMER", L10n.get("recording_map_summer")), ("WINTER", L10n.get("recording_map_winter"))], selected: style) {
+            choices.season = $0
+        }
+    }
+
+    /// The techniques that occur, or the ramp with the track's lowest and highest value (one value when flat).
+    @ViewBuilder
+    private func legend(_ c: TrackColours) -> some View {
+        let text = Color(red: 0x1F / 255, green: 0x29 / 255, blue: 0x37 / 255)
+        if choices.colourBy == .technique {
+            if !c.used.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(c.used, id: \.self) { key in
+                        HStack(spacing: 3) {
+                            Circle().fill(stateColor(key)).frame(width: 8, height: 8)
+                            Text(stateShort(key)).font(.system(size: 10)).foregroundStyle(text)
+                        }
+                    }
+                }
+                .padding(.horizontal, 6).padding(.vertical, 4)
+                .background(Color.white.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
+            }
+        } else if let low = c.low, let high = c.high {
+            let speed = choices.colourBy == .speed
+            let unit = speed ? "km/h" : "m"
+            let fmt = speed ? "%.1f" : "%.0f"
+            let (a, b) = TrackColours.ramp(choices.colourBy)
+            HStack(spacing: 5) {
+                if c.flat {
+                    Circle().fill(Color(c.colours.first { $0 != TrackColours.noValue } ?? TrackColours.noValue)).frame(width: 8, height: 8)
+                    Text(String(format: "\(fmt) %@", (low + high) / 2, unit)).font(.system(size: 10)).foregroundStyle(text)
+                } else {
+                    Text(String(format: fmt, low)).font(.system(size: 10)).foregroundStyle(text)
+                    LinearGradient(colors: [Color(a), Color(b)], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: 56, height: 7).clipShape(Capsule())
+                    Text(String(format: "\(fmt) %@", high, unit)).font(.system(size: 10)).foregroundStyle(text)
+                }
+            }
+            .padding(.horizontal, 6).padding(.vertical, 4)
+            .background(Color.white.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
 }
 
-/// MKMapView with a tile overlay replacing Apple's map (so the map is the same as on Android), the track as a line, the
-/// start as a ring and the position now as a dot.
+/// The live map on the whole screen (Android `LiveMapFullScreen`): the screen may turn with the phone while it is open,
+/// the key data in a bar over the map's top, and a close button back to the Recording screen.
+struct LiveMapFullScreen: View {
+    let feed: LiveFeedView
+    let startEpochSec: Int64
+    @ObservedObject var choices: LiveMapChoices
+    let onClose: () -> Void
+    @State private var barHeight: CGFloat = 52
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            ZStack(alignment: .top) {
+                LiveTrackMap(points: TrackPoints(feed), automatic: feed.baseMap, choices: choices,
+                             topInset: barHeight + 8, fullScreen: true)
+                dataBar(running: max(0, Int(context.date.timeIntervalSince1970) - Int(startEpochSec)))
+                    .background(GeometryReader { g in Color.clear.preference(key: BarHeightKey.self, value: g.size.height) })
+                    .padding(8)
+            }
+        }
+        .onPreferenceChange(BarHeightKey.self) { barHeight = $0 }
+        .background(Color(.systemBackground).ignoresSafeArea())
+        .statusBarHidden(true)
+        .onAppear { OrientationLock.allowTurning() }
+        .onDisappear { OrientationLock.set(landscape: false) }
+    }
+
+    private func dataBar(running: Int) -> some View {
+        let ink = Color(red: 0x1F / 255, green: 0x29 / 255, blue: 0x37 / 255)
+        let values: [String] = ([
+            RecordingScreen.clockText(running),
+            feed.heartRate >= 0 ? "\(feed.heartRate) bpm" : nil,
+            feed.speedKmh.isNaN ? nil : String(format: "%.1f km/h", feed.speedKmh),
+            feed.techniqueKey.isEmpty ? nil : stateShort(feed.techniqueKey),
+            feed.distanceM >= 0 ? String(format: "%.2f km", Double(feed.distanceM) / 1000) : nil,
+            feed.gradePct.isNaN ? nil : String(format: "%+.1f %%", feed.gradePct),
+        ] as [String?]).compactMap { $0 }
+        return HStack(spacing: 4) {
+            Button(action: onClose) {
+                Image(systemName: "xmark").font(.body.weight(.semibold)).foregroundStyle(ink)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.get("chart_close"))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    ForEach(values.indices, id: \.self) { i in
+                        Text(values[i])
+                            .font(i == 0 ? .title2.weight(.bold) : .headline)
+                            .monospacedDigit().foregroundStyle(ink).lineLimit(1)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 4).padding(.vertical, 2)
+        .background(Color.white.opacity(0.9), in: RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+private struct BarHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 52
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+/// MKMapView with a tile overlay replacing Apple's map (so the map is the same as on Android), the track as a white
+/// casing under runs of one colour each, the start as a ring and the position now as a dot.
 private struct TrackMapView: UIViewRepresentable {
-    let lat: [Double]
-    let lon: [Double]
+    let points: TrackPoints
+    let colours: TrackColours
+    let mode: TrackColour
     let style: String
     @Binding var following: Bool
 
@@ -245,19 +482,40 @@ private struct TrackMapView: UIViewRepresentable {
             c.tiles = tiles
             map.insertOverlay(tiles, at: 0, level: .aboveLabels)
         }
-        let points = zip(lat, lon).map { CLLocationCoordinate2D(latitude: $0, longitude: $1) }
-        if c.drawnCount != points.count {
+        let points = zip(self.points.lat, self.points.lon).map { CLLocationCoordinate2D(latitude: $0, longitude: $1) }
+        if c.drawnCount != points.count || c.drawnMode != mode {
+            let moved = c.drawnCount != points.count
             c.drawnCount = points.count
-            if let line = c.line { map.removeOverlay(line) }
+            c.drawnMode = mode
+            map.removeOverlays(c.lines)
+            c.lines = []
             if points.count >= 2 {
-                let line = MKPolyline(coordinates: points, count: points.count)
-                c.line = line
-                map.addOverlay(line, level: .aboveLabels)
+                let casing = TrackLine(coordinates: points, count: points.count)
+                casing.colour = .white
+                casing.width = 7
+                c.lines.append(casing)
+                // The stretch into point i has point i's colour; a run ends where the colour changes.
+                var runStart = 0
+                for i in 2...points.count {
+                    let colour = colours.colours.indices.contains(runStart + 1) ? colours.colours[runStart + 1] : TrackColours.noValue
+                    let next = i < points.count && colours.colours.indices.contains(i) ? colours.colours[i] : nil
+                    if i == points.count || next.map({ !TrackColours.same($0, colour) }) ?? true {
+                        let run = Array(points[runStart..<i])
+                        let line = TrackLine(coordinates: run, count: run.count)
+                        line.colour = colour
+                        line.width = 4
+                        c.lines.append(line)
+                        runStart = i - 1
+                    }
+                }
+                c.lines.forEach { map.addOverlay($0, level: .aboveLabels) }
             }
-            map.removeAnnotations(map.annotations)
-            if let first = points.first { map.addAnnotation(Dot(coordinate: first, isStart: true)) }
-            if let last = points.last, points.count > 1 { map.addAnnotation(Dot(coordinate: last, isStart: false)) }
-            c.followed = false
+            if moved {
+                map.removeAnnotations(map.annotations)
+                if let first = points.first { map.addAnnotation(Dot(coordinate: first, isStart: true)) }
+                if let last = points.last, points.count > 1 { map.addAnnotation(Dot(coordinate: last, isStart: false)) }
+                c.followed = false
+            }
         }
         if following && !c.followed, !points.isEmpty {
             c.followed = true
@@ -294,7 +552,8 @@ private struct TrackMapView: UIViewRepresentable {
         var parent: TrackMapView
         var style: String?
         var tiles: MKTileOverlay?
-        var line: MKPolyline?
+        var lines: [TrackLine] = []
+        var drawnMode: TrackColour?
         var drawnCount = -1
         var followed = false
 
@@ -308,10 +567,10 @@ private struct TrackMapView: UIViewRepresentable {
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let tiles = overlay as? MKTileOverlay { return MKTileOverlayRenderer(tileOverlay: tiles) }
-            if let line = overlay as? MKPolyline {
+            if let line = overlay as? TrackLine {
                 let r = MKPolylineRenderer(polyline: line)
-                r.strokeColor = UIColor.systemBlue
-                r.lineWidth = 4
+                r.strokeColor = line.colour
+                r.lineWidth = line.width
                 r.lineCap = .round
                 r.lineJoin = .round
                 return r
@@ -334,6 +593,12 @@ private struct TrackMapView: UIViewRepresentable {
             return view
         }
     }
+}
+
+/// One stretch of the track in one colour (or the white casing under it).
+private final class TrackLine: MKPolyline {
+    var colour: UIColor = .systemBlue
+    var width: CGFloat = 4
 }
 
 /// The track's start (a ring) or the position now (a dot).
