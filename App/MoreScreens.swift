@@ -10,6 +10,8 @@ import UniformTypeIdentifiers
 
 struct WatchSettingsScreen: View {
     @EnvironmentObject var companion: Companion
+    /// Watch settings that cost extra watch battery (Sensor Records, Instant Mode): their own section.
+    static let batteryKeys: Set<String> = ["RecordingBoostEnabled", "InstantMode"]
 
     var body: some View {
         Form {
@@ -64,15 +66,28 @@ struct WatchSettingsScreen: View {
                     }
                 }
                 ForEach(watch.groups, id: \.title) { group in
+                    let instantOn = watch.groups.flatMap { $0.items }.contains { $0.key == "InstantMode" && $0.value != 0 }
+                    let battery = group.items.filter { Self.batteryKeys.contains($0.key) }
                     Section(group.title) {
-                        ForEach(group.items, id: \.key) { item in
-                            WatchSettingRow(deviceId: watch.deviceId, item: item,
-                                            instantModeOn: watch.groups.flatMap { $0.items }.contains { $0.key == "InstantMode" && $0.value != 0 })
+                        ForEach(group.items.filter { !Self.batteryKeys.contains($0.key) }, id: \.key) { item in
+                            WatchSettingRow(deviceId: watch.deviceId, item: item, instantModeOn: instantOn)
                         }
                         // Auto lap and auto pause per sport end the Recording group, next to the main settings
                         // (only a watch that reports per-sport values, 0.9.117+).
                         if group.title == L10n.get("watch_group_recording"), let auto = watch.sportAuto {
                             NavigationLink(auto.title) { WatchSportAutoScreen(deviceId: watch.deviceId) }
+                        }
+                    }
+                    // The settings that cost extra watch battery in a section of their own, right after their
+                    // group, under a battery heading (Android `BatteryFrame`).
+                    if !battery.isEmpty {
+                        Section {
+                            ForEach(battery, id: \.key) { item in
+                                WatchSettingRow(deviceId: watch.deviceId, item: item, instantModeOn: instantOn)
+                            }
+                        } header: {
+                            Label(L10n.get("watch_settings_battery_note"), systemImage: "battery.50")
+                                .foregroundStyle(Color(red: 0xB2 / 255, green: 0x6A / 255, blue: 0x00 / 255))
                         }
                     }
                 }
