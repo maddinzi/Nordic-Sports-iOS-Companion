@@ -1339,7 +1339,7 @@ final class Companion: NSObject, ObservableObject {
                         activityType: a.declaration.activityType, technique: a.declaration.technique,
                         terrain: a.declaration.terrain, poles: a.declaration.poles,
                         note: a.declaration.note.trimmingCharacters(in: .whitespacesAndNewlines),
-                        competence: a.declaration.competence, surface: a.declaration.surface)
+                        competence: a.declaration.competence, surface: a.declaration.surface, lead: a.declaration.lead)
                 }
             )
             if result == "sent", !attachments.isEmpty { refreshBoostReminders() }

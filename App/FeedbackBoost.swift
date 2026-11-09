@@ -29,6 +29,8 @@ struct BoostDeclaration: Equatable {
     var competence = ""
     /// The ground under the feet (a BurstLabelOptions.SURFACES code), "" not said.
     var surface = ""
+    /// The lead side of V1/V2A ("left", "right"), "" not said; sent only with those techniques.
+    var lead = ""
 }
 
 struct BoostAttached: Identifiable {
@@ -61,6 +63,18 @@ enum BoostText {
         }
     }
 
+    /// The sides of V1/V2A (shared FeedbackAttachment.LEAD) and the techniques that ask for one (LEAD_TECHNIQUES).
+    static let leadSides = ["left", "right"]
+    static let leadTechniques: Set<String> = ["V1", "V2A"]
+
+    static func leadName(_ side: String) -> String {
+        switch side {
+        case "left": return L10n.get("feedback_boost_lead_left")
+        case "right": return L10n.get("feedback_boost_lead_right")
+        default: return side
+        }
+    }
+
     /// Technique and terrain codes are the coaches' codes; only "mixed" is translated.
     static func code(_ code: String) -> String {
         code == "MIXED" ? L10n.get("recording_boost_label_mixed") : code
@@ -74,6 +88,7 @@ enum BoostText {
     static func summary(_ d: BoostDeclaration) -> String {
         var parts = [typeName(d.activityType)]
         if !d.technique.isEmpty { parts.append(code(d.technique)) }
+        if !d.lead.isEmpty && leadTechniques.contains(d.technique) { parts.append(leadName(d.lead)) }
         if !d.surface.isEmpty { parts.append(surface(d.surface)) }
         if !d.terrain.isEmpty { parts.append(d.terrain) }
         if d.poles == 1 { parts.append(L10n.get("recording_boost_label_poles_yes")) }
@@ -293,6 +308,7 @@ struct BoostDeclareView: View {
                             next.activityType = type
                             let allowed = companion.feedbackBoostOptions(type)
                             if !allowed.techniques.contains(next.technique) { next.technique = "" }
+                            if !BoostText.leadTechniques.contains(next.technique) { next.lead = "" }
                             if type != "running" { next.terrain = ""; next.surface = "" }
                             if !allowed.askPoles { next.poles = -1 }
                             declarations[candidate.key] = next
@@ -305,7 +321,19 @@ struct BoostDeclareView: View {
                                 var next = d
                                 let same = d.technique == code
                                 next.technique = same ? "" : code
+                                if !BoostText.leadTechniques.contains(next.technique) { next.lead = "" }
                                 declarations[candidate.key] = next
+                            }
+                        }
+                        // V1 and V2A pole on one side: which one leads (Android: a drop-down after the technique).
+                        if BoostText.leadTechniques.contains(d.technique) {
+                            Text(L10n.get("feedback_boost_lead")).font(.caption).foregroundStyle(.secondary)
+                            ForEach(BoostText.leadSides, id: \.self) { side in
+                                choice(BoostText.leadName(side), on: d.lead == side) {
+                                    var next = d
+                                    next.lead = d.lead == side ? "" : side
+                                    declarations[candidate.key] = next
+                                }
                             }
                         }
                         if d.activityType == "running" {
