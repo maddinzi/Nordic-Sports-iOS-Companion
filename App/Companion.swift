@@ -20,6 +20,8 @@ final class Companion: NSObject, ObservableObject {
 
     @Published private(set) var activities: [ActivityItem] = []
     @Published private(set) var syncing = false
+    /// The text of the busy overlay (BusyOverlayView) while a held action runs, nil otherwise (Android: MainActivity.busyText).
+    @Published private(set) var busyText: String?
     /// What still waits in the last 7 days (shared `syncStatus`); drives the card on top of the list.
     @Published private(set) var syncStatus: SyncStatusView?
     @Published private(set) var syncLines: [String] = []
@@ -616,6 +618,8 @@ final class Companion: NSObject, ObservableObject {
 
     /// "Overwrite with this app's version": writes the captured title and type to Strava.
     func overwriteStrava(_ activityId: String) async {
+        busyText = L10n.get("busy_writing_strava")
+        defer { busyText = nil }
         do { try await core.overwriteStravaWithCompanion(activityId: activityId) } catch {
             if !error.isCancellation { report(error) }
         }
@@ -1237,6 +1241,8 @@ final class Companion: NSObject, ObservableObject {
     /// PRIVACY-SYNC: what "Delete my data" removes on iOS. Changing this? Re-check the
     /// Companion's design/privacy-notice-sync.md.
     func deleteAllData() async {
+        busyText = L10n.get("busy_deleting_data")
+        defer { busyText = nil }
         var failed: [String] = []
         do {
             failed = try await core.deleteAllData().map { "\($0)" }

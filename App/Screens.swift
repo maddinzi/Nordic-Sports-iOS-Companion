@@ -886,17 +886,8 @@ struct ActivityDetailScreen: View {
         // Long-press copies a value (SPM, DPS, ...), as on Android.
         .textSelection(.enabled)
         .overlay {
-            if deleting {
-                ZStack {
-                    Color.black.opacity(0.45).ignoresSafeArea()
-                    HStack(spacing: 16) {
-                        ProgressView()
-                        Text(L10n.get("activity_detail_deleting"))
-                    }
-                    .padding(.horizontal, 24).padding(.vertical, 20)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-                }
-            }
+            if deleting { BusyOverlayView(text: L10n.get("activity_detail_deleting")) }
+
         }
         .navigationBarBackButtonHidden(deleting)
         // Denser than the default list: less height per row and between the sections (Android: tighter Entry cards).
@@ -1398,6 +1389,26 @@ struct SettingsPrivacyPage: View {
                 }
         }
         .navigationTitle(L10n.get("settings_page_privacy"))
+    }
+}
+
+/// A spinning wheel with a text over a dimmed screen that takes every tap while a held action runs
+/// (Android: ui/BusyOverlay.kt).
+struct BusyOverlayView: View {
+    let text: String
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.45).ignoresSafeArea()
+            HStack(spacing: 16) {
+                ProgressView()
+                Text(text)
+            }
+            .padding(.horizontal, 24).padding(.vertical, 20)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {}
     }
 }
 
