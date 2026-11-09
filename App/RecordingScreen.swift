@@ -48,7 +48,7 @@ struct RecordingScreen: View {
         .onChange(of: live == nil) { _, gone in if gone { mapFull = false; dismiss() } }
         .fullScreenCover(isPresented: $mapFull) {
             if let feed, !feed.trackLat.isEmpty {
-                LiveMapFullScreen(feed: feed, startEpochSec: startEpochSec, choices: mapChoices) { mapFull = false }
+                LiveMapFullScreen(feed: feed, startEpochSec: startEpochSec, choices: mapChoices, latestRecord: bursts.last) { mapFull = false }
             } else {
                 Color.clear.onAppear { mapFull = false }
             }
@@ -78,19 +78,13 @@ struct RecordingScreen: View {
                         LabeledContent(L10n.get("recording_detail_position"), value: String(format: "%.4f, %.4f", live.lat, live.lon))
                     }
                 }
-                Section(String(format: L10n.get("activity_detail_boosts"), bursts.count)) {
-                    if bursts.isEmpty {
-                        Text(L10n.get("recording_records_none")).font(.footnote).foregroundStyle(.secondary)
-                    } else {
-                        ForEach(bursts, id: \.id) { burst in
-                            Text(String(format: L10n.get("burst_open_item"),
-                                        Date(timeIntervalSince1970: TimeInterval(burst.burstId)).formatted(date: .omitted, time: .shortened)))
-                        }
+                // The Sensor Records of this recording, only once one has arrived: a pill per record opens its charts.
+                if !bursts.isEmpty {
+                    Section {
+                        FlowPills(bursts: bursts)
+                    } header: {
+                        Label(String(format: L10n.get("activity_detail_boosts"), bursts.count), systemImage: "waveform.path.ecg")
                     }
-                }
-                if !live.discarded {
-                    Section { Text(L10n.get("watch_live_hint")).font(.footnote).foregroundStyle(.secondary) }
-                        .listRowBackground(Color.clear)
                 }
             }
         }
@@ -140,8 +134,6 @@ struct RecordingScreen: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                 }
-                Text(String(format: L10n.get("recording_live_stats"), Int(feed.messages), Int(feed.missed)))
-                    .font(.footnote).foregroundStyle(.secondary)
             } else {
                 Text(L10n.get("recording_live_hint")).font(.footnote).foregroundStyle(.secondary)
             }
@@ -159,6 +151,48 @@ struct RecordingScreen: View {
     static func clockText(_ total: Int) -> String {
         let h = total / 3600, m = (total % 3600) / 60, s = total % 60
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
+    }
+}
+
+// MARK: - Sensor Record pills
+
+/// One Sensor Record as a pill (Android `SensorRecordPill`): a sensor mark, its time, "Charts" and an arrow.
+struct SensorRecordPill: View {
+    let burst: RecordingBoostView
+    var onMap = false
+
+    var body: some View {
+        let time = Date(timeIntervalSince1970: TimeInterval(burst.burstId)).formatted(date: .omitted, time: .shortened)
+        HStack(spacing: 6) {
+            Image(systemName: "waveform.path.ecg")
+            Text(time).font(.subheadline.weight(.semibold))
+            Text(L10n.get("burst_charts_button")).font(.caption).opacity(0.75)
+            Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+        }
+        .foregroundStyle(onMap ? Color(red: 0x1B / 255, green: 0x4F / 255, blue: 0x8F / 255) : Color.accentColor)
+        .padding(.leading, 10).padding(.trailing, 8).padding(.vertical, 6)
+        .background(onMap ? Color.white.opacity(0.9) : Color.accentColor.opacity(0.10), in: Capsule())
+        .accessibilityLabel(String(format: L10n.get("burst_open_item"), time))
+    }
+}
+
+/// The records of the Recording screen as pills that wrap, each linking to its charts.
+private struct FlowPills: View {
+    let bursts: [RecordingBoostView]
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { pills }
+            VStack(alignment: .leading, spacing: 8) { pills }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder private var pills: some View {
+        ForEach(bursts, id: \.id) { burst in
+            NavigationLink { SensorRecordView(burstId: burst.id) } label: { SensorRecordPill(burst: burst) }
+                .buttonStyle(.plain)
+        }
     }
 }
 
@@ -388,8 +422,11 @@ struct LiveMapFullScreen: View {
     let feed: LiveFeedView
     let startEpochSec: Int64
     @ObservedObject var choices: LiveMapChoices
+    /// The newest Sensor Record of this recording, as a pill above the legend; nil when there is none.
+    var latestRecord: RecordingBoostView? = nil
     let onClose: () -> Void
     @State private var barHeight: CGFloat = 52
+    @State private var openRecord: String?
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -399,6 +436,20 @@ struct LiveMapFullScreen: View {
                 dataBar(running: max(0, Int(context.date.timeIntervalSince1970) - Int(startEpochSec)))
                     .background(GeometryReader { g in Color.clear.preference(key: BarHeightKey.self, value: g.size.height) })
                     .padding(8)
+                if let record = latestRecord {
+                    VStack {
+                        Spacer()
+                        Button { openRecord = record.id } label: { SensorRecordPill(burst: record, onMap: true) }
+                            .buttonStyle(.plain)
+                            .padding(.bottom, 56)
+                    }
+                }
+            }
+        }
+        // The full-screen cover has no navigation stack: the record's charts open in a sheet over the map.
+        .sheet(isPresented: Binding(get: { openRecord != nil }, set: { if !$0 { openRecord = nil } })) {
+            if let id = openRecord {
+                NavigationStack { SensorRecordView(burstId: id) }
             }
         }
         .onPreferenceChange(BarHeightKey.self) { barHeight = $0 }
