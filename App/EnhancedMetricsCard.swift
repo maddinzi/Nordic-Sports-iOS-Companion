@@ -551,11 +551,13 @@ struct EnhancedMetricsCard: View {
                     .accessibilityLabel(L10n.get("ios_hr_zones"))
                     VStack(spacing: 0) {
                         if let zone = selectedZone {
+                            // Share, time and the zone with its range (Android: the same in the centre).
                             Text("\(Int(zonePercents[zone]))%").font(centerFont(f))
-                            Text("Z\(zone + 1)").font(centerCaption(f)).foregroundStyle(.secondary)
-                            if space.maximized, let seconds = zoneSeconds(zone) {
+                            if let seconds = zoneSeconds(zone) {
                                 Text(clock(seconds)).font(centerCaption(f)).foregroundStyle(.secondary)
                             }
+                            Text(zoneRange(zone).map { "Z\(zone + 1) · \($0)" } ?? "Z\(zone + 1)")
+                                .font(centerCaption(f)).foregroundStyle(.secondary)
                         } else if view.avgHeartRate > 0 {
                             Text("\(view.avgHeartRate)").font(centerFont(f))
                             Text("bpm").font(centerCaption(f)).foregroundStyle(.secondary)
@@ -569,7 +571,8 @@ struct EnhancedMetricsCard: View {
                         } label: {
                             HStack(spacing: 8) {
                                 RoundedRectangle(cornerRadius: 3).fill(hrZoneColor(index + 1)).frame(width: 12, height: 12)
-                                Text(String(format: L10n.get("ios_zone_n"), index + 1))
+                                // The range only full screen: the card's legend stays short (the picked zone shows it).
+                                Text(zoneLegendLabel(index, full: space.maximized))
                                     .font(.footnote.weight(selectedZone == index ? .bold : .regular))
                                 Spacer(minLength: 4)
                                 // Full screen: the time and the share as two right-aligned columns, like a table.
@@ -591,7 +594,52 @@ struct EnhancedMetricsCard: View {
             }
             .padding(12)
             .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
+            // The picked zone in full, under the tile.
+            if let zone = selectedZone {
+                Text(zoneDetail(zone)).font(.footnote)
+            }
         }
+    }
+
+    /// The athlete's range of zone [index] (0...4) from the watch, "142–156" or "< 125"; nil without limits.
+    private func zoneRange(_ index: Int) -> String? {
+        HrZoneBounds.shared.rangeText(bounds: view.hrZoneBounds, zone: Int32(index + 1))
+    }
+
+    private func zoneLegendLabel(_ index: Int, full: Bool) -> String {
+        let name = String(format: L10n.get("ios_zone_n"), index + 1)
+        guard full, let range = zoneRange(index) else { return name }
+        return "\(name) · \(range) bpm"
+    }
+
+    /// "Zone 3 · 142–156 bpm · 6:42 · 23 %": the picked zone in full.
+    private func zoneDetail(_ index: Int) -> String {
+        var parts = [String(format: L10n.get("ios_zone_n"), index + 1)]
+        if let range = zoneRange(index) { parts.append("\(range) bpm") }
+        if let seconds = zoneSeconds(index), seconds > 0 { parts.append(clock(seconds)) }
+        parts.append("\(Int(zonePercents[index])) %")
+        return parts.joined(separator: " · ")
+    }
+
+    /// "Doppelstock (DP) · 20:35 · 71 % · Tempo 16,2 km/h · Puls 162 · Strecke pro Einsatz 4,4 m": the picked technique
+    /// with what the technique table knows of it (Android: `techniqueDetail`).
+    private func techniqueDetail(_ key: String) -> String? {
+        guard let share = view.shares.first(where: { $0.key == key }) else { return nil }
+        var parts = [stateName(key)]
+        if share.seconds > 0 { parts.append(clock(Int(share.seconds))) }
+        parts.append("\(Int(share.percent)) %")
+        if let row = view.rows.first(where: { $0.key == key }) {
+            let cells = row.cells.map { $0 as String }
+            func cell(_ i: Int) -> String? {
+                guard i < cells.count else { return nil }
+                let c = cells[i].trimmingCharacters(in: .whitespaces)
+                return c.isEmpty || c == "–" || c == "-" ? nil : c
+            }
+            if let speed = cell(1) { parts.append("\(L10n.get("em_col_speed")) \(speed) km/h") }
+            if let hr = cell(2) { parts.append("\(L10n.get("em_col_hr")) \(hr)") }
+            if let dps = cell(3) { parts.append("\(L10n.get("em_col_dps")) \(dps)") }
+        }
+        return parts.joined(separator: " · ")
     }
 
     /// One stacked bar per technique, gait or terrain state: its seconds in zones 1 to 5 (Android: `HeartRateSection`).
@@ -886,10 +934,11 @@ struct EnhancedMetricsCard: View {
                 if let key = terrainKey, let share = view.shares.first(where: { $0.key == key }) {
                     VStack(spacing: 0) {
                         Text("\(Int(share.percent))%").font(centerFont(f))
-                        Text(stateShort(key)).font(centerCaption(f)).foregroundStyle(.secondary)
-                        if space.maximized, share.seconds > 0 {
+                        // Share and time together: the time no longer gives way to the share.
+                        if share.seconds > 0 {
                             Text(clock(Int(share.seconds))).font(centerCaption(f)).foregroundStyle(.secondary)
                         }
+                        Text(stateShort(key)).font(centerCaption(f)).foregroundStyle(.secondary)
                     }
                 } else if view.totalSeconds > 0 {
                     VStack(spacing: 0) {
@@ -921,6 +970,9 @@ struct EnhancedMetricsCard: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                }
+                if let key = terrainKey, !isRun, let detail = techniqueDetail(key) {
+                    Text(detail).font(.footnote).padding(.top, 4)
                 }
                 if isRun, view.uphillTotalPercent >= 0 {
                     Divider()

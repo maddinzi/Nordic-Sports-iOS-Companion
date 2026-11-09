@@ -285,7 +285,11 @@ struct ActivitiesScreen: View {
 /// A recording on a watch (its `activityStart`), as Android's card: which watch, activity
 /// and training type, since when and how long, and the start position.
 struct WatchLiveCard: View {
+    @EnvironmentObject var companion: Companion
     let live: LiveActivityView
+    @State private var showRecording = false
+    /// Recordings whose screen opened by itself already (once per recording and app run, as on Android).
+    private static var autoOpened = Set<Int64>()
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -309,8 +313,23 @@ struct WatchLiveCard: View {
                 }
             }
             .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            // A tap opens the Recording screen (live values and the track with instant mode), as on Android.
+            .onTapGesture { if !live.discarded { showRecording = true } }
         }
         .listRowBackground(live.discarded ? CardTone.grey.container : CardTone.blue.container)
+        // A recording that just started opens its screen by itself, once.
+        .onAppear {
+            let age = Int64(Date().timeIntervalSince1970) - live.startEpochSec
+            if !live.discarded && age < 120 && !Self.autoOpened.contains(live.startEpochSec) {
+                Self.autoOpened.insert(live.startEpochSec)
+                showRecording = true
+            }
+        }
+        .fullScreenCover(isPresented: $showRecording) {
+            RecordingScreen(startEpochSec: live.startEpochSec).environmentObject(companion)
+        }
     }
 }
 
@@ -710,7 +729,14 @@ struct ActivityDetailScreen: View {
                 Section(L10n.get("ios_hr_zones")) {
                     ForEach(Array(zones.enumerated()), id: \.offset) { index, percent in
                         HStack {
-                            Text(String(format: L10n.get("ios_zone_n"), index + 1)).frame(width: 70, alignment: .leading)
+                            // The zone with the athlete's range under it, when the watch sent the limits.
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(String(format: L10n.get("ios_zone_n"), index + 1))
+                                if let range = HrZoneBounds.shared.rangeText(bounds: current.hrZoneBounds, zone: Int32(index + 1)) {
+                                    Text("\(range) bpm").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            }
+                            .frame(width: 90, alignment: .leading)
                             ProgressView(value: Double(percent), total: 100)
                             Text("\(Int(percent.rounded())) %").frame(width: 50, alignment: .trailing)
                         }

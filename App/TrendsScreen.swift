@@ -33,6 +33,8 @@ private struct TrendChartDef {
     let id: String
     let title: String
     let show: Bool
+    /// How to read the chart or what its terms mean, behind an (i) in the title row.
+    var info: String? = nil
 }
 
 /// The Trends tab (Android: `TrendsScreen`): what the watch's Enhanced Metrics add up to over the last week or month
@@ -98,7 +100,10 @@ struct TrendsScreen: View {
             TrendChartDef(id: "pol", title: L10n.get("trends_c_pol"), show: cur.contains { $0.techniques.contains { $0.rate != nil } }),
             TrendChartDef(id: "slope", title: L10n.get("trends_c_slope"), show: cur.contains { ($0.techniques + $0.terrain).contains { $0.gradePct != nil } }),
             TrendChartDef(id: "eff", title: L10n.get("trends_c_eff"), show: window.filter { $0.efficiency > 0 }.count >= 3),
-            TrendChartDef(id: "rec", title: L10n.get("trends_c_rec"), show: window.filter { $0.rmssd > 0 }.count >= 2),
+            // RMSSD explained behind the (i), as on Android.
+            TrendChartDef(id: "rec", title: L10n.get("trends_c_rec"), show: window.filter { $0.rmssd > 0 }.count >= 2,
+                          info: ["\(L10n.get("em_rmssd_name")): \(L10n.get("em_rmssd_desc"))",
+                                 L10n.get("em_hrv_note")].joined(separator: "\n\n")),
             TrendChartDef(id: "climb", title: L10n.get("trends_c_climb"), show: cur.contains { $0.ascentM > 0 || $0.descentM > 0 }),
         ]
     }
@@ -365,6 +370,7 @@ struct TrendsScreen: View {
                         HStack {
                             Text(chart.title).font(.subheadline.weight(.semibold)).foregroundStyle(tone.title)
                             Spacer()
+                            if let info = chart.info { ChartInfoButton(title: chart.title, text: info) }
                             ExpandChartButton(tone: tone) { expandedId = chart.id }
                         }
                         chartBody(chart.id, .inline)

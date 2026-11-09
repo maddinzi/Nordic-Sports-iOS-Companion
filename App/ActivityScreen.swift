@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The two modes of an activity screen (Android: `ActivityMode`): what the athlete declares, and what the watch measured.
 enum ActivityMode: Hashable {
-    case entry, metrics
+    case entry, metrics, sensor
 }
 
 /// One screen per activity with a switch between its Entry (diary and Strava) and its Metrics (Android: `ActivityScreen`).
@@ -13,6 +13,8 @@ struct ActivityScreen: View {
     @EnvironmentObject var companion: Companion
     let item: ActivityItem
     @State private var mode: ActivityMode
+    /// The Sensor Records captured during this activity; the Sensor mode exists only when there is one.
+    @State private var bursts: [RecordingBoostView] = []
     private let entryTab: EntryTab
     private let metricsTab: MetricsTab
 
@@ -26,6 +28,8 @@ struct ActivityScreen: View {
             _mode = State(initialValue: .entry)
         case .data, .technique:
             _mode = State(initialValue: item.hasWatchMetrics ? .metrics : .entry)
+        case .sensor:
+            _mode = State(initialValue: .sensor)
         }
         entryTab = target == .strava ? .strava : .diary
         metricsTab = target == .technique ? .technique : .data
@@ -63,10 +67,15 @@ struct ActivityScreen: View {
         VStack(spacing: 0) {
             topCard
             // Level 2 of the navigation: the mode, always in reach above the content.
-            if item.hasWatchMetrics {
+            if item.hasWatchMetrics || !bursts.isEmpty {
                 Picker("", selection: $mode) {
                     Label(L10n.get("card_lane_entry"), systemImage: "square.and.pencil").tag(ActivityMode.entry)
-                    Label(L10n.get("card_lane_metrics"), systemImage: "chart.bar.fill").tag(ActivityMode.metrics)
+                    if item.hasWatchMetrics {
+                        Label(L10n.get("card_lane_metrics"), systemImage: "chart.bar.fill").tag(ActivityMode.metrics)
+                    }
+                    if !bursts.isEmpty {
+                        Label(L10n.get("card_lane_sensor"), systemImage: "waveform.path.ecg").tag(ActivityMode.sensor)
+                    }
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
@@ -83,9 +92,14 @@ struct ActivityScreen: View {
                         .allowsHitTesting(mode == .metrics)
                         .accessibilityHidden(mode != .metrics)
                 }
+                // Built only when opened: each record computes its charts.
+                if mode == .sensor && !bursts.isEmpty {
+                    SensorModeView(bursts: bursts)
+                }
             }
         }
-        .navigationTitle(L10n.get(mode == .entry ? "card_lane_entry" : "card_lane_metrics"))
+        .task(id: item.id) { bursts = await companion.recordingBoosts(of: item.id) }
+        .navigationTitle(L10n.get(mode == .entry ? "card_lane_entry" : mode == .metrics ? "card_lane_metrics" : "card_lane_sensor"))
         .navigationBarTitleDisplayMode(.inline)
     }
 }

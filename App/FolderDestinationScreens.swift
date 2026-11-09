@@ -33,17 +33,6 @@ struct AddFolderDestinationScreen: View {
                     Button(L10n.get("ios_choose_folder")) { self.folderName = nil }
                 }
                 options
-                Section {
-                    Button(L10n.get("json_add_button")) {
-                        Task {
-                            let added = await companion.addFolderDestination(
-                                format: format, scope: scope, backfill: backfill,
-                                position: position, monthFolders: monthFolders, dialect: dialect
-                            )
-                            if added { dismiss() }
-                        }
-                    }
-                }
             } else {
                 Section(L10n.get("destination_info_storage")) {
                     Text(L10n.get(isCsv ? "connect_csv_local_pick_folder" : "connect_json_local_pick_folder"))
@@ -61,6 +50,26 @@ struct AddFolderDestinationScreen: View {
         .disabled(companion.diaryBusy)
         .navigationTitle(L10n.get(isCsv ? "connect_csv_title" : "connect_json_title"))
         .navigationBarTitleDisplayMode(.inline)
+        // Cancel always; Add only once a folder is chosen, so it never looks as if something was set up
+        // while nothing was (Android: Cancel and a disabled Done in the folder step).
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button(L10n.get("common_cancel")) { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button(L10n.get("json_add_button")) {
+                    Task {
+                        let added = await companion.addFolderDestination(
+                            format: format, scope: scope, backfill: backfill,
+                            position: position, monthFolders: monthFolders, dialect: dialect
+                        )
+                        if added { dismiss() }
+                    }
+                }
+                .disabled(folderName == nil || companion.diaryBusy)
+            }
+        }
         .fileImporter(isPresented: $pickingFolder, allowedContentTypes: [.folder]) { result in
             switch result {
             case .success(let url): Task { handle(await companion.pickDeviceFolder(url)) }
