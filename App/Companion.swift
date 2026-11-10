@@ -422,6 +422,11 @@ final class Companion: NSObject, ObservableObject {
         (try? await core.moveToServer(email: email, code: code)) ?? "FAILED"
     }
 
+    /// The stored track of an activity for its map card (Instant Mode recordings); nil without one.
+    func activityTrack(of item: ActivityItem) async -> LiveFeedView? {
+        try? await core.activityTrackView(activityId: item.id, startEpochSec: Int64(item.startEpochSec), preset: item.preset)
+    }
+
     func undoServerMove() async {
         try? await core.undoServerMove()
     }

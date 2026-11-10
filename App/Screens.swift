@@ -680,6 +680,10 @@ struct ActivityDetailScreen: View {
     @State private var showBoosts = false
     @State private var conflictDetail: StravaTitleConflict?
     @State private var showConflict = false
+    /// The stored track (Instant Mode) and its map's choices; nil without a track (Android `ActivityTrackCard`).
+    @State private var track: LiveFeedView?
+    @StateObject private var mapChoices = LiveMapChoices()
+    @State private var mapFull = false
 
     init(item: ActivityItem, initialTab: EntryTab = .diary) {
         self.item = item
@@ -731,6 +735,14 @@ struct ActivityDetailScreen: View {
                 }
             }
             if !onStravaTab {
+            // The stored track: the same map as the live recording, framed on the whole track.
+            if let track {
+                Section(L10n.get("activity_detail_section_map")) {
+                    LiveTrackMap(points: TrackPoints(track), automatic: track.baseMap, choices: mapChoices, onExpand: { mapFull = true })
+                        .frame(height: 240)
+                        .listRowInsets(EdgeInsets())
+                }
+            }
             Section(L10n.get("activity_detail_training_type_label")) {
                 LabeledContent(L10n.get("activity_detail_sport_label"), value: Format.presetWord(current.preset))
                 if !current.trainingType.isEmpty, current.trainingType != "unknown" {
@@ -917,6 +929,17 @@ struct ActivityDetailScreen: View {
         .sheet(isPresented: $editing) { EditActivitySheet(item: current).environmentObject(companion) }
         .task(id: current.stravaActivityId) { stravaRemovedAt = await companion.stravaDataRemovedAt(item.id) }
         .task(id: item.id) { boosts = await companion.recordingBoosts(of: item.id) }
+        .task(id: item.id) { track = await companion.activityTrack(of: item) }
+        .fullScreenCover(isPresented: $mapFull) {
+            if let track {
+                ZStack(alignment: .bottomTrailing) {
+                    LiveTrackMap(points: TrackPoints(track), automatic: track.baseMap, choices: mapChoices, fullScreen: true)
+                    Button(L10n.get("em_sheet_close")) { mapFull = false }
+                        .buttonStyle(.borderedProminent)
+                        .padding()
+                }
+            }
+        }
         .sheet(isPresented: $showBoosts) { ActivityBoostsSheet(boosts: boosts) }
         .alert(L10n.get("main_strava_conflict_dialog_title"), isPresented: $showConflict, presenting: conflictDetail) { _ in
             Button(L10n.get("main_strava_conflict_overwrite")) { Task { await companion.overwriteStrava(item.id) } }
