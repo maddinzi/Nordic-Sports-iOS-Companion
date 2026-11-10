@@ -1324,6 +1324,7 @@ struct AboutScreen: View {
                     Button(L10n.get("about_account_copy")) { UIPasteboard.general.string = accountId }
                 }
             }
+            ServerConnectionSection(credentialVersion: tokenSaved)
             // Where a tester pastes the token they were given; without one the app works as before.
             Section(header: Text(L10n.get("about_tester_title")), footer: Text(L10n.get("about_tester_hint"))) {
                 if tokenSaved {
@@ -1361,6 +1362,147 @@ struct AboutScreen: View {
         .navigationTitle(L10n.get("about_title"))
         .onAppear { tokenSaved = companion.hasServerToken }
     }
+}
+
+/// About › Server connection (design/server-migration.md; Android: `ServerConnectionSection`):
+/// "Local" (the access built into the app, Strava directly) or "Server" (an access of its own,
+/// Strava through the server), and "Migrate user" with a mailed one-time code while the server's
+/// stage for iOS is pilot or optional; "Back to local" while the athlete moved by themselves.
+private struct ServerConnectionSection: View {
+    /// Changes when the tester token field below changed the credential.
+    let credentialVersion: Bool
+
+    @EnvironmentObject var companion: Companion
+    @State private var tick = 0
+    @State private var stage: String?
+    @State private var open = false
+    @State private var email = ""
+    @State private var code = ""
+    @State private var codeSent = false
+    @State private var busy = false
+    @State private var message: String?
+
+    var body: some View {
+        // Read tick and credentialVersion, so a move, an undo or a token change shows at once.
+        let _ = (tick, credentialVersion)
+        let onServer = companion.onServerConnection
+        Section(header: Text(L10n.get("about_server_title"))) {
+            Text(String(format: L10n.get("about_server_status"),
+                        L10n.get(onServer ? "about_server_status_server" : "about_server_status_local")))
+                .font(.body.bold())
+            Text(L10n.get(onServer ? "about_server_server_body" : "about_server_local_body"))
+                .font(.footnote).foregroundStyle(.secondary)
+            if onServer, let end = companion.serverTokenExpiresAt {
+                Text(String(format: L10n.get("about_server_valid_until"), end.formatted(date: .abbreviated, time: .omitted)))
+                    .font(.footnote)
+            }
+            if let message {
+                Text(message).font(.subheadline).foregroundStyle(Color.accentColor)
+            }
+            if !onServer && !open {
+                switch stage {
+                case "pilot", "optional":
+                    if stage == "pilot" {
+                        Text(L10n.get("about_server_pilot_hint")).font(.footnote)
+                    }
+                    Button(L10n.get("about_server_migrate")) { open = true; message = nil }
+                case "off":
+                    Text(L10n.get("about_server_not_open")).font(.footnote).foregroundStyle(.secondary)
+                default:
+                    EmptyView() // still asking the server, or it could not be reached
+                }
+            }
+            if open && !onServer {
+                VStack(alignment: .leading, spacing: 4) {
+                    TextField(L10n.get("about_server_email"), text: $email)
+                        .keyboardType(.emailAddress)
+                        .textContentType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .disabled(busy)
+                    Text(L10n.get("about_server_email_hint")).font(.caption).foregroundStyle(.secondary)
+                }
+                Button(L10n.get("about_server_send_code")) { sendCode() }
+                    .disabled(busy || !email.contains("@"))
+                if codeSent {
+                    TextField(L10n.get("about_server_code"), text: $code)
+                        .keyboardType(.numberPad)
+                        .textContentType(.oneTimeCode)
+                        .disabled(busy)
+                        .onChange(of: code) { _, value in
+                            let digits = String(value.filter { $0.isNumber }.prefix(6))
+                            if digits != value { code = digits }
+                        }
+                    Button(L10n.get("about_server_move_now")) { move() }
+                        .disabled(busy || code.count != 6)
+                }
+                Button(L10n.get("about_server_cancel"), role: .cancel) {
+                    open = false; codeSent = false; code = ""; message = nil
+                }
+                .disabled(busy)
+                if busy { ProgressView() }
+            }
+            if onServer && companion.serverMoveCanUndo {
+                Button(L10n.get("about_server_undo")) { undo() }.disabled(busy)
+            }
+        }
+        .task { stage = await companion.serverMoveStage() }
+    }
+
+    private func sendCode() {
+        busy = true
+        Task {
+            let result = await companion.requestServerMoveCode(email: email)
+            switch result {
+            case "SENT":
+                message = L10n.get("about_server_code_sent")
+                codeSent = true
+            case "NOT_OPEN": message = L10n.get("about_server_not_open")
+            case "INVALID": message = L10n.get("about_server_invalid")
+            default: message = L10n.get("about_server_failed")
+            }
+            busy = false
+        }
+    }
+
+    private func move() {
+        busy = true
+        message = L10n.get("about_server_moving")
+        Task {
+            let result = await companion.moveToServer(email: email, code: code)
+            message = L10n.get(Self.moveMessage[result] ?? "about_server_failed")
+            if result == "MOVED" || result == "MOVED_LINK_PENDING" {
+                open = false
+                codeSent = false
+                code = ""
+            }
+            busy = false
+            tick += 1
+        }
+    }
+
+    private func undo() {
+        busy = true
+        Task {
+            await companion.undoServerMove()
+            message = L10n.get("about_server_undone")
+            busy = false
+            tick += 1
+        }
+    }
+
+    private static let moveMessage: [String: String] = [
+        "MOVED": "about_server_moved",
+        "MOVED_LINK_PENDING": "about_server_moved_link_pending",
+        "WRONG_CODE": "about_server_wrong_code",
+        "CODE_EXPIRED": "about_server_code_expired",
+        "NOT_ELIGIBLE": "about_server_not_eligible",
+        "NOT_OPEN": "about_server_not_open",
+        "INVALID": "about_server_invalid",
+        "FAILED": "about_server_failed",
+        "STRAVA_CHECK_FAILED": "about_server_strava_failed",
+        "STORE_LATER": "about_server_store_later",
+    ]
 }
 
 /// The open-source notices, the Companion's generated `open_source_licenses.txt` (CI copies it
