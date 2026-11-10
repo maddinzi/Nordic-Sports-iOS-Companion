@@ -58,13 +58,15 @@ final class PhoneRecorderModel: NSObject, ObservableObject, CLLocationManagerDel
         manager.stopUpdatingLocation()
     }
 
-    func start(preset: String, purpose: String, uploadToStrava: Bool) async {
-        guard let core = companion?.core else { return }
+    /// Starts the recording and the GPS; false (the error posted) when the shared recorder refused it.
+    @discardableResult
+    func start(preset: String, purpose: String, uploadToStrava: Bool) async -> Bool {
+        guard let core = companion?.core else { return false }
         do {
             try await core.startPhoneRecording(preset: preset, trainingType: purpose, uploadToStrava: uploadToStrava)
         } catch {
             companion?.post(error.localizedDescription)
-            return
+            return false
         }
         recording = true
         listening = true
@@ -76,6 +78,7 @@ final class PhoneRecorderModel: NSObject, ObservableObject, CLLocationManagerDel
             Task { @MainActor in self?.refresh() }
         }
         refresh()
+        return true
     }
 
     func pause() async { _ = try? await companion?.core.pausePhoneRecording(); refresh() }
@@ -260,9 +263,11 @@ struct PhoneRecordStartScreen: View {
                         }
                         Button {
                             Task {
-                                await phone.start(preset: preset, purpose: purpose, uploadToStrava: companion.stravaConnected && toStrava)
-                                dismiss()
-                                onStarted()
+                                // A refused start stays here with its message, instead of an empty live screen.
+                                if await phone.start(preset: preset, purpose: purpose, uploadToStrava: companion.stravaConnected && toStrava) {
+                                    dismiss()
+                                    onStarted()
+                                }
                             }
                         } label: {
                             Label(L10n.get(startAnyway ? "phone_start_anyway" : "phone_start_button"), systemImage: "play.fill")
