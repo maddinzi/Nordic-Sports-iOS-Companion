@@ -389,6 +389,40 @@ final class Companion: NSObject, ObservableObject {
     /// The website's deletion form takes it; "Delete my data" deletes the account from the app.
     var anonymousAccountId: String? { core.anonymousAccountId.isEmpty ? nil : core.anonymousAccountId }
 
+    // MARK: - Server connection (Android: About › Server connection; design/server-migration.md)
+
+    /// True on the server connection (a credential of its own), false while "Local".
+    var onServerConnection: Bool { core.serverConnectionStatus == "server" }
+
+    /// True while this install moved by itself and can go back to local.
+    var serverMoveCanUndo: Bool { core.serverMoveCanUndo }
+
+    /// When the self-service tester token ends, nil when unknown.
+    var serverTokenExpiresAt: Date? {
+        let millis = core.serverTokenExpiresAtMillis
+        return millis > 0 ? Date(timeIntervalSince1970: TimeInterval(millis) / 1000) : nil
+    }
+
+    /// off, pilot or optional; nil when the server could not be asked.
+    func serverMoveStage() async -> String? {
+        guard let stage = try? await core.serverMoveStage(), !stage.isEmpty else { return nil }
+        return stage
+    }
+
+    /// SENT, NOT_OPEN, INVALID or FAILED.
+    func requestServerMoveCode(email: String) async -> String {
+        (try? await core.requestServerMoveCode(email: email, language: AppLanguage.current)) ?? "FAILED"
+    }
+
+    /// A `ServerMigration.MoveResult` name (MOVED, WRONG_CODE, STORE_LATER, ...).
+    func moveToServer(email: String, code: String) async -> String {
+        (try? await core.moveToServer(email: email, code: code)) ?? "FAILED"
+    }
+
+    func undoServerMove() async {
+        try? await core.undoServerMove()
+    }
+
     /// Sends the finished days of usage counts (Strava calls per kind, no athlete data); does
     /// nothing without a server token. Safe to call often.
     private func reportUsage() async {
@@ -406,6 +440,8 @@ final class Companion: NSObject, ObservableObject {
         await IOSAppAttestRegistration.shared.registerIfDue(core: core) { line in
             WatchLinkSpike.shared.add(line)
         }
+        // Tester token renewal and one re-registration per credential kind (Android: at app start).
+        try? await core.maintainServerConnection()
         await reportUsage()
         guard !outdated else { return }
         await purgeExpiredStravaData()
