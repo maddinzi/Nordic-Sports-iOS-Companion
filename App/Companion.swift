@@ -110,6 +110,9 @@ final class Companion: NSObject, ObservableObject {
             }
         )
         super.init()
+        if IOSAppAttestRegistration.available {
+            core.storeRegistration = AppAttestStoreRegistration(core: core)
+        }
         stravaConnected = core.stravaConnected()
         refreshDiary()
         refreshWatchSettings()

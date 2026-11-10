@@ -989,11 +989,27 @@ struct OnboardingScreen: View {
     @State private var reviewNew = false
     @State private var reviewImported = false
     @State private var importedTouched = false
+    /// Step 10 (tester access, Android `OnboardingGuideStep.SERVER`): the server's move stage for iOS,
+    /// asked once for a local install; the step shows while it is pilot, optional or nudge.
+    @State private var serverStage: String?
+    /// The result text once the install moved in the step.
+    @State private var serverMoved: String?
 
-    /// Steps: 0 nickname, 1 demo, 2 watch, 3 wrist, 4 skill level, 5 Strava, 6 diary, 7 review, 8 "You're set"
-    /// (Android `OnboardingGuideStep` order). The ones that show for this athlete, for "Step n of N" without gaps.
+    private var serverStepInPlan: Bool {
+        guard !useDemo else { return false }
+        return serverMoved != nil
+            || (["pilot", "optional", "nudge"].contains(serverStage ?? "") && !companion.onServerConnection)
+    }
+
+    /// Pilot: invited testers only, so the others go on with "Not now"; otherwise the step stays until moved.
+    private var serverRequired: Bool { serverStage != "pilot" }
+
+    /// Steps: 0 nickname, 1 demo, 10 tester access, 2 watch, 3 wrist, 4 skill level, 5 Strava, 6 diary, 7 review,
+    /// 8 "You're set" (Android `OnboardingGuideStep` order). The ones that show for this athlete, for "Step n of N"
+    /// without gaps.
     private var plan: [Int] {
         var p = [0, 1]
+        if serverStepInPlan { p.append(10) }
         if !useDemo { p.append(2) }
         if wristUnsetWatch != nil { p.append(3) }
         if skillUnsetWatch != nil { p.append(4) }
@@ -1028,7 +1044,8 @@ struct OnboardingScreen: View {
         }
     }
 
-    private func next() { step += 1 }
+    /// The tester access (10) sits between the demo step and the watch.
+    private func next() { step = step == 10 ? 2 : step + 1 }
 
     private func chooseWrist(_ watch: WatchSettingsView, _ value: Int32) {
         companion.changeWatchSetting(deviceId: watch.deviceId, key: "WatchWrist", value: value)
@@ -1057,6 +1074,9 @@ struct OnboardingScreen: View {
                 footer.padding()
             }
             .navigationDestination(isPresented: $diaryShown) { DiaryLocationsScreen() }
+            .task {
+                if !companion.onServerConnection { serverStage = await companion.serverMoveStage() }
+            }
         }
     }
 
@@ -1076,6 +1096,18 @@ struct OnboardingScreen: View {
             demoChoice(demo: false, title: "onboarding_guide_demo_option_real", subtitle: "onboarding_guide_demo_option_real_sub")
             demoChoice(demo: true, title: "onboarding_guide_demo_option_demo", subtitle: "onboarding_guide_demo_option_demo_sub")
             Text(L10n.get("onboarding_guide_demo_later")).font(.footnote).foregroundStyle(.secondary)
+        case 10:
+            // The tester access: About's form inside the guide, before Strava, so its sign-in runs
+            // through the server.
+            Text(L10n.get("onboarding_guide_server_title")).font(.title2.bold())
+            if let serverMoved {
+                Text(serverMoved)
+            } else {
+                Text(L10n.get("onboarding_guide_server_body"))
+                ServerMoveForm(onMoved: { text in serverMoved = text })
+                Text(L10n.get(serverRequired ? "onboarding_guide_server_required" : "onboarding_guide_server_later"))
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
         case 2:
             // The watch app: ask, then wait until the watch has sent a message (the app sends its
             // settings at every start). "Next" works only after that. The wrist is asked right there.
@@ -1193,11 +1225,22 @@ struct OnboardingScreen: View {
                     if useDemo {
                         // The simulated watch stands in for the real one: the watch step is skipped.
                         Task { await companion.loadDemoData(); step += 2 }
+                    } else if serverStepInPlan {
+                        step = 10
                     } else {
                         next()
                     }
                 }
                 .buttonStyle(.borderedProminent)
+            case 10:
+                if serverMoved == nil && !serverRequired {
+                    Button(L10n.get("onboarding_guide_not_now")) { next() }
+                }
+                Spacer()
+                if serverMoved != nil {
+                    Button(L10n.get("onboarding_guide_watch_continue")) { next() }
+                        .buttonStyle(.borderedProminent)
+                }
             case 2:
                 if watchPhase == 0 {
                     Button(L10n.get("onboarding_guide_not_now")) { next() }
@@ -1344,9 +1387,6 @@ private struct ServerConnectionSection: View {
     @State private var tick = 0
     @State private var stage: String?
     @State private var open = false
-    @State private var email = ""
-    @State private var code = ""
-    @State private var codeSent = false
     @State private var busy = false
     @State private var message: String?
     @State private var pasteOpen = false
@@ -1372,7 +1412,7 @@ private struct ServerConnectionSection: View {
             }
             if !onServer && !open {
                 switch stage {
-                case "pilot", "optional":
+                case "pilot", "optional", "nudge":
                     if stage == "pilot" {
                         Text(L10n.get("about_server_pilot_hint")).font(.footnote)
                     }
@@ -1410,34 +1450,10 @@ private struct ServerConnectionSection: View {
                 }
             }
             if open && !onServer {
-                VStack(alignment: .leading, spacing: 4) {
-                    TextField(L10n.get("about_server_email"), text: $email)
-                        .keyboardType(.emailAddress)
-                        .textContentType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .disabled(busy)
-                    Text(L10n.get("about_server_email_hint")).font(.caption).foregroundStyle(.secondary)
-                }
-                Button(L10n.get("about_server_send_code")) { sendCode() }
-                    .disabled(busy || !email.contains("@"))
-                if codeSent {
-                    TextField(L10n.get("about_server_code"), text: $code)
-                        .keyboardType(.numberPad)
-                        .textContentType(.oneTimeCode)
-                        .disabled(busy)
-                        .onChange(of: code) { _, value in
-                            let digits = String(value.filter { $0.isNumber }.prefix(6))
-                            if digits != value { code = digits }
-                        }
-                    Button(L10n.get("about_server_move_now")) { move() }
-                        .disabled(busy || code.count != 6)
-                }
-                Button(L10n.get("about_server_cancel"), role: .cancel) {
-                    open = false; codeSent = false; code = ""; message = nil
-                }
-                .disabled(busy)
-                if busy { ProgressView() }
+                ServerMoveForm(
+                    onMoved: { text in message = text; open = false; tick += 1 },
+                    onCancel: { open = false; message = nil }
+                )
             }
             if onServer && companion.serverTokenRemovable {
                 Button(L10n.get("about_tester_remove"), role: .destructive) {
@@ -1452,6 +1468,74 @@ private struct ServerConnectionSection: View {
             }
         }
         .task { stage = await companion.serverMoveStage() }
+    }
+
+    private func undo() {
+        busy = true
+        Task {
+            await companion.undoServerMove()
+            message = L10n.get("about_server_undone")
+            busy = false
+            tick += 1
+        }
+    }
+}
+
+/// The move's e-mail and one-time code form (Android `ServerMoveForm`), shared by About, the setup
+/// guide's server step and the start-up reminder: asks for a code, then moves with it. `onMoved`
+/// gets the result text once this install is on the server; failures stay in the form. Bordered
+/// buttons, so each one reacts on its own inside a List row.
+struct ServerMoveForm: View {
+    @EnvironmentObject var companion: Companion
+    var onMoved: (String) -> Void
+    var onCancel: (() -> Void)? = nil
+    @State private var email = ""
+    @State private var code = ""
+    @State private var codeSent = false
+    @State private var busy = false
+    @State private var message: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                TextField(L10n.get("about_server_email"), text: $email)
+                    .textFieldStyle(.roundedBorder)
+                    .keyboardType(.emailAddress)
+                    .textContentType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .disabled(busy)
+                Text(L10n.get("about_server_email_hint")).font(.caption).foregroundStyle(.secondary)
+            }
+            HStack {
+                Button(L10n.get("about_server_send_code")) { sendCode() }
+                    .buttonStyle(.bordered)
+                    .disabled(busy || !email.contains("@"))
+                if let onCancel {
+                    Button(L10n.get("about_server_cancel"), role: .cancel) { onCancel() }
+                        .buttonStyle(.borderless)
+                        .disabled(busy)
+                }
+            }
+            if codeSent {
+                TextField(L10n.get("about_server_code"), text: $code)
+                    .textFieldStyle(.roundedBorder)
+                    .keyboardType(.numberPad)
+                    .textContentType(.oneTimeCode)
+                    .disabled(busy)
+                    .onChange(of: code) { _, value in
+                        let digits = String(value.filter { $0.isNumber }.prefix(6))
+                        if digits != value { code = digits }
+                    }
+                Button(L10n.get("about_server_move_now")) { move() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(busy || code.count != 6)
+            }
+            if let message {
+                Text(message).font(.subheadline).foregroundStyle(Color.accentColor)
+            }
+            if busy { ProgressView() }
+        }
     }
 
     private func sendCode() {
@@ -1475,24 +1559,16 @@ private struct ServerConnectionSection: View {
         message = L10n.get("about_server_moving")
         Task {
             let result = await companion.moveToServer(email: email, code: code)
-            message = L10n.get(Self.moveMessage[result] ?? "about_server_failed")
+            busy = false
+            let text = L10n.get(Self.moveMessage[result] ?? "about_server_failed")
             if result == "MOVED" || result == "MOVED_LINK_PENDING" {
-                open = false
                 codeSent = false
                 code = ""
+                message = nil
+                onMoved(text)
+            } else {
+                message = text
             }
-            busy = false
-            tick += 1
-        }
-    }
-
-    private func undo() {
-        busy = true
-        Task {
-            await companion.undoServerMove()
-            message = L10n.get("about_server_undone")
-            busy = false
-            tick += 1
         }
     }
 
@@ -3057,6 +3133,38 @@ struct DiaryLocationsScreen: View {
             }
         default:
             companion.message = result.message
+        }
+    }
+}
+
+/// The start-up reminder for a local install while the server's move stage for iOS is `nudge`
+/// (Android `ServerNudgeDialog`): what changes, the move's form, and "Later".
+struct ServerNudgeSheet: View {
+    @EnvironmentObject var companion: Companion
+    let close: () -> Void
+    @State private var moved: String?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let moved {
+                        Text(moved)
+                    } else {
+                        Text(L10n.get("server_nudge_body"))
+                        ServerMoveForm(onMoved: { text in moved = text })
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+            }
+            .navigationTitle(L10n.get("server_nudge_title"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L10n.get(moved != nil ? "onboarding_guide_watch_continue" : "server_nudge_later")) { close() }
+                }
+            }
         }
     }
 }

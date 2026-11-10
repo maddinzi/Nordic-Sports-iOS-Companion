@@ -10,6 +10,9 @@ struct RootView: View {
     /// The first-start guide is shown once; an app that is already set up skips it.
     @AppStorage("onboardingDone") private var onboardingDone = false
     @State private var showOnboarding = false
+    /// Stage `nudge`: the reminder to move to the server, at most once in 20 hours.
+    @AppStorage("serverNudgeShownAt") private var serverNudgeShownAt = 0.0
+    @State private var showServerNudge = false
     @State private var tab = 0
 
     var body: some View {
@@ -43,12 +46,23 @@ struct RootView: View {
             OnboardingScreen { showOnboarding = false }
                 .environmentObject(companion)
         }
+        .sheet(isPresented: $showServerNudge) {
+            ServerNudgeSheet { showServerNudge = false }
+                .environmentObject(companion)
+        }
         .task {
             // Decided once at start, so connecting Strava inside the guide does not close it.
             if !onboardingDone && !companion.stravaConnected && !companion.diaryReceives && companion.activities.isEmpty {
                 showOnboarding = true
             }
             onboardingDone = true
+            // A local install past the guide is reminded to move while the stage is `nudge`.
+            let now = Date().timeIntervalSince1970
+            if !showOnboarding, !companion.demoOn, !companion.onServerConnection, now - serverNudgeShownAt >= 20 * 3600,
+               await companion.serverMoveStage() == "nudge" {
+                serverNudgeShownAt = now
+                showServerNudge = true
+            }
         }
         .alert(
             companion.message ?? "",

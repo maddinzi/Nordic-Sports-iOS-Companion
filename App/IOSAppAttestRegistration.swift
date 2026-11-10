@@ -5,6 +5,9 @@ import NordicSportsShared
 import UIKit
 
 // PRIVACY-SYNC: Sends the App Attest key proof and app/OS version to the Nordic Sports server to create or renew an anonymous installation account. No athlete data. Re-check design/privacy-notice-sync.md before enabling.
+/// The first registration happens only during the server move, with its ticket
+/// (registerWithTicket; design/server-migration.md in the Companion); registerIfDue at app
+/// start only renews an install credential that exists.
 @MainActor
 final class IOSAppAttestRegistration {
     static let shared = IOSAppAttestRegistration()
@@ -15,15 +18,17 @@ final class IOSAppAttestRegistration {
 
     private init() {}
 
-    func registerIfDue(core: CompanionCore, log: (String) -> Void) async {
-        guard Self.enabled, DCAppAttestService.shared.isSupported else { return }
+    /// True when this build can register with App Attest (enabled in Info.plist, device supports it).
+    static var available: Bool { enabled && DCAppAttestService.shared.isSupported }
 
-        let tokenKind = core.serverTokenKind
-        guard tokenKind.isEmpty || tokenKind == "install" else { return }
+    /// Renews the install credential when due; never registers a new install (that is the move's job).
+    func registerIfDue(core: CompanionCore, log: (String) -> Void) async {
+        guard Self.available, core.serverTokenKind == "install" else { return }
+
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         let registeredAt = core.serverInstallRegisteredAtMillis()
         let lastAttemptAt = core.serverInstallRegistrationAttemptAtMillis()
-        if tokenKind == "install", registeredAt > 0, now - registeredAt < renewalIntervalMillis { return }
+        if registeredAt > 0, now - registeredAt < renewalIntervalMillis { return }
         if lastAttemptAt > 0, now - lastAttemptAt < retryIntervalMillis { return }
 
         core.markServerInstallRegistrationAttempt(atMillis: now)
@@ -36,6 +41,31 @@ final class IOSAppAttestRegistration {
         }
     }
 
+    /// The first registration of this install, with the server move's ticket: a new App Attest key,
+    /// attested. True when the install credential is stored.
+    func registerWithTicket(core: CompanionCore, ticket: String, log: (String) -> Void) async -> Bool {
+        guard Self.available else { return false }
+        guard
+            let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+            !appVersion.isEmpty,
+            let buildVersion = Bundle.main.infoDictionary?["CFBundleVersion"] as? String,
+            !buildVersion.isEmpty
+        else {
+            log("App Attest registration with ticket failed (configuration)")
+            return false
+        }
+        core.markServerInstallRegistrationAttempt(atMillis: Int64(Date().timeIntervalSince1970 * 1000))
+        do {
+            try await createAndSubmitAttestation(core: core, appVersion: appVersion, buildVersion: buildVersion, ticket: ticket)
+            return true
+        } catch let error as RegistrationError {
+            log("App Attest registration with ticket failed (\(error.logCode))")
+        } catch {
+            log("App Attest registration with ticket failed (unexpected error)")
+        }
+        return false
+    }
+
     private func register(core: CompanionCore) async throws {
         guard
             let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
@@ -46,21 +76,12 @@ final class IOSAppAttestRegistration {
             throw RegistrationError.invalidConfiguration
         }
 
-        if let keyId = core.serverAppAttestKeyId() {
-            do {
-                try await submitAssertion(core: core, keyId: keyId, appVersion: appVersion, buildVersion: buildVersion)
-                return
-            } catch RegistrationError.keyNotRegistered {
-                guard core.serverTokenKind.isEmpty else { throw RegistrationError.keyNotRegistered }
-            }
-        } else if core.serverTokenKind == "install" {
-            throw RegistrationError.missingInstallationKey
-        }
-
-        try await createAndSubmitAttestation(core: core, appVersion: appVersion, buildVersion: buildVersion)
+        // Renewal only: a lost key cannot register again without a new ticket from the move.
+        guard let keyId = core.serverAppAttestKeyId() else { throw RegistrationError.missingInstallationKey }
+        try await submitAssertion(core: core, keyId: keyId, appVersion: appVersion, buildVersion: buildVersion)
     }
 
-    private func createAndSubmitAttestation(core: CompanionCore, appVersion: String, buildVersion: String) async throws {
+    private func createAndSubmitAttestation(core: CompanionCore, appVersion: String, buildVersion: String, ticket: String) async throws {
         let challenge = try await requestChallenge()
         let keyId = try await generateKey()
         guard core.saveServerAppAttestKeyId(keyId: keyId) else {
@@ -75,6 +96,7 @@ final class IOSAppAttestRegistration {
                 "app_version": appVersion,
                 "build_version": buildVersion,
                 "os_version": UIDevice.current.systemVersion,
+                "registration_ticket": ticket,
             ],
             bearer: nil
         )
@@ -255,6 +277,25 @@ final class IOSAppAttestRegistration {
             case .attestationService: return "device-check"
             case .serverRejected(let status): return "server-\(status)"
             }
+        }
+    }
+}
+
+/// The shared core's store registration hook (CompanionCore.storeRegistration): the server move
+/// hands its ticket here. Set only when App Attest is available, so other builds answer "later".
+final class AppAttestStoreRegistration: NSObject, StoreRegistration {
+    private let core: CompanionCore
+
+    init(core: CompanionCore) {
+        self.core = core
+    }
+
+    func register(ticket: String, done: @escaping (KotlinBoolean) -> Void) {
+        Task { @MainActor in
+            let ok = await IOSAppAttestRegistration.shared.registerWithTicket(core: core, ticket: ticket) { line in
+                WatchLinkSpike.shared.add(line)
+            }
+            done(KotlinBoolean(bool: ok))
         }
     }
 }
