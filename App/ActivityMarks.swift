@@ -6,11 +6,12 @@ enum MarkState { case done, pending, problem }
 
 extension ActivityItem {
     /// The Strava mark (Android `stravaMark`): red on a conflict or a missing activity, in colour when linked, grey while
-    /// a connected Strava will get it; none otherwise. A phone recording waits only for its upload, which iOS has not yet.
+    /// a connected Strava will get it; none otherwise. A phone recording waits only for its queued upload.
     func stravaMark(connected: Bool) -> MarkState? {
         if stravaConflict || stravaUnavailable { return .problem }
         if !stravaActivityId.isEmpty || origin == "strava" { return .done }
-        if connected && appRecorded && !isDemo && source != "phone" { return .pending }
+        if source == "phone" { return connected && stravaUploadQueued ? .pending : nil }
+        if connected && appRecorded && !isDemo { return .pending }
         return nil
     }
 

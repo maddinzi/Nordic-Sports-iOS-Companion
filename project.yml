@@ -111,8 +111,12 @@ targets:
         NSBluetoothAlwaysUsageDescription: Nordic Sports Companion connects to your Garmin watch over Bluetooth to receive your activities and send settings to the watch app.
         NSBluetoothPeripheralUsageDescription: Nordic Sports Companion connects to your Garmin watch over Bluetooth to receive your activities and send settings to the watch app.
         # Woken in the background when the watch sends data (part of what spike 1 measures).
+        # Recording on the phone (Companion design/phone-recording.md): location while the app is in use, kept running
+        # with the screen off by the background mode location (blue indicator), only while a recording runs.
+        NSLocationWhenInUseUsageDescription: Nordic Sports Companion records the route of an activity you start on the phone, only while that recording runs.
         UIBackgroundModes:
           - bluetooth-central
+          - location
           # Spike 2: app refresh and processing tasks (BGTaskScheduler).
           - fetch
           - processing

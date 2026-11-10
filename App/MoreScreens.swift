@@ -2964,7 +2964,9 @@ struct EditActivitySheet: View {
     @ViewBuilder
     private var sendSection: some View {
         let sends = companion.sendsSomewhere
-        let canCreate = companion.stravaConnected && item.stravaActivityId.isEmpty
+        // A phone recording is uploaded with its track (FIT) instead of created by hand; hidden while it is queued.
+        let phoneRecording = item.source == "phone"
+        let canCreate = companion.stravaConnected && item.stravaActivityId.isEmpty && !(phoneRecording && item.stravaUploadQueued)
         let showSend = sends && (item.origin != "strava" || companion.automaticSync)
         if showSend || canCreate {
             Section {
@@ -2978,8 +2980,15 @@ struct EditActivitySheet: View {
                     .disabled(saving || inputInvalid)
                 }
                 if canCreate {
-                    Button(L10n.get("activity_detail_strava_create")) {
-                        Task { await save(send: false, createOnStrava: true) }
+                    Button(L10n.get(phoneRecording ? "phone_start_strava" : "activity_detail_strava_create")) {
+                        Task {
+                            if phoneRecording {
+                                await save(send: false)
+                                await companion.uploadPhoneRecording(item.id)
+                            } else {
+                                await save(send: false, createOnStrava: true)
+                            }
+                        }
                     }
                     .disabled(saving || inputInvalid)
                 }

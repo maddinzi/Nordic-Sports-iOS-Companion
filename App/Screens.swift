@@ -131,6 +131,10 @@ struct ActivityRouteView: View {
 struct ActivitiesScreen: View {
     @EnvironmentObject var companion: Companion
     @State private var adding = false
+    /// The "+" choice (Android's sheet: record now, or enter a finished activity), the start and the live screen.
+    @State private var choosing = false
+    @State private var recordStart = false
+    @State private var recordLive = false
     @State private var route: ActivityRoute?
     /// Items that were open and are not any more, newest first: they stay on top of "Done" with a
     /// green frame until the next pull to refresh (as Android's `JustReviewed`).
@@ -195,6 +199,8 @@ struct ActivitiesScreen: View {
                             }
                                 .listRowBackground(status.total == 0 ? CardTone.green.container : CardTone.orange.container)
                         }
+                        // A recording on this phone (running, or left unfinished by a closed app).
+                        PhoneRecordingSection(phone: companion.phone) { recordLive = true }
                         // What runs now, then the decisions asked of the athlete (one Boost card at a time).
                         if !companion.liveActivities.isEmpty || !companion.crashReports.isEmpty
                             || !companion.boostReminders.isEmpty {
@@ -261,10 +267,29 @@ struct ActivitiesScreen: View {
                 await companion.sync()
             }
             .sheet(isPresented: $adding) { AddActivitySheet().environmentObject(companion) }
+            .confirmationDialog(L10n.get("add_activity_title"), isPresented: $choosing, titleVisibility: .visible) {
+                Button(L10n.get("add_choice_record")) { recordStart = true }
+                Button(L10n.get("add_choice_enter")) { adding = true }
+                Button(L10n.get("common_cancel"), role: .cancel) {}
+            } message: {
+                Text(L10n.get("add_choice_record_desc"))
+            }
+            .sheet(isPresented: $recordStart) {
+                PhoneRecordStartScreen(phone: companion.phone) {
+                    // The live screen opens once the start sheet is gone.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { recordLive = true }
+                }
+                .environmentObject(companion)
+            }
+            .fullScreenCover(isPresented: $recordLive) {
+                PhoneRecordingLiveScreen(phone: companion.phone) { id in route = ActivityRoute(id: id) }
+                    .environmentObject(companion)
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        adding = true
+                        // A recording runs already: back to it.
+                        if companion.phone.view != nil { recordLive = true } else { choosing = true }
                     } label: {
                         Image(systemName: "plus")
                     }
@@ -1344,6 +1369,12 @@ struct SettingsStravaPage: View {
                             set: { companion.setStravaIncludeOtherDevices($0) }
                         ))
                         Text(L10n.get("status_strava_include_other_devices_description")).font(.footnote).foregroundStyle(.secondary)
+                        // PRIVACY-SYNC: the default of "Upload to Strava" for recordings on the phone (shared StravaSettingsStore).
+                        Toggle(L10n.get("status_strava_upload_phone"), isOn: Binding(
+                            get: { companion.stravaUploadPhoneRecordings },
+                            set: { companion.setStravaUploadPhoneRecordings($0) }
+                        ))
+                        Text(L10n.get("status_strava_upload_phone_description")).font(.footnote).foregroundStyle(.secondary)
                     } footer: {
                         Text(L10n.get("status_strava_body"))
                     }

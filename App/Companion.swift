@@ -127,6 +127,8 @@ final class Companion: NSObject, ObservableObject {
         reviewNewActivities = core.reviewNewActivities()
         reviewImportedActivities = core.reviewImportedActivities()
         syncAutomatically = core.syncAutomatically()
+        // An unfinished recording on the phone an earlier run left: offered for save or discard.
+        Task { await phone.attach(self) }
     }
 
     // MARK: - Messages
@@ -364,6 +366,24 @@ final class Companion: NSObject, ObservableObject {
         return url
     }
 
+    // MARK: - Recording on the phone
+
+    /// The recording on this phone (CoreLocation into the shared recorder).
+    let phone = PhoneRecorderModel()
+
+    /// "Upload to Strava" on a phone recording: queued, then sent by the sync right away.
+    func uploadPhoneRecording(_ activityId: String) async {
+        core.queuePhoneUpload(activityId: activityId)
+        _ = await sync()
+    }
+
+    /// "Upload recordings made on the phone" (Settings › Strava, default on).
+    var stravaUploadPhoneRecordings: Bool { core.stravaUploadPhoneRecordings() }
+
+    func setStravaUploadPhoneRecordings(_ on: Bool) {
+        core.setStravaUploadPhoneRecordings(on: on)
+        objectWillChange.send()
+    }
     /// The two Strava switches (as Android's Strava section, both on by default).
     func setStravaUpdateMyActivities(_ on: Bool) {
         core.setStravaUpdateMyActivities(on: on)
