@@ -193,10 +193,16 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         // time goes out as a 32-bit Int like Android's (`receiptMessage`): the watch drops a
         // receipt whose startTime is not a Monkey C Number/Long, and an Int64 NSNumber from
         // iOS was never accepted (log3: every receipt "success", the watch resent them all).
-        if let dict, type == "activity" || type == "recordingBoostBurst" {
+        // Follow-up tables (strength sets, interval steps; `activityTables`) are stored the same way and confirmed with
+        // `{"type": "tablesReceipt", "startTime", "kind"}` (Android `ConnectIqWatchEventSource.handleTablePart`).
+        if let dict, type == "activity" || type == "recordingBoostBurst" || type == "activityTables" {
             let variant = variantName(app)
             Task { @MainActor in
-                let (startTime, burstId) = await Companion.shared.receive(message: dict, variant: variant)
+                let (startTime, burstId, tablesStartTime, tablesKind) = await Companion.shared.receive(message: dict, variant: variant)
+                if tablesStartTime > 0 && !tablesKind.isEmpty {
+                    let tablesTime = NSNumber(value: Int32(truncatingIfNeeded: tablesStartTime))
+                    self.send(["type": "tablesReceipt", "startTime": tablesTime, "kind": tablesKind], to: app, what: "tables receipt \(tablesKind) \(tablesStartTime)")
+                }
                 // A stored Recording Boost burst: the watch holds it, and allows no next boost, until this arrives.
                 if burstId > 0 {
                     let burst = NSNumber(value: Int32(truncatingIfNeeded: burstId))
@@ -204,7 +210,8 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
                 }
                 if startTime > 0 {
                     let receiptTime = NSNumber(value: Int32(truncatingIfNeeded: startTime))
-                    self.send(["type": "receipt", "startTime": receiptTime], to: app, what: "receipt \(startTime)") { result in
+                    // "tables": 1 tells the watch this phone takes the follow-up tables (as Android's receipt).
+                    self.send(["type": "receipt", "startTime": receiptTime, "tables": NSNumber(value: Int32(1))], to: app, what: "receipt \(startTime)") { result in
                         let sent = result.rawValue == 0
                         let status = Self.name(of: result)
                         Task { @MainActor in
@@ -217,7 +224,7 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         // Everything else goes to the shared core too: the settings snapshot (sent at every
         // watch app start; WatchSettingsSync stores it and resends changes still waiting), a
         // recording that started or was discarded, and a crash report.
-        if let dict, type != "activity", type != "recordingBoostBurst", JSONSerialization.isValidJSONObject(dict),
+        if let dict, type != "activity", type != "recordingBoostBurst", type != "activityTables", JSONSerialization.isValidJSONObject(dict),
            let data = try? JSONSerialization.data(withJSONObject: dict),
            let json = String(data: data, encoding: .utf8) {
             let deviceId = Self.deviceId(app.device)
