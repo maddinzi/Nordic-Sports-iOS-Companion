@@ -1317,6 +1317,13 @@ struct AboutScreen: View {
                 }
                 NavigationLink(L10n.get("about_licenses")) { LicensesScreen() }
             }
+            // The anonymous account's ID, only while this install has one (Android: AccountIdSection).
+            if let accountId = companion.anonymousAccountId {
+                Section(header: Text(L10n.get("about_account_title")), footer: Text(L10n.get("about_account_hint"))) {
+                    Text(accountId).textSelection(.enabled).font(.footnote.monospaced())
+                    Button(L10n.get("about_account_copy")) { UIPasteboard.general.string = accountId }
+                }
+            }
             // Where a tester pastes the token they were given; without one the app works as before.
             Section(header: Text(L10n.get("about_tester_title")), footer: Text(L10n.get("about_tester_hint"))) {
                 if tokenSaved {
