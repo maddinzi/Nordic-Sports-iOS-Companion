@@ -131,6 +131,10 @@ struct ActivityRouteView: View {
 struct ActivitiesScreen: View {
     @EnvironmentObject var companion: Companion
     @State private var adding = false
+    /// The "+" choice (Android's sheet: record now, or enter a finished activity), the start and the live screen.
+    @State private var choosing = false
+    @State private var recordStart = false
+    @State private var recordLive = false
     @State private var route: ActivityRoute?
     /// Items that were open and are not any more, newest first: they stay on top of "Done" with a
     /// green frame until the next pull to refresh (as Android's `JustReviewed`).
@@ -160,7 +164,7 @@ struct ActivitiesScreen: View {
 
     @ViewBuilder private func activityRow(_ item: ActivityItem) -> some View {
         let open: (ActivityTarget) -> Void = { route = ActivityRoute(id: item.id, target: $0) }
-        if compactList { CompactActivityRow(item: item, onOpen: open) } else { ActivityCard(item: item, onOpen: open) }
+        if compactList { CompactActivityRow(item: item, onOpen: open) } else { ActivityCard(item: item, stravaConnected: companion.stravaConnected, diaryConnected: companion.diaryReceives, onOpen: open) }
     }
 
     var body: some View {
@@ -195,6 +199,8 @@ struct ActivitiesScreen: View {
                             }
                                 .listRowBackground(status.total == 0 ? CardTone.green.container : CardTone.orange.container)
                         }
+                        // A recording on this phone (running, or left unfinished by a closed app).
+                        PhoneRecordingSection(phone: companion.phone) { recordLive = true }
                         // What runs now, then the decisions asked of the athlete (one Boost card at a time).
                         if !companion.liveActivities.isEmpty || !companion.crashReports.isEmpty
                             || !companion.boostReminders.isEmpty {
@@ -261,10 +267,29 @@ struct ActivitiesScreen: View {
                 await companion.sync()
             }
             .sheet(isPresented: $adding) { AddActivitySheet().environmentObject(companion) }
+            .confirmationDialog(L10n.get("add_activity_title"), isPresented: $choosing, titleVisibility: .visible) {
+                Button(L10n.get("add_choice_record")) { recordStart = true }
+                Button(L10n.get("add_choice_enter")) { adding = true }
+                Button(L10n.get("common_cancel"), role: .cancel) {}
+            } message: {
+                Text(L10n.get("add_choice_record_desc"))
+            }
+            .sheet(isPresented: $recordStart) {
+                PhoneRecordStartScreen(phone: companion.phone) {
+                    // The live screen opens once the start sheet is gone.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { recordLive = true }
+                }
+                .environmentObject(companion)
+            }
+            .fullScreenCover(isPresented: $recordLive) {
+                PhoneRecordingLiveScreen(phone: companion.phone) { id in route = ActivityRoute(id: id) }
+                    .environmentObject(companion)
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        adding = true
+                        // A recording runs already: back to it.
+                        if companion.phone.view != nil { recordLive = true } else { choosing = true }
                     } label: {
                         Image(systemName: "plus")
                     }
@@ -621,8 +646,13 @@ struct ActivityRow: View {
                         .padding(.vertical, 2)
                         .background(Color.purple.opacity(0.2), in: Capsule())
                 }
-                if item.origin == "watch" {
-                    Image(systemName: "applewatch").foregroundStyle(.primary)
+                switch item.source {
+                case "watch": Image(systemName: "applewatch").foregroundStyle(.primary)
+                case "phone": Image(systemName: "iphone").foregroundStyle(.secondary)
+                    .accessibilityLabel(L10n.get("activity_source_phone_long"))
+                case "manual": Image(systemName: "pencil").foregroundStyle(.secondary)
+                    .accessibilityLabel(L10n.get("activity_source_manual_long"))
+                default: EmptyView()
                 }
                 if !item.stravaActivityId.isEmpty {
                     Image(systemName: "link").foregroundStyle(.orange)
@@ -680,6 +710,12 @@ struct ActivityDetailScreen: View {
     @State private var showBoosts = false
     @State private var conflictDetail: StravaTitleConflict?
     @State private var showConflict = false
+    /// The stored track (Instant Mode) and its map's choices; nil without a track (Android `ActivityTrackCard`).
+    @State private var track: LiveFeedView?
+    @StateObject private var mapChoices = LiveMapChoices()
+    @State private var mapFull = false
+    /// The stored weather (start, end), empty while there is none (Out there tab).
+    @State private var weather: [WeatherReading] = []
 
     init(item: ActivityItem, initialTab: EntryTab = .diary) {
         self.item = item
@@ -696,19 +732,30 @@ struct ActivityDetailScreen: View {
 
     private var onStravaTab: Bool { showStravaTab && tab == .strava }
 
+    /// The Diary tab (also where a Strava target lands when there is no Strava tab).
+    private var onDiaryTab: Bool { tab == .diary || (tab == .strava && !showStravaTab) }
+
+    private var onOutThereTab: Bool { tab == .outThere }
+
+    /// Snow only for cross-country skiing on snow, or when a classification is stored (Android `showSnow`).
+    private var showSnow: Bool {
+        current.sportArt == SportArt.langlauf || !current.snowAge.isEmpty || !current.snowGrain.isEmpty
+            || !current.snowMoisture.isEmpty || !current.snowTempText.isEmpty
+    }
+
     var body: some View {
         Form {
-            // The sync ticks and the demo declaration are in the top card of ActivityScreen.
-            if showStravaTab {
-                Section {
-                    Picker("", selection: $tab) {
-                        Text(L10n.get("sync_presence_destination_diary")).tag(EntryTab.diary)
-                        Text("Strava").tag(EntryTab.strava)
-                    }
-                    .pickerStyle(.segmented)
+            // The sync marks and the demo declaration are in the top card of ActivityScreen. The tabs (Android
+            // `EntryTab`): Diary, Out there, and Strava while the activity has something there.
+            Section {
+                Picker("", selection: $tab) {
+                    Text(L10n.get("sync_presence_destination_diary")).tag(EntryTab.diary)
+                    Text(L10n.get("activity_detail_section_out_there")).tag(EntryTab.outThere)
+                    if showStravaTab { Text("Strava").tag(EntryTab.strava) }
                 }
-                .listRowBackground(Color.clear)
+                .pickerStyle(.segmented)
             }
+            .listRowBackground(Color.clear)
             if current.reviewPending {
                 Section(L10n.get("activity_detail_review_heading")) {
                     Text(companion.diarySettings.autoUpdate
@@ -730,7 +777,28 @@ struct ActivityDetailScreen: View {
                     Button(String(format: L10n.get("activity_detail_boosts"), boosts.count)) { showBoosts = true }
                 }
             }
-            if !onStravaTab {
+            if onOutThereTab {
+                // The stored track: the same map as the live recording, framed on the whole track; export in the header.
+                if let track {
+                    Section {
+                        LiveTrackMap(points: TrackPoints(track), automatic: track.baseMap, choices: mapChoices, onExpand: { mapFull = true })
+                            .frame(height: 240)
+                            .listRowInsets(EdgeInsets())
+                    } header: {
+                        HStack {
+                            Text(L10n.get("activity_detail_section_map"))
+                            Spacer()
+                            TrackExportMenu(item: current)
+                        }
+                    }
+                }
+                if !weather.isEmpty { WeatherSection(readings: weather) }
+                if showSnow { SnowSection(item: current) }
+                if track == nil && weather.isEmpty && !showSnow {
+                    Text(L10n.get("out_there_empty")).font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            if onDiaryTab {
             Section(L10n.get("activity_detail_training_type_label")) {
                 LabeledContent(L10n.get("activity_detail_sport_label"), value: Format.presetWord(current.preset))
                 if !current.trainingType.isEmpty, current.trainingType != "unknown" {
@@ -764,7 +832,7 @@ struct ActivityDetailScreen: View {
             // same blocks the write uses (StravaWritePreview), so it is clear before anything is sent.
             // An activity recorded elsewhere has no preview (the app never changes it on Strava): say so (Android
             // `activity_detail_strava_imported_*`).
-            if onStravaTab && current.origin != "watch" {
+            if onStravaTab && !current.appRecorded {
                 Section {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(L10n.get("activity_detail_strava_imported_title")).font(.headline)
@@ -797,7 +865,7 @@ struct ActivityDetailScreen: View {
                     Text(L10n.get("activity_detail_strava_preview_note"))
                 }
             }
-            if onStravaTab || !showStravaTab {
+            if onStravaTab || (!showStravaTab && onDiaryTab) {
             Section(L10n.get("activity_detail_synced_to")) {
                 if current.stravaActivityId.isEmpty {
                     Text(L10n.get("ios_not_linked_strava"))
@@ -847,7 +915,7 @@ struct ActivityDetailScreen: View {
                 }
             }
             }
-            if companion.diaryConnected, !onStravaTab {
+            if companion.diaryConnected, onDiaryTab {
                 Section(L10n.get("activity_detail_diary_card_title")) {
                     Text(L10n.get("activity_detail_diary_card_intro")).font(.footnote).foregroundStyle(.secondary)
                     if current.diaryWritten {
@@ -917,6 +985,18 @@ struct ActivityDetailScreen: View {
         .sheet(isPresented: $editing) { EditActivitySheet(item: current).environmentObject(companion) }
         .task(id: current.stravaActivityId) { stravaRemovedAt = await companion.stravaDataRemovedAt(item.id) }
         .task(id: item.id) { boosts = await companion.recordingBoosts(of: item.id) }
+        .task(id: item.id) { track = await companion.activityTrack(of: item) }
+        .task(id: item.id) { weather = await companion.activityWeather(of: item) }
+        .fullScreenCover(isPresented: $mapFull) {
+            if let track {
+                ZStack(alignment: .bottomTrailing) {
+                    LiveTrackMap(points: TrackPoints(track), automatic: track.baseMap, choices: mapChoices, fullScreen: true)
+                    Button(L10n.get("em_sheet_close")) { mapFull = false }
+                        .buttonStyle(.borderedProminent)
+                        .padding()
+                }
+            }
+        }
         .sheet(isPresented: $showBoosts) { ActivityBoostsSheet(boosts: boosts) }
         .alert(L10n.get("main_strava_conflict_dialog_title"), isPresented: $showConflict, presenting: conflictDetail) { _ in
             Button(L10n.get("main_strava_conflict_overwrite")) { Task { await companion.overwriteStrava(item.id) } }
@@ -1161,6 +1241,12 @@ struct SettingsAppPage: View {
                         set: { companion.setPlaceNamesEnabled($0) }
                     ))
                     Text(L10n.get("status_place_names_body")).font(.footnote).foregroundStyle(.secondary)
+                    // PRIVACY-SYNC: "Weather for activities" (shared WeatherSettingsStore, default on): off, no weather lookup leaves the phone. Changing this? Re-check the Companion's design/privacy-notice-sync.md.
+                    Toggle(L10n.get("status_weather_switch"), isOn: Binding(
+                        get: { companion.weatherEnabled },
+                        set: { companion.setWeatherEnabled($0) }
+                    ))
+                    Text(L10n.get("status_weather_body")).font(.footnote).foregroundStyle(.secondary)
                 } header: {
                     Text(L10n.get("settings_group_app"))
                 }
@@ -1283,6 +1369,12 @@ struct SettingsStravaPage: View {
                             set: { companion.setStravaIncludeOtherDevices($0) }
                         ))
                         Text(L10n.get("status_strava_include_other_devices_description")).font(.footnote).foregroundStyle(.secondary)
+                        // PRIVACY-SYNC: the default of "Upload to Strava" for recordings on the phone (shared StravaSettingsStore).
+                        Toggle(L10n.get("status_strava_upload_phone"), isOn: Binding(
+                            get: { companion.stravaUploadPhoneRecordings },
+                            set: { companion.setStravaUploadPhoneRecordings($0) }
+                        ))
+                        Text(L10n.get("status_strava_upload_phone_description")).font(.footnote).foregroundStyle(.secondary)
                     } footer: {
                         Text(L10n.get("status_strava_body"))
                     }
@@ -1565,6 +1657,7 @@ struct SyncStatusCard: View {
         if status.pendingDocs > 0 { parts.append(Line(text: String(format: L10n.get("sync_status_pending_docs"), status.pendingDocs), activityId: status.firstPendingDocsId)) }
         if status.stravaConflicts > 0 { parts.append(Line(text: String(format: L10n.get("sync_status_pending_strava_conflicts"), status.stravaConflicts), activityId: status.firstConflictId)) }
         if status.stravaUnavailable > 0 { parts.append(Line(text: String(format: L10n.get("sync_status_strava_unavailable"), status.stravaUnavailable))) }
+        for id in status.twiceOnStravaIds { parts.append(Line(text: L10n.get("sync_status_phone_on_strava_twice"), activityId: id)) }
         if !status.stravaIssue.isEmpty {
             parts.append(Line(text: status.stravaIssueStandalone
                               ? status.stravaIssue

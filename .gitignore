@@ -19,6 +19,7 @@ Pods/
 Frameworks/*.xcframework
 # Generated from the Companion's strings.xml on CI (tools/generate_strings.py)
 App/Localizable.xcstrings
+App/InfoPlist.xcstrings
 App/Texts/
 App/NordicSportsCompanion.entitlements
 

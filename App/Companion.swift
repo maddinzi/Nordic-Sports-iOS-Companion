@@ -50,6 +50,8 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var boostReminders: [FeedbackBoostReminderView] = []
     @Published private(set) var nickname = ""
     @Published private(set) var placeNamesEnabled = true
+    /// "Weather for activities" (Settings › Privacy & data, default on).
+    @Published private(set) var weatherEnabled = true
     /// The demo mode is on (Settings > App > Demo mode): sample activities and a simulated watch.
     @Published private(set) var demoOn = false
     @Published private(set) var stravaUpdateMyActivities = true
@@ -119,11 +121,14 @@ final class Companion: NSObject, ObservableObject {
         refreshWatchCards()
         nickname = core.nickname()
         placeNamesEnabled = core.placeNamesEnabled()
+        weatherEnabled = core.weatherEnabled()
         stravaUpdateMyActivities = core.stravaUpdateMyActivities()
         stravaIncludeOtherDevices = core.stravaIncludeOtherDevices()
         reviewNewActivities = core.reviewNewActivities()
         reviewImportedActivities = core.reviewImportedActivities()
         syncAutomatically = core.syncAutomatically()
+        // An unfinished recording on the phone an earlier run left: offered for save or discard.
+        Task { await phone.attach(self) }
     }
 
     // MARK: - Messages
@@ -210,6 +215,7 @@ final class Companion: NSObject, ObservableObject {
         }
         showStravaWithdrawalNotice()
         lookupPlaceNames()
+        fetchWeather()
         await exportBoostFiles()
     }
 
@@ -304,6 +310,80 @@ final class Companion: NSObject, ObservableObject {
         if on { lookupPlaceNames() }
     }
 
+    // MARK: - Out there: weather, snow, track file
+
+    private var fetchingWeather = false
+
+    /// As Android's ActivityWeatherWorker, while the app is open: the shared core looks up the weather of the recent
+    /// activities that are due (from 30 minutes after their end) and stores it; each one at most once per app run.
+    private func fetchWeather() {
+        guard !fetchingWeather, core.weatherEnabled() else { return }
+        fetchingWeather = true
+        Task {
+            defer { fetchingWeather = false }
+            _ = try? await core.fetchDueWeather(limit: 10)
+        }
+    }
+
+    func setWeatherEnabled(_ on: Bool) {
+        core.setWeatherEnabled(on: on)
+        weatherEnabled = core.weatherEnabled()
+        if on { fetchWeather() }
+    }
+
+    /// The stored weather of an activity (start, end); empty while there is none.
+    func activityWeather(of item: ActivityItem) async -> [WeatherReading] {
+        (try? await core.activityWeather(activityId: item.id)) ?? []
+    }
+
+    /// The newest snow classification before this activity ("Same as last time").
+    func lastSnow(of item: ActivityItem) async -> SnowView? {
+        try? await core.lastSnow(activityId: item.id, startEpochSec: Int64(item.startEpochSec))
+    }
+
+    /// Stores the snow classification (enum names, empty = not set) and refreshes the list's copy of the activity.
+    func saveSnow(_ item: ActivityItem, age: String, grain: String, moisture: String, tempText: String) async {
+        do {
+            _ = try await core.saveSnow(activityId: item.id, age: age, grain: grain, moisture: moisture, tempText: tempText)
+            if let list = try? await core.activities(limit: 300) { activities = list }
+        } catch {
+            report(error)
+        }
+    }
+
+    /// The stored track as a GPX or FIT file in the temporary folder, for the share sheet (Android `TrackShare`).
+    func trackFile(of item: ActivityItem, fit: Bool) async throws -> URL {
+        let start = Date(timeIntervalSince1970: TimeInterval(item.startEpochSec))
+        guard let file = try await core.trackExportFile(
+            activityId: item.id, typeLabel: Format.presetWord(item.preset),
+            utcOffsetSec: Int32(TimeZone.current.secondsFromGMT(for: start)), fit: fit
+        ), let data = Data(base64Encoded: file.base64) else { throw CocoaError(.fileNoSuchFile) }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("shared", isDirectory: true)
+        try? FileManager.default.removeItem(at: folder)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appendingPathComponent(file.fileName)
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    // MARK: - Recording on the phone
+
+    /// The recording on this phone (CoreLocation into the shared recorder).
+    let phone = PhoneRecorderModel()
+
+    /// "Upload to Strava" on a phone recording: queued, then sent by the sync right away.
+    func uploadPhoneRecording(_ activityId: String) async {
+        core.queuePhoneUpload(activityId: activityId)
+        _ = await sync()
+    }
+
+    /// "Upload recordings made on the phone" (Settings › Strava, default on).
+    var stravaUploadPhoneRecordings: Bool { core.stravaUploadPhoneRecordings() }
+
+    func setStravaUploadPhoneRecordings(_ on: Bool) {
+        core.setStravaUploadPhoneRecordings(on: on)
+        objectWillChange.send()
+    }
     /// The two Strava switches (as Android's Strava section, both on by default).
     func setStravaUpdateMyActivities(_ on: Bool) {
         core.setStravaUpdateMyActivities(on: on)
@@ -420,6 +500,11 @@ final class Companion: NSObject, ObservableObject {
     /// A `ServerMigration.MoveResult` name (MOVED, WRONG_CODE, STORE_LATER, ...).
     func moveToServer(email: String, code: String) async -> String {
         (try? await core.moveToServer(email: email, code: code)) ?? "FAILED"
+    }
+
+    /// The stored track of an activity for its map card (Instant Mode recordings); nil without one.
+    func activityTrack(of item: ActivityItem) async -> LiveFeedView? {
+        try? await core.activityTrackView(activityId: item.id, startEpochSec: Int64(item.startEpochSec), preset: item.preset)
     }
 
     func undoServerMove() async {

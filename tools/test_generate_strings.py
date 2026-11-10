@@ -3,7 +3,34 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from generate_strings import build_catalog, build_tables, convert_format, placeholder_problems, unescape
+from generate_strings import (INFO_PLIST_TEXTS, build_catalog, build_info_plist_catalog, build_tables, convert_format,
+                              placeholder_problems, unescape)
+
+
+class InfoPlistTest(unittest.TestCase):
+    def test_permission_texts_per_language(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            res = Path(tmp)
+            (res / "values").mkdir()
+            (res / "values-de").mkdir()
+            names = sorted(set(INFO_PLIST_TEXTS.values()))
+            (res / "values" / "strings.xml").write_text(
+                "<resources>" + "".join(f'<string name="{n}">EN {n}</string>' for n in names) + "</resources>", encoding="utf-8")
+            (res / "values-de" / "strings.xml").write_text(
+                "<resources>" + "".join(f'<string name="{n}">DE {n}</string>' for n in names) + "</resources>", encoding="utf-8")
+            strings = build_info_plist_catalog(res)["strings"]
+        self.assertEqual(set(INFO_PLIST_TEXTS), set(strings))
+        location = strings["NSLocationWhenInUseUsageDescription"]["localizations"]
+        self.assertEqual("EN ios_location_usage", location["en"]["stringUnit"]["value"])
+        self.assertEqual("DE ios_location_usage", location["de"]["stringUnit"]["value"])
+
+    def test_missing_text_stops(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            res = Path(tmp)
+            (res / "values").mkdir()
+            (res / "values" / "strings.xml").write_text("<resources></resources>", encoding="utf-8")
+            with self.assertRaises(SystemExit):
+                build_info_plist_catalog(res)
 
 
 class ConversionTest(unittest.TestCase):

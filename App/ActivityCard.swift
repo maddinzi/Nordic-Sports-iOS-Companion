@@ -6,9 +6,9 @@ enum ActivityTarget: String, Hashable {
     case diary, strava, data, technique, sensor
 }
 
-/// The tabs of the Entry screen: what goes to the diary, and what goes to Strava.
+/// The tabs of the Entry screen: what goes to the diary, what it was like outside, and what goes to Strava.
 enum EntryTab: Hashable {
-    case diary, strava
+    case diary, outThere, strava
 }
 
 /// The tabs of the Metrics screen: the technical data, and the watch's technique analysis.
@@ -29,8 +29,9 @@ extension ActivityItem {
         return origin == "strava" ? .imported : .open
     }
 
-    /// True when the watch recorded the activity: the Metrics lane then has numbers behind it.
-    var hasWatchMetrics: Bool { origin == "watch" }
+    /// True when the app recorded the activity (watch, phone, by hand): the Metrics lane then has numbers behind it
+    /// (Android `hasWatchMetrics`, `ActivitySource.isAppRecorded`).
+    var hasWatchMetrics: Bool { appRecorded }
 
     /// True when the Technique tab has something to show (Enhanced Metrics, running analysis, technique shares).
     var hasTechniqueMetrics: Bool {
@@ -90,10 +91,9 @@ struct CompactActivityRow: View {
 /// opens the Entry screen while something waits for the athlete, the Metrics screen otherwise.
 struct ActivityCard: View {
     let item: ActivityItem
+    var stravaConnected = false
+    var diaryConnected = false
     let onOpen: (ActivityTarget) -> Void
-
-    private enum Tick { case none, todo, done, problem }
-
 
     private var entryColor: Color {
         switch item.entryStatus {
@@ -119,12 +119,13 @@ struct ActivityCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Button { onOpen(bodyTarget) } label: { identity }
                 .buttonStyle(.plain)
-            // One slim row instead of the Entry / Metrics boxes (Android `ActivityEventCard`, 2026-11-09): on one line
-            // when it fits, else chips and numbers on two.
+            // The bottom row (Android `ActivityEventCard`, 2026-11-10): the black origin icon first, then the tappable
+            // chips with their word (status, Diary, Strava), the metrics numbers and the Sensor Records; on two lines
+            // when one is too narrow.
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 6) { entryChips; metricsItems }
+                HStack(spacing: 6) { OriginMark(item: item).padding(.horizontal, 2); entryChips; metricsItems }
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 6) { entryChips }
+                    HStack(spacing: 6) { OriginMark(item: item).padding(.horizontal, 2); entryChips }
                     HStack(spacing: 6) { metricsItems }
                 }
             }
@@ -132,17 +133,19 @@ struct ActivityCard: View {
         .padding(.vertical, 2)
     }
 
-    /// What waits for the athlete (only then a word), then the diary and Strava chips with their ticks.
+    /// What waits for the athlete (only then a word), then the diary and Strava chips: the icon in the destination's
+    /// colour when it has the activity, grey while on its way, red on a problem; no chip for a destination it never goes to.
     @ViewBuilder private var entryChips: some View {
         if item.entryStatus == .review || item.entryStatus == .attention {
             chip(entryText, symbol: "square.and.pencil", accent: entryColor) { onOpen(.diary) }
         }
-        chip(L10n.get("sync_presence_destination_diary"), symbol: "book.closed",
-             tick: item.diaryWritten ? .done : .todo, tickColor: SyncChip.diary) { onOpen(.diary) }
-        chip("Strava", symbol: "chevron.up.2",
-             tick: item.stravaConflict || item.stravaUnavailable ? .problem
-                 : (item.stravaActivityId.isEmpty ? .todo : .done),
-             tickColor: SyncChip.strava) { onOpen(.strava) }
+        if let mark = item.diaryMark(connected: diaryConnected) {
+            chip(L10n.get("sync_presence_destination_diary"), symbol: "book.closed",
+                 symbolColor: markColor(mark, done: SyncChip.diary)) { onOpen(.diary) }
+        }
+        if let mark = item.stravaMark(connected: stravaConnected) {
+            chip("Strava", symbol: "chevron.up.2", symbolColor: markColor(mark, done: SyncChip.strava)) { onOpen(.strava) }
+        }
     }
 
     /// The Metrics link: one chip with the Metrics symbol and the key numbers ("8.0 km · 158 bpm · 10.4 km/h",
@@ -176,34 +179,22 @@ struct ActivityCard: View {
                         .background(Color.purple.opacity(0.2), in: Capsule())
                 }
             }
-            // The blue watch tick stays in front of the source line, as the Watch badge was.
-            HStack(spacing: 4) {
-                Image(systemName: item.origin == "watch" ? "checkmark.circle.fill" : "circle")
-                    .font(.caption)
-                    .foregroundStyle(item.origin == "watch" ? SyncChip.watch : Color.secondary)
-                    .accessibilityLabel(L10n.get("sync_presence_destination_watch"))
-                Text(Format.summary(item))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+            // The source line as text only: the origin icon leads the bottom row.
+            Text(Format.summary(item))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
 
-    /// A tappable chip; a [tick] says whether the destination has the activity, an [accent] marks a status chip.
-    private func chip(_ label: String, symbol: String, tick: Tick = .none, tickColor: Color = .green,
+    /// A tappable chip with its word; [symbolColor] tints the icon (a destination's mark), an [accent] marks a status chip.
+    private func chip(_ label: String, symbol: String, symbolColor: Color = .secondary,
                       accent: Color? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Image(systemName: symbol).font(.caption2).foregroundStyle(.secondary)
+                Image(systemName: symbol).font(.caption).foregroundStyle(symbolColor)
                 Text(label).font(.caption)
-                switch tick {
-                case .none: EmptyView()
-                case .done: Image(systemName: "checkmark.circle.fill").font(.caption2).foregroundStyle(tickColor)
-                case .todo: Image(systemName: "circle").font(.caption2).foregroundStyle(.secondary)
-                case .problem: Image(systemName: "exclamationmark.triangle.fill").font(.caption2).foregroundStyle(.red)
-                }
             }
             .padding(.horizontal, 7)
             .padding(.vertical, 5)
