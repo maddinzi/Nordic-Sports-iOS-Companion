@@ -21,4 +21,4 @@ Expires **2027-10-09**: make a new one before then and update both certificate s
 Private repos on GitHub Free count macOS minutes ten times against 2,000 per month (90% used on 2026-10-11). `shared-ios.yml` is manual only: run it once per batch of iOS-relevant shared changes (iosMain, expect/actual, Room, new libraries). Start TestFlight only when a device test follows. Put `[skip ci]` in commits that touch workflow files.
 
 ## App Attest
-The entitlement `com.apple.developer.devicecheck.appattest-environment` is commented out in `project.yml` while store security is dark; the capability is enabled on the App ID. Enable the entitlement together with `APP_ATTEST_REGISTRATION_ENABLED: YES` when registration goes live.
+The entitlement `com.apple.developer.devicecheck.appattest-environment` is commented out in `project.yml` while store security is dark; the capability is enabled on the App ID. Enable the entitlement together with `APP_ATTEST_REGISTRATION_ENABLED: YES` when registration goes live. Checklist for that: `docs/app-attest-setup.md`.
