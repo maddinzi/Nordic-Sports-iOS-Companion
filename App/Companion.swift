@@ -377,9 +377,6 @@ final class Companion: NSObject, ObservableObject {
 
     // MARK: - Server token (Android: About > Tester access; design/server-credentials.md)
 
-    /// True when this install holds a server token (pasted by a tester; later from App Attest).
-    var hasServerToken: Bool { !core.serverTokenKind.isEmpty }
-
     /// Stores a pasted tester token; false when it is not a well-formed token.
     func saveServerToken(_ raw: String) -> Bool { core.saveServerToken(raw: raw) }
 
@@ -396,6 +393,9 @@ final class Companion: NSObject, ObservableObject {
 
     /// True while this install moved by itself and can go back to local.
     var serverMoveCanUndo: Bool { core.serverMoveCanUndo }
+
+    /// True for a token pasted by hand (not from the move): About offers "Remove token".
+    var serverTokenRemovable: Bool { core.serverTokenRemovable }
 
     /// When the self-service tester token ends, nil when unknown.
     var serverTokenExpiresAt: Date? {

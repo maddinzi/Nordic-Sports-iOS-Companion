@@ -1296,9 +1296,6 @@ struct AboutScreen: View {
     private static let site = AppConfig.websiteUrl
 
     @EnvironmentObject var companion: Companion
-    @State private var tokenSaved = false
-    @State private var tokenText = ""
-    @State private var tokenInvalid = false
 
     var body: some View {
         List {
@@ -1324,34 +1321,7 @@ struct AboutScreen: View {
                     Button(L10n.get("about_account_copy")) { UIPasteboard.general.string = accountId }
                 }
             }
-            ServerConnectionSection(credentialVersion: tokenSaved)
-            // Where a tester pastes the token they were given; without one the app works as before.
-            Section(header: Text(L10n.get("about_tester_title")), footer: Text(L10n.get("about_tester_hint"))) {
-                if tokenSaved {
-                    Text(L10n.get("about_tester_saved"))
-                    Button(L10n.get("about_tester_remove"), role: .destructive) {
-                        companion.clearServerToken()
-                        tokenSaved = false
-                    }
-                } else {
-                    SecureField(L10n.get("about_tester_field"), text: $tokenText)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .onChange(of: tokenText) { _, _ in tokenInvalid = false }
-                    if tokenInvalid {
-                        Text(L10n.get("about_tester_invalid")).font(.footnote).foregroundStyle(.red)
-                    }
-                    Button(L10n.get("about_tester_save")) {
-                        if companion.saveServerToken(tokenText) {
-                            tokenSaved = true
-                            tokenText = ""
-                        } else {
-                            tokenInvalid = true
-                        }
-                    }
-                    .disabled(tokenText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
+            ServerConnectionSection()
             Section {
                 Text(L10n.get("about_body"))
                 // Free during the beta, paid features possible later; same statement as the website imprint.
@@ -1360,18 +1330,16 @@ struct AboutScreen: View {
             }
         }
         .navigationTitle(L10n.get("about_title"))
-        .onAppear { tokenSaved = companion.hasServerToken }
     }
 }
 
 /// About › Server connection (design/server-migration.md; Android: `ServerConnectionSection`):
 /// "Local" (the access built into the app, Strava directly) or "Server" (an access of its own,
 /// Strava through the server), and "Migrate user" with a mailed one-time code while the server's
-/// stage for iOS is pilot or optional; "Back to local" while the athlete moved by themselves.
+/// stage for iOS is pilot or optional. While Local, "I have a tester token" opens the field for a
+/// token handed out by hand. On the server: "Back to local" only during the pilot, "Remove token"
+/// for a pasted token.
 private struct ServerConnectionSection: View {
-    /// Changes when the tester token field below changed the credential.
-    let credentialVersion: Bool
-
     @EnvironmentObject var companion: Companion
     @State private var tick = 0
     @State private var stage: String?
@@ -1381,10 +1349,13 @@ private struct ServerConnectionSection: View {
     @State private var codeSent = false
     @State private var busy = false
     @State private var message: String?
+    @State private var pasteOpen = false
+    @State private var tokenText = ""
+    @State private var tokenInvalid = false
 
     var body: some View {
-        // Read tick and credentialVersion, so a move, an undo or a token change shows at once.
-        let _ = (tick, credentialVersion)
+        // Read tick, so a move, an undo or a token change shows at once.
+        let _ = tick
         let onServer = companion.onServerConnection
         Section(header: Text(L10n.get("about_server_title"))) {
             Text(String(format: L10n.get("about_server_status"),
@@ -1410,6 +1381,32 @@ private struct ServerConnectionSection: View {
                     Text(L10n.get("about_server_not_open")).font(.footnote).foregroundStyle(.secondary)
                 default:
                     EmptyView() // still asking the server, or it could not be reached
+                }
+                if !pasteOpen {
+                    Button(L10n.get("about_server_have_token")) { pasteOpen = true; message = nil }
+                } else {
+                    SecureField(L10n.get("about_tester_field"), text: $tokenText)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .onChange(of: tokenText) { _, _ in tokenInvalid = false }
+                    if tokenInvalid {
+                        Text(L10n.get("about_tester_invalid")).font(.footnote).foregroundStyle(.red)
+                    }
+                    Button(L10n.get("about_tester_save")) {
+                        if companion.saveServerToken(tokenText) {
+                            pasteOpen = false
+                            tokenText = ""
+                            tick += 1
+                        } else {
+                            tokenInvalid = true
+                        }
+                    }
+                    .disabled(tokenText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Button(L10n.get("about_server_cancel"), role: .cancel) {
+                        pasteOpen = false
+                        tokenText = ""
+                        tokenInvalid = false
+                    }
                 }
             }
             if open && !onServer {
@@ -1442,7 +1439,15 @@ private struct ServerConnectionSection: View {
                 .disabled(busy)
                 if busy { ProgressView() }
             }
-            if onServer && companion.serverMoveCanUndo {
+            if onServer && companion.serverTokenRemovable {
+                Button(L10n.get("about_tester_remove"), role: .destructive) {
+                    companion.clearServerToken()
+                    message = nil
+                    tick += 1
+                }
+            }
+            // The undo is a safety net for the pilot only; once the move is open to everyone it is gone.
+            if onServer && companion.serverMoveCanUndo && stage == "pilot" {
                 Button(L10n.get("about_server_undo")) { undo() }.disabled(busy)
             }
         }
