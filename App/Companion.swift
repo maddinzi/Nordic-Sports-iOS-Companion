@@ -1617,10 +1617,11 @@ final class Companion: NSObject, ObservableObject {
     var manualTypes: [ManualTypeView] { core.manualTypes() }
 
     /// Stores an activity entered by hand; returns its id, or nil when that failed.
-    func addActivity(typeKey: String, start: Date, minutes: Int) async -> String? {
+    func addActivity(typeKey: String, purpose: String, start: Date, minutes: Int) async -> String? {
         do {
             let id = try await core.addActivity(
                 typeKey: typeKey,
+                trainingType: purpose,
                 startEpochSec: Int64(start.timeIntervalSince1970),
                 elapsedSec: Self.seconds(minutes)
             )
