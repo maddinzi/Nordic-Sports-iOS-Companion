@@ -404,16 +404,16 @@ final class Companion: NSObject, ObservableObject {
         notice = Notice(title: pending.title, text: pending.text) { [core] in core.acknowledgeStravaWithdrawalNotice() }
     }
 
-    /// One message from the watch app [variant] (a Connect IQ dictionary). Returns the start
-    /// time of the activity and the id of the Recording Boost burst to confirm to the watch
-    /// (0 = none of that kind).
-    func receive(message dict: [String: Any], variant: String) async -> (startTime: Int64, burstId: Int64) {
-        guard !outdated else { return (0, 0) }
+    /// One message from the watch app [variant] (a Connect IQ dictionary).
+    /// Stores an activity, a burst chunk or a follow-up table; returns what to confirm to the watch (0 / "" = nothing):
+    /// the activity's start time, the burst id, and a complete table's start time and kind (`tablesReceipt`).
+    func receive(message dict: [String: Any], variant: String) async -> (startTime: Int64, burstId: Int64, tablesStartTime: Int64, tablesKind: String) {
+        guard !outdated else { return (0, 0, 0, "") }
         guard JSONSerialization.isValidJSONObject(dict),
               let data = try? JSONSerialization.data(withJSONObject: dict),
               let json = String(data: data, encoding: .utf8) else {
             WatchLinkSpike.shared.add("watch message could not be read as JSON")
-            return (0, 0)
+            return (0, 0, 0, "")
         }
         do {
             let now = Int64(Date().timeIntervalSince1970 * 1000)
@@ -421,7 +421,7 @@ final class Companion: NSObject, ObservableObject {
             storeFailures = 0
             WatchLinkSpike.shared.add("activity from \(variant): \(result.summary)")
             // A burst arrives in dozens of chunks: only the last one (stored) changes anything.
-            if result.partialBurst { return (0, 0) }
+            if result.partialBurst { return (0, 0, 0, "") }
             await refresh()
             // The saved recording's "running on the watch" card was removed in the core.
             refreshWatchCards()
@@ -433,9 +433,9 @@ final class Companion: NSObject, ObservableObject {
                     Task { await sync() }
                 }
             }
-            return (result.receiptStartTime, result.burstReceiptId)
+            return (result.receiptStartTime, result.burstReceiptId, result.tablesReceiptStartTime, result.tablesReceiptKind)
         } catch {
-            if error.isCancellation { return (0, 0) }
+            if error.isCancellation { return (0, 0, 0, "") }
             storeFailures += 1
             let started = (dict["startTime"] as? NSNumber)?.int64Value ?? 0
             WatchLinkSpike.shared.add(
@@ -446,7 +446,7 @@ final class Companion: NSObject, ObservableObject {
             if storeFailures % 3 == 0 {
                 post(String(format: L10n.get("ios_store_failures"), storeFailures, error.localizedDescription))
             }
-            return (0, 0)
+            return (0, 0, 0, "")
         }
     }
 
@@ -1617,10 +1617,11 @@ final class Companion: NSObject, ObservableObject {
     var manualTypes: [ManualTypeView] { core.manualTypes() }
 
     /// Stores an activity entered by hand; returns its id, or nil when that failed.
-    func addActivity(typeKey: String, start: Date, minutes: Int) async -> String? {
+    func addActivity(typeKey: String, purpose: String, start: Date, minutes: Int) async -> String? {
         do {
             let id = try await core.addActivity(
                 typeKey: typeKey,
+                trainingType: purpose,
                 startEpochSec: Int64(start.timeIntervalSince1970),
                 elapsedSec: Self.seconds(minutes)
             )

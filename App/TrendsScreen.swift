@@ -89,6 +89,16 @@ struct TrendsScreen: View {
         )
     }
 
+    /// Guided interval sessions of the selection (watch tables and phone recordings alike).
+    private var intervalSessions: [TrendIntervalSession] { Trends.shared.intervalSessions(list: cur) }
+
+    /// Strength per exercise. Strength counts as an "other" sport, so this reads the period itself (with every sport or
+    /// "other" picked), whatever the "other" switch says (as Android).
+    private var strengthExercises: [TrendExercise] {
+        guard family == "ALL" || family == "OTHER" else { return [] }
+        return Trends.shared.strengthExercises(list: all.filter { Int($0.daysAgo) < periodDays }, holds: StrengthCatalog.shared.HOLD_EXERCISES)
+    }
+
     private var charts: [TrendChartDef] {
         let cur = self.cur, window = self.window
         let hasState = cur.contains { !$0.techniques.isEmpty || !$0.terrain.isEmpty }
@@ -105,6 +115,8 @@ struct TrendsScreen: View {
                           info: ["\(L10n.get("em_rmssd_name")): \(L10n.get("em_rmssd_desc"))",
                                  L10n.get("em_hrv_note")].joined(separator: "\n\n")),
             TrendChartDef(id: "climb", title: L10n.get("trends_c_climb"), show: cur.contains { $0.ascentM > 0 || $0.descentM > 0 }),
+            TrendChartDef(id: "intervals", title: L10n.get("trends_c_intervals"), show: !intervalSessions.isEmpty),
+            TrendChartDef(id: "strength", title: L10n.get("trends_c_strength"), show: !strengthExercises.isEmpty),
         ]
     }
     private var visible: [TrendChartDef] { charts.filter { $0.show } }
@@ -117,6 +129,7 @@ struct TrendsScreen: View {
             (L10n.get("trends_theme_intensity"), ["int", "rec"]),
             (L10n.get("dash_tab_technique"), ["mix", "matrix"]),
             (L10n.get("trends_theme_performance"), ["pol", "slope", "eff"]),
+            (L10n.get("trends_theme_sessions"), ["intervals", "strength"]),
         ]
         return spec.map { (label, ids) in (label: label, charts: ids.compactMap { id in shown.first { $0.id == id } }) }
             .filter { !$0.charts.isEmpty }
@@ -190,6 +203,8 @@ struct TrendsScreen: View {
         case "slope": TrendSlopeChart(data: d, space: space)
         case "eff": TrendEfficiencyChart(data: d, space: space)
         case "rec": TrendRecoveryChart(data: d, space: space)
+        case "intervals": TrendIntervalSessionsChart(sessions: intervalSessions) { companion.openActivityId = $0 }
+        case "strength": TrendStrengthExercisesChart(exercises: strengthExercises) { companion.openActivityId = $0 }
         default: TrendClimbChart(data: d, space: space)
         }
     }

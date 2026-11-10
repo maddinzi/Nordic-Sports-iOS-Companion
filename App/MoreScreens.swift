@@ -2199,10 +2199,15 @@ struct FeedbackHubScreen: View {
 
 // MARK: - Add activity by hand
 
+/// "Add activity" by hand (Android `AddActivityScreen`): the type step by step as on the recording start screen
+/// (activity, style where there is one, purpose where there is one; the shared `PhoneRecordingCatalog.manualFamilies`,
+/// with swimming, SUP and plain Training), the last choice remembered; then duration and when.
 struct AddActivitySheet: View {
     @EnvironmentObject var companion: Companion
     @Environment(\.dismiss) private var dismiss
-    @State private var typeKey = ""
+    @AppStorage("manual_preset") private var preset = "rollskiSkating"
+    @AppStorage("manual_purpose") private var endurancePurpose = "endurance"
+    @AppStorage("manual_strength_purpose") private var strengthPurpose = "hypertrophy"
     @State private var endedNow = true
     @State private var minutes = 60
     @State private var otherMinutes = ""
@@ -2212,17 +2217,46 @@ struct AddActivitySheet: View {
     private static let durations = [30, 60, 90, 120]
 
     private var duration: Int { Int(otherMinutes) ?? minutes }
+    private var catalog: PhoneRecordingCatalog { PhoneRecordingCatalog.shared }
+    private var family: PhoneRecordingCatalog.Family { catalog.manualFamilyOf(preset: preset) ?? catalog.manualFamilies[0] }
+    private var strengthPurposes: Bool { preset == catalog.STRENGTH }
+    private var purpose: String { strengthPurposes ? strengthPurpose : endurancePurpose }
+    private var purposes: [String] { strengthPurposes ? catalog.strengthPurposes : catalog.purposes }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section(L10n.get("add_activity_type_heading")) {
-                    Picker(L10n.get("add_activity_type_heading"), selection: $typeKey) {
-                        ForEach(companion.manualTypes, id: \.key) { type in
-                            Text(type.label).tag(type.key)
+                    ChipFlow(spacing: 8) {
+                        ForEach(catalog.manualFamilies.indices, id: \.self) { i in
+                            let f = catalog.manualFamilies[i]
+                            chip(L10n.get(f.labelKey), on: f.key == family.key) {
+                                if f.key != family.key { preset = f.styles[0].preset }
+                            }
                         }
                     }
-                    .pickerStyle(.navigationLink)
+                }
+                if family.styles.count > 1 {
+                    Section(L10n.get("phone_start_style")) {
+                        ChipFlow(spacing: 8) {
+                            ForEach(family.styles.indices, id: \.self) { i in
+                                let style = family.styles[i]
+                                chip(L10n.get(style.labelKey), on: style.preset == preset) { preset = style.preset }
+                            }
+                        }
+                    }
+                }
+                // Walk and the training presets but Strength have no purpose (as on the watch): Endurance.
+                if catalog.hasPurpose(preset: preset) {
+                    Section(L10n.get("phone_start_purpose")) {
+                        ChipFlow(spacing: 8) {
+                            ForEach(purposes, id: \.self) { p in
+                                chip(L10n.get("watch_training_type_\(p)"), on: p == purpose) {
+                                    if strengthPurposes { strengthPurpose = p } else { endurancePurpose = p }
+                                }
+                            }
+                        }
+                    }
                 }
                 Section(L10n.get("add_activity_duration_heading")) {
                     Picker(L10n.get("add_activity_duration_heading"), selection: $minutes) {
@@ -2253,16 +2287,17 @@ struct AddActivitySheet: View {
                     Button(L10n.get("add_activity_save_button")) {
                         Task {
                             saving = true
-                            let id = await companion.addActivity(typeKey: typeKey, start: start, minutes: duration)
+                            let id = await companion.addActivity(typeKey: preset, purpose: purpose, start: start, minutes: duration)
                             saving = false
                             if id != nil { dismiss() }
                         }
                     }
-                    .disabled(saving || typeKey.isEmpty || duration <= 0)
+                    .disabled(saving || duration <= 0)
                 }
             }
             .onAppear {
-                if typeKey.isEmpty { typeKey = companion.manualTypes.first?.key ?? "" }
+                // A remembered type that is no longer offered starts again at the first one.
+                if catalog.manualFamilyOf(preset: preset) == nil { preset = catalog.manualFamilies[0].styles[0].preset }
                 updateStart()
             }
             .onChange(of: endedNow) { _, _ in updateStart() }
@@ -2274,6 +2309,16 @@ struct AddActivitySheet: View {
     /// "Ended now" starts the activity its duration ago; "Starts now" starts it now.
     private func updateStart() {
         start = endedNow ? Date().addingTimeInterval(-Double(duration) * 60) : Date()
+    }
+
+    private func chip(_ text: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(text).font(.subheadline)
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(on ? Color.accentColor.opacity(0.18) : Color.clear, in: Capsule())
+                .overlay(Capsule().stroke(on ? Color.accentColor : Color(.separator), lineWidth: on ? 1.5 : 1))
+        }
+        .buttonStyle(.borderless)
     }
 }
 

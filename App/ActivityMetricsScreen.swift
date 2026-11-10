@@ -21,7 +21,9 @@ struct ActivityMetricsScreen: View {
         start.key = pick
         _pick = StateObject(wrappedValue: start)
         // The themes open on their first page (the overview); the data target, from the old tabs, opens All data.
-        _theme = State(initialValue: initialTab == .data && !item.hasTechniqueMetrics ? .allData : nil)
+        // A guided session opens on its sets, steps or laps, as Android's first page.
+        let guided = !item.strengthSetLines.isEmpty || !item.stepRows.isEmpty || !item.lapRows.isEmpty
+        _theme = State(initialValue: initialTab == .data && !item.hasTechniqueMetrics && !guided ? .allData : nil)
     }
 
     /// The themes of this activity in the order of the pill row (Android: `dashboardPages`).
@@ -29,6 +31,10 @@ struct ActivityMetricsScreen: View {
         var out: [MetricsTheme] = []
         if hasLegacyLines { out.append(.legacy) }
         if let metrics = current.enhancedMetrics { out += metrics.themes.map { MetricsTheme.enhanced($0) } }
+        // The guided pages (Android: SETS, STEPS, LAPS), from the watch's tables or a phone recording.
+        if !current.strengthSetLines.isEmpty { out.append(.sets) }
+        if !current.stepRows.isEmpty { out.append(.steps) }
+        if !current.lapRows.isEmpty { out.append(.laps) }
         out.append(.allData)
         return out
     }
@@ -200,7 +206,7 @@ struct ActivityMetricsScreen: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    /// The technical data and the sets of a strength activity.
+    /// The technical data (the sets have their own page).
     @ViewBuilder private var dataSections: some View {
         Section {
             TechnicalDataCard(
@@ -209,16 +215,6 @@ struct ActivityMetricsScreen: View {
             )
         }
         .listRowBackground(CardTone.navy.container)
-        // Strength sets as the Strava description block says them (shared StrengthDescription.body).
-        let setLines = current.strengthSetLines
-        if !setLines.isEmpty {
-            Section(L10n.get("activity_detail_strength_sets_label")) {
-                ForEach(Array(setLines.enumerated()), id: \.offset) { _, line in
-                    Text(line)
-                }
-            }
-            .listRowBackground(CardTone.grey.container)
-        }
     }
 
     /// The themes that are not open, composed at no size and not drawn: their charts register with the screen's registry.
@@ -270,8 +266,34 @@ struct ActivityMetricsScreen: View {
                 }
                 .listRowBackground(CardTone.blue.container)
             }
+        case .sets:
+            Section(L10n.get("activity_detail_strength_sets_label")) {
+                ForEach(Array(current.strengthSetLines.enumerated()), id: \.offset) { _, line in Text(line) }
+                ForEach(Array(current.setRows.enumerated()), id: \.offset) { _, row in
+                    Text(row.text).font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            .listRowBackground(CardTone.blue.container)
+        case .steps:
+            Section(L10n.get("watch_training_type_intervals")) {
+                if !current.stepsSummary.isEmpty { Text(current.stepsSummary).font(.body.weight(.semibold)) }
+                guidedRows(current.stepRows)
+            }
+            .listRowBackground(CardTone.blue.container)
+        case .laps:
+            Section(L10n.get("em_timeline_by_lap")) { guidedRows(current.lapRows) }
+                .listRowBackground(CardTone.blue.container)
         case .allData:
             EmptyView()
+        }
+    }
+
+    /// The lines of the Intervals or Laps page; a work step or the fastest lap stands out.
+    private func guidedRows(_ rows: [GuidedRowView]) -> some View {
+        ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+            Text(row.text)
+                .font(row.emphasized ? .subheadline.weight(.semibold) : .subheadline)
+                .foregroundStyle(row.emphasized ? Color.primary : Color.secondary)
         }
     }
 }
@@ -289,7 +311,7 @@ final class MetricsPick: ObservableObject {
 
 /// The themes of the Metrics screen (Android: `DashTab`): the Enhanced Metrics parts, the older technique lines and All data.
 enum MetricsTheme: Hashable {
-    case enhanced(EnhancedTheme), legacy, allData
+    case enhanced(EnhancedTheme), legacy, sets, steps, laps, allData
 
     var label: String {
         switch self {
@@ -299,6 +321,9 @@ enum MetricsTheme: Hashable {
         case .enhanced(.form): return L10n.get("dash_tab_form")
         case .enhanced(.heartRate): return L10n.get("dash_tab_heart_rate")
         case .enhanced(.timeline): return L10n.get("dash_tab_timeline")
+        case .sets: return L10n.get("dash_tab_sets")
+        case .steps: return L10n.get("watch_training_type_intervals")
+        case .laps: return L10n.get("em_timeline_by_lap")
         case .allData: return L10n.get("dash_tab_all_data")
         }
     }
