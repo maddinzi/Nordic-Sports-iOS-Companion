@@ -43,17 +43,17 @@ struct ActivityScreen: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(current.title.isEmpty ? L10n.get("activity_detail_title_fallback") : current.title).font(.headline)
             Text(Format.summary(current)).font(.subheadline).foregroundStyle(.secondary)
+            // The origin icon, then the destination marks without words (Android `SyncPresenceRow` in the header).
             HStack(spacing: 14) {
-                SyncChip(name: L10n.get("sync_presence_destination_watch"), on: current.source == "watch", tint: SyncChip.watch)
-                SyncChip(name: "Strava", on: !current.stravaActivityId.isEmpty, tint: SyncChip.strava)
-                if companion.diaryReceives {
-                    SyncChip(name: L10n.get("settings_diary_short_name"),
-                             on: current.diaryWritten && !current.diaryOutdated, tint: SyncChip.diary)
+                OriginMark(item: current, font: .body)
+                if let mark = current.stravaMark(connected: companion.stravaConnected) {
+                    Image(systemName: "chevron.up.2").foregroundStyle(markColor(mark, done: SyncChip.strava))
+                        .accessibilityLabel("Strava")
                 }
-                if current.source == "phone" {
-                    Label(L10n.get("activity_source_phone_long"), systemImage: "iphone").font(.subheadline).foregroundStyle(.secondary)
-                } else if current.source == "manual" {
-                    Label(L10n.get("activity_source_manual_long"), systemImage: "pencil").font(.subheadline).foregroundStyle(.secondary)
+                if let mark = current.diaryMark(connected: companion.diaryReceives) {
+                    Image(systemName: "book.closed")
+                        .foregroundStyle(markColor(current.diaryOutdated && mark == .done ? .pending : mark, done: SyncChip.diary))
+                        .accessibilityLabel(L10n.get("sync_presence_destination_diary"))
                 }
                 if current.isDemo {
                     Label(L10n.get("demo_badge"), systemImage: "testtube.2").font(.subheadline)
