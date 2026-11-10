@@ -98,7 +98,8 @@ struct WeatherSection: View {
             }).min(by: { $0.feelsLikeC!.doubleValue < $1.feelsLikeC!.doubleValue }), let feels = cold.feelsLikeC?.doubleValue {
                 Text(String(format: L10n.get("weather_feels_like"), degrees(feels)))
             }
-            ForEach(Array(Set(moments.map(sourceLine))).sorted(), id: \.self) { line in
+            // One line per station (or the model): start and end at the same station differ only a little in distance.
+            ForEach(moments.filter { r in r.moment == WeatherMoment.start || r.source != start?.source || r.stationId != start?.stationId }.map(sourceLine), id: \.self) { line in
                 Text(line).font(.footnote).foregroundStyle(.secondary)
             }
         } header: {
