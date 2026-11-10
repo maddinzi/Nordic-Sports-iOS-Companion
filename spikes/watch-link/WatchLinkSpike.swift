@@ -210,8 +210,9 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
                 }
                 if startTime > 0 {
                     let receiptTime = NSNumber(value: Int32(truncatingIfNeeded: startTime))
-                    // "tables": 1 tells the watch this phone takes the follow-up tables (as Android's receipt).
-                    self.send(["type": "receipt", "startTime": receiptTime, "tables": NSNumber(value: Int32(1))], to: app, what: "receipt \(startTime)") { result in
+                    // "tables" says which follow-up tables this phone takes (the shared core's level, as Android's receipt).
+                    let tables = NSNumber(value: GuidedTables.shared.TABLES_LEVEL)
+                    self.send(["type": "receipt", "startTime": receiptTime, "tables": tables], to: app, what: "receipt \(startTime)") { result in
                         let sent = result.rawValue == 0
                         let status = Self.name(of: result)
                         Task { @MainActor in
