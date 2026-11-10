@@ -686,9 +686,15 @@ private struct TrackMapView: UIViewRepresentable {
             map.removeOverlays(c.lines)
             c.lines = []
             if points.count >= 2 {
+                // A thin dark edge, the white casing and the coloured line on top (Android `LiveTrackMap`; field test
+                // 2026-11-10: the line read too thin).
+                let edge = TrackLine(coordinates: points, count: points.count)
+                edge.colour = UIColor(red: 17 / 255, green: 24 / 255, blue: 39 / 255, alpha: 0.55)
+                edge.width = 10
+                c.lines.append(edge)
                 let casing = TrackLine(coordinates: points, count: points.count)
                 casing.colour = .white
-                casing.width = 7
+                casing.width = 8
                 c.lines.append(casing)
                 // The stretch into point i has point i's colour; a run ends where the colour changes.
                 var runStart = 0
@@ -699,7 +705,7 @@ private struct TrackMapView: UIViewRepresentable {
                         let run = Array(points[runStart..<i])
                         let line = TrackLine(coordinates: run, count: run.count)
                         line.colour = colour
-                        line.width = 4
+                        line.width = 5
                         c.lines.append(line)
                         runStart = i - 1
                     }
@@ -752,11 +758,27 @@ private struct TrackMapView: UIViewRepresentable {
         var drawnMode: TrackColour?
         var drawnCount = -1
         var followed = false
+        /// Following comes back by itself 20 s after the last drag or pinch (Android `REFOLLOW_AFTER_MS`).
+        private var refollow: DispatchWorkItem?
 
         init(_ parent: TrackMapView) { self.parent = parent }
 
         @objc func userMoved(_ gesture: UIGestureRecognizer) {
-            if gesture.state == .began { parent.following = false; followed = false }
+            if gesture.state == .began {
+                parent.following = false
+                followed = false
+                refollow?.cancel()
+            }
+            if gesture.state == .ended || gesture.state == .cancelled {
+                refollow?.cancel()
+                let item = DispatchWorkItem { [weak self] in
+                    guard let self else { return }
+                    self.followed = false
+                    self.parent.following = true
+                }
+                refollow = item
+                DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: item)
+            }
         }
 
         func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
