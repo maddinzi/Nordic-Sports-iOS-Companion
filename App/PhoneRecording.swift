@@ -225,11 +225,14 @@ struct PhoneRecordStartScreen: View {
                         }
                     }
                 }
-                Section(L10n.get("phone_start_purpose")) {
-                    ChipFlow(spacing: 8) {
-                        ForEach(catalog.purposes.indices, id: \.self) { i in
-                            let p = catalog.purposes[i]
-                            chip(L10n.get("watch_training_type_\(p)"), on: p == purpose) { purpose = p }
+                // Walk has no purpose (as on the watch): the shared setup records it as Endurance.
+                if catalog.hasPurpose(preset: preset) {
+                    Section(L10n.get("phone_start_purpose")) {
+                        ChipFlow(spacing: 8) {
+                            ForEach(catalog.purposes.indices, id: \.self) { i in
+                                let p = catalog.purposes[i]
+                                chip(L10n.get("watch_training_type_\(p)"), on: p == purpose) { purpose = p }
+                            }
                         }
                     }
                 }

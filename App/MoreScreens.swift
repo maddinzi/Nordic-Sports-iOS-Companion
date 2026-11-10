@@ -2522,7 +2522,8 @@ struct EditActivitySheet: View {
     }
 
     private static let sports: [SportArt] = [
-        .langlauf, .rollski, .laufen, .stocklauf, .inlineskaten, .cycling, .mtb, .swimming, .sup, .strength, .training, .other,
+        .langlauf, .rollski, .laufen, .stocklauf, .gehen, .wandern, .nordicWalking, .inlineskaten, .cycling, .mtb, .swimming, .sup,
+        .strength, .training, .other,
     ]
     private static let styles: [SportStyle] = [.skating, .klassisch, .doppelstock]
 
