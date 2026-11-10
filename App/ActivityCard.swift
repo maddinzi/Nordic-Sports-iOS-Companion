@@ -30,7 +30,7 @@ extension ActivityItem {
     }
 
     /// True when the watch recorded the activity: the Metrics lane then has numbers behind it.
-    var hasWatchMetrics: Bool { origin == "watch" }
+    var hasWatchMetrics: Bool { origin == "watch" || origin == "manual" }
 
     /// True when the Technique tab has something to show (Enhanced Metrics, running analysis, technique shares).
     var hasTechniqueMetrics: Bool {
