@@ -44,11 +44,16 @@ struct ActivityScreen: View {
             Text(current.title.isEmpty ? L10n.get("activity_detail_title_fallback") : current.title).font(.headline)
             Text(Format.summary(current)).font(.subheadline).foregroundStyle(.secondary)
             HStack(spacing: 14) {
-                SyncChip(name: L10n.get("sync_presence_destination_watch"), on: current.origin == "watch", tint: SyncChip.watch)
+                SyncChip(name: L10n.get("sync_presence_destination_watch"), on: current.source == "watch", tint: SyncChip.watch)
                 SyncChip(name: "Strava", on: !current.stravaActivityId.isEmpty, tint: SyncChip.strava)
                 if companion.diaryReceives {
                     SyncChip(name: L10n.get("settings_diary_short_name"),
                              on: current.diaryWritten && !current.diaryOutdated, tint: SyncChip.diary)
+                }
+                if current.source == "phone" {
+                    Label(L10n.get("activity_source_phone_long"), systemImage: "iphone").font(.subheadline).foregroundStyle(.secondary)
+                } else if current.source == "manual" {
+                    Label(L10n.get("activity_source_manual_long"), systemImage: "pencil").font(.subheadline).foregroundStyle(.secondary)
                 }
                 if current.isDemo {
                     Label(L10n.get("demo_badge"), systemImage: "testtube.2").font(.subheadline)

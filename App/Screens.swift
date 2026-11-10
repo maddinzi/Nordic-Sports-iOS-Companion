@@ -621,8 +621,13 @@ struct ActivityRow: View {
                         .padding(.vertical, 2)
                         .background(Color.purple.opacity(0.2), in: Capsule())
                 }
-                if item.origin == "watch" {
-                    Image(systemName: "applewatch").foregroundStyle(.primary)
+                switch item.source {
+                case "watch": Image(systemName: "applewatch").foregroundStyle(.primary)
+                case "phone": Image(systemName: "iphone").foregroundStyle(.secondary)
+                    .accessibilityLabel(L10n.get("activity_source_phone_long"))
+                case "manual": Image(systemName: "pencil").foregroundStyle(.secondary)
+                    .accessibilityLabel(L10n.get("activity_source_manual_long"))
+                default: EmptyView()
                 }
                 if !item.stravaActivityId.isEmpty {
                     Image(systemName: "link").foregroundStyle(.orange)
@@ -776,7 +781,7 @@ struct ActivityDetailScreen: View {
             // same blocks the write uses (StravaWritePreview), so it is clear before anything is sent.
             // An activity recorded elsewhere has no preview (the app never changes it on Strava): say so (Android
             // `activity_detail_strava_imported_*`).
-            if onStravaTab && current.origin != "watch" {
+            if onStravaTab && !current.appRecorded {
                 Section {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(L10n.get("activity_detail_strava_imported_title")).font(.headline)

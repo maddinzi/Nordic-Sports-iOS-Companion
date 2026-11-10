@@ -178,10 +178,20 @@ struct ActivityCard: View {
             }
             // The blue watch tick stays in front of the source line, as the Watch badge was.
             HStack(spacing: 4) {
-                Image(systemName: item.origin == "watch" ? "checkmark.circle.fill" : "circle")
-                    .font(.caption)
-                    .foregroundStyle(item.origin == "watch" ? SyncChip.watch : Color.secondary)
-                    .accessibilityLabel(L10n.get("sync_presence_destination_watch"))
+                // A phone recording or a manual entry shows its origin instead of an empty watch tick (Android the same).
+                switch item.source {
+                case "phone":
+                    Image(systemName: "iphone").font(.caption).foregroundStyle(.secondary)
+                        .accessibilityLabel(L10n.get("activity_source_phone_long"))
+                case "manual":
+                    Image(systemName: "pencil").font(.caption).foregroundStyle(.secondary)
+                        .accessibilityLabel(L10n.get("activity_source_manual_long"))
+                default:
+                    Image(systemName: item.source == "watch" ? "checkmark.circle.fill" : "circle")
+                        .font(.caption)
+                        .foregroundStyle(item.source == "watch" ? SyncChip.watch : Color.secondary)
+                        .accessibilityLabel(L10n.get("sync_presence_destination_watch"))
+                }
                 Text(Format.summary(item))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
