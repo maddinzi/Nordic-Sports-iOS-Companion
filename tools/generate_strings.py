@@ -13,6 +13,8 @@ With a third argument it also writes one text table per language, `<dir>/texts-<
 (name -> text, or plural form -> text), in Android's own format syntax (`%1$s`, `%d`), with
 English filled in for names a language lacks. The shared Kotlin code reads these
 (`StringTable`), so the log and worklog lines the shared logic writes read as on Android.
+It always writes `InfoPlist.xcstrings` next to the catalog as well: the permission texts
+(`INFO_PLIST_TEXTS`, Info.plist key -> Android text name) in every language.
 
 Conversions: `%1$s` -> `%1$@` (Swift strings are objects), `%1$d` -> `%1$lld` (Kotlin Int
 and Swift Int are 64 bit on iOS), floats unchanged; Android escapes (`\\'`, `\\"`, `\\n`) are
@@ -163,6 +165,30 @@ def build_catalog(res: Path) -> dict:
     return {"sourceLanguage": "en", "strings": strings, "version": "1.0"}
 
 
+# Info.plist keys localized from an Android text: Xcode compiles `InfoPlist.xcstrings` (next to
+# Localizable.xcstrings) into each language's InfoPlist.strings; project.yml keeps the English value
+# as the fallback.
+INFO_PLIST_TEXTS = {
+    "NSLocationWhenInUseUsageDescription": "ios_location_usage",
+    "NSBluetoothAlwaysUsageDescription": "ios_bluetooth_usage",
+    "NSBluetoothPeripheralUsageDescription": "ios_bluetooth_usage",
+}
+
+
+def build_info_plist_catalog(res: Path) -> dict:
+    per_language = read_all(res)
+    strings = {}
+    for plist_key, name in sorted(INFO_PLIST_TEXTS.items()):
+        english, _ = per_language["en"]
+        if name not in english:
+            sys.exit(f"{plist_key}: text {name} is missing in values/strings.xml")
+        strings[plist_key] = {
+            "extractionState": "manual",
+            "localizations": {lang: unit(texts[name]) for lang, (texts, _) in per_language.items() if name in texts},
+        }
+    return {"sourceLanguage": "en", "strings": strings, "version": "1.0"}
+
+
 def build_tables(res: Path) -> dict:
     """language -> {name: text or {plural form: text}} in Android format, English filled in."""
     per_language = read_all(res, android_format=True)
@@ -212,6 +238,10 @@ def main(argv):
     out.write_text(json.dumps(catalog, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     counts = {lang: sum(1 for e in catalog["strings"].values() if lang in e["localizations"]) for lang in LANGUAGES.values()}
     print(f"{out}: {len(catalog['strings'])} texts; per language: {counts}")
+    info = build_info_plist_catalog(res)
+    info_out = out.parent / "InfoPlist.xcstrings"
+    info_out.write_text(json.dumps(info, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"{info_out}: {len(info['strings'])} Info.plist texts")
 
 
 if __name__ == "__main__":

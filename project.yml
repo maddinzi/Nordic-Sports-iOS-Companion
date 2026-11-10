@@ -108,6 +108,8 @@ targets:
         # Lets the Connect IQ SDK check that Garmin Connect Mobile is installed.
         LSApplicationQueriesSchemes:
           - gcm-ciq
+        # The permission texts below are the English fallback; every language comes from App/InfoPlist.xcstrings,
+        # generated on CI from the Android texts ios_bluetooth_usage / ios_location_usage (tools/generate_strings.py).
         NSBluetoothAlwaysUsageDescription: Nordic Sports Companion connects to your Garmin watch over Bluetooth to receive your activities and send settings to the watch app.
         NSBluetoothPeripheralUsageDescription: Nordic Sports Companion connects to your Garmin watch over Bluetooth to receive your activities and send settings to the watch app.
         # Woken in the background when the watch sends data (part of what spike 1 measures).

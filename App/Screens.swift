@@ -1657,6 +1657,7 @@ struct SyncStatusCard: View {
         if status.pendingDocs > 0 { parts.append(Line(text: String(format: L10n.get("sync_status_pending_docs"), status.pendingDocs), activityId: status.firstPendingDocsId)) }
         if status.stravaConflicts > 0 { parts.append(Line(text: String(format: L10n.get("sync_status_pending_strava_conflicts"), status.stravaConflicts), activityId: status.firstConflictId)) }
         if status.stravaUnavailable > 0 { parts.append(Line(text: String(format: L10n.get("sync_status_strava_unavailable"), status.stravaUnavailable))) }
+        for id in status.twiceOnStravaIds { parts.append(Line(text: L10n.get("sync_status_phone_on_strava_twice"), activityId: id)) }
         if !status.stravaIssue.isEmpty {
             parts.append(Line(text: status.stravaIssueStandalone
                               ? status.stravaIssue
