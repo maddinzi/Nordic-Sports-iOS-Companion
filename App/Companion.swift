@@ -385,6 +385,10 @@ final class Companion: NSObject, ObservableObject {
 
     func clearServerToken() { core.clearServerToken() }
 
+    /// The anonymous account's ID (App Attest installs once accounts are on), or nil without one.
+    /// The website's deletion form takes it; "Delete my data" deletes the account from the app.
+    var anonymousAccountId: String? { core.anonymousAccountId.isEmpty ? nil : core.anonymousAccountId }
+
     /// Sends the finished days of usage counts (Strava calls per kind, no athlete data); does
     /// nothing without a server token. Safe to call often.
     private func reportUsage() async {
