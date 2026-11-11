@@ -154,6 +154,8 @@ struct ActivitiesScreen: View {
     /// The "+" choice (Android's sheet: record now, or enter a finished activity), the start and the live screen.
     @State private var choosing = false
     @State private var recordStart = false
+    /// "Record on my watch": how to start Nordic Sports on the watch (the phone cannot open the watch app).
+    @State private var watchHelp = false
     @State private var recordLive = false
     @State private var route: ActivityRoute?
     /// Items that were open and are not any more, newest first: they stay on top of "Done" with a
@@ -288,13 +290,14 @@ struct ActivitiesScreen: View {
                 await companion.sync()
             }
             .sheet(isPresented: $adding) { AddActivitySheet().environmentObject(companion) }
+            // Watch and phone as twins, then the manual entry (Android's "+" menu, same wording).
             .confirmationDialog(L10n.get("add_activity_title"), isPresented: $choosing, titleVisibility: .visible) {
+                Button(L10n.get("add_choice_watch")) { watchHelp = true }
                 Button(L10n.get("add_choice_record")) { recordStart = true }
                 Button(L10n.get("add_choice_enter")) { adding = true }
                 Button(L10n.get("common_cancel"), role: .cancel) {}
-            } message: {
-                Text(L10n.get("add_choice_record_desc"))
             }
+            .sheet(isPresented: $watchHelp) { WatchRecordStartView() }
             .sheet(isPresented: $recordStart) {
                 PhoneRecordStartScreen(phone: companion.phone) {
                     // The live screen opens once the start sheet is gone.
