@@ -41,6 +41,9 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         }
     }
     private let defaults = UserDefaults.standard
+    /// The watch app whose Sensor Record chunks came last (main thread): asked to resend a record closed incomplete.
+    private var lastRecordApp: IQApp?
+    private var silenceTimer: Timer?
     private let timeFormat: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "MM-dd HH:mm:ss"
@@ -69,6 +72,31 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         }
         devices = loadDevices()
         registerAll()
+        // Sensor Records whose chunks stopped coming are closed every 15 s (Android: a timer per record),
+        // so a watch that got no receipt can be asked to resend (see closeSilentRecords).
+        silenceTimer?.invalidate()
+        silenceTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+            self?.closeSilentRecords()
+        }
+    }
+
+    /// A Sensor Record closed incomplete (60 s without a chunk) gets no receipt. Watch 0.9.124 then parks it
+    /// and sends it again on the next Companion message; when this app came back in the middle of a transfer
+    /// it got only the tail, and without a reconnect nothing else would wake the watch (fenix 6X Pro,
+    /// 2026-11-11). So the watch that sent it is asked to resend, at most once a minute (shared
+    /// `CompanionCore.closeSilentSensorRecords`; Android `ConnectIqWatchEventSource.abandonIncompleteBurst`).
+    private func closeSilentRecords() {
+        Task { @MainActor in
+            let app = self.lastRecordApp
+            let deviceId = app.map { Self.deviceId($0.device) } ?? 0
+            guard (try? await Companion.shared.core.closeSilentSensorRecords(deviceId: deviceId))?.boolValue == true,
+                  let app
+            else { return }
+            self.send(["type": "resend"], to: app, what: "resend request (Sensor Record incomplete)") { result in
+                let status = Self.name(of: result)
+                Task { @MainActor in Companion.shared.core.resendRequested(deviceId: deviceId, status: status) }
+            }
+        }
     }
 
     func chooseWatch() {
@@ -212,6 +240,7 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         if let dict, type == "activity" || type == "recordingBoostBurst" || type == "activityTables" {
             let variant = variantName(app)
             Task { @MainActor in
+                if type == "recordingBoostBurst" { self.lastRecordApp = app }
                 let (startTime, burstId, tablesStartTime, tablesKind) = await Companion.shared.receive(message: dict, variant: variant)
                 if tablesStartTime > 0 && !tablesKind.isEmpty {
                     let tablesTime = NSNumber(value: Int32(truncatingIfNeeded: tablesStartTime))
