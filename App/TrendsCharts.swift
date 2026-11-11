@@ -445,6 +445,12 @@ struct TrendMatrixChart: View {
 
 // MARK: - Scatter charts: poling map and technique by slope
 
+/// The state keys behind the dots ("GLIDE", not its translated name, which `TDot.key` holds for the labels): the legend
+/// colours and picks by key and shows `stateShort`.
+private func trendDotStates(_ dots: [TDot]) -> [String] {
+    Array(Set(dots.compactMap { $0.id.split(separator: "|").last.map(String.init) })).sorted()
+}
+
 private struct TDot {
     let id: String
     let x: Double
@@ -600,8 +606,8 @@ struct TrendPolingChart: View {
                     axisTitle: view == 0 ? L10n.get("trends_ay_rate") : view == 1 ? L10n.get("trends_ay_imp") : L10n.get("trends_ay_hr"),
                     curves: view == 0 ? [3, 4, 5, 6, 7] : [], curveY: view == 0 ? { v, x in v * 60 / x } : nil, data: data, space: space
                 )
-                let keys = Array(Set(dots.map { $0.key })).sorted()
-                TrendLegend(items: keys.map { k in (k, k, stateColor(k)) }, selected: data.tech, data: data) { data.onTech($0) }
+                let keys = trendDotStates(dots)
+                TrendLegend(items: keys.map { k in (k, stateShort(k), stateColor(k)) }, selected: data.tech, data: data) { data.onTech($0) }
                 if let d = dots.first(where: { $0.id == data.picked }) {
                     caption("\(d.key) · \(d.title) · \(d.detail)", data)
                 } else {
@@ -646,8 +652,8 @@ struct TrendSlopeChart: View {
                     yFloor: hr ? 80 : nil, axisTitle: hr ? "bpm" : "km/h", curves: [], curveY: nil, data: data, space: space
                 )
                 if !running {
-                    let keys = Array(Set(dots.map { $0.key })).sorted()
-                    TrendLegend(items: keys.map { k in (k, k, stateColor(k)) }, selected: data.tech, data: data) { data.onTech($0) }
+                    let keys = trendDotStates(dots)
+                    TrendLegend(items: keys.map { k in (k, stateShort(k), stateColor(k)) }, selected: data.tech, data: data) { data.onTech($0) }
                 }
                 if let d = dots.first(where: { $0.id == data.picked }) {
                     caption("\(d.key) · \(d.title) · \(d.detail)", data)
