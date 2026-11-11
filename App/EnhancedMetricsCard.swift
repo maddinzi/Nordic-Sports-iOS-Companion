@@ -114,6 +114,7 @@ extension Color {
     static let techniqueOrange = Color(red: 0xE0 / 255, green: 0x8A / 255, blue: 0x1E / 255)
     static let techniqueGrey = Color(red: 0x8D / 255, green: 0x99 / 255, blue: 0xA6 / 255)
     static let techniqueLight = Color(red: 0xC9 / 255, green: 0xD0 / 255, blue: 0xD8 / 255)
+    static let techniquePause = Color(red: 0xE6 / 255, green: 0xE9 / 255, blue: 0xED / 255)
     // Running terrain, orange over yellow and light green to dark green (`TechniqueCatalogs.COLOR_RGB`).
     static let terrainSteep = Color(red: 0xE2 / 255, green: 0x57 / 255, blue: 0x1E / 255)
     static let terrainUp = Color(red: 0xF0 / 255, green: 0xB3 / 255, blue: 0x23 / 255)
@@ -152,11 +153,13 @@ func stateColor(_ key: String) -> Color {
     case "DOWN": return .terrainDown
     case "STEEP_DOWN": return .terrainSteepDown
     case "GLIDE", "WALK": return .techniqueGrey
+    case "PAUSE": return .techniquePause
     default: return .techniqueLight
     }
 }
 
-/// Athlete-facing name of a state ("V2A" -> "Symmetric 2:1 (V2A)"), also for GLIDE, OTHER and the terrain.
+/// Athlete-facing name of a state ("V2A" -> "Symmetric 2:1 (V2A)"), also for GLIDE ("No poling"), OTHER
+/// ("Not recognised"), PAUSE and the terrain.
 func stateName(_ key: String) -> String {
     switch key {
     case "V2": return L10n.get("technique_name_v2")
@@ -168,6 +171,7 @@ func stateName(_ key: String) -> String {
     case "KLAEBO": return L10n.get("technique_name_klaebo")
     case "GLIDE": return L10n.get("strava_analysis_glide")
     case "OTHER": return L10n.get("strava_analysis_other")
+    case "PAUSE": return L10n.get("strava_analysis_pause")
     case "UP": return L10n.get("em_up")
     case "FLAT": return L10n.get("em_flat")
     case "DOWN": return L10n.get("em_down")
@@ -179,10 +183,10 @@ func stateName(_ key: String) -> String {
     }
 }
 
-/// The short code in the grid: GLIDE and OTHER in words, the rest as is.
+/// The short code in the grid: GLIDE, OTHER and PAUSE in words, the rest as is.
 func stateShort(_ key: String) -> String {
     switch key {
-    case "GLIDE", "OTHER", "UP", "FLAT", "DOWN", "STEEP", "STEEP_DOWN": return stateName(key)
+    case "GLIDE", "OTHER", "PAUSE", "UP", "FLAT", "DOWN", "STEEP", "STEEP_DOWN": return stateName(key)
     case "KLAEBO": return "Klæbo"   // a name, like the codes, never translated
     case "RUN", "WALK": return stateName(key)
     default: return key
@@ -1132,7 +1136,7 @@ struct EnhancedMetricsCard: View {
     }
 
     private var stateKeysForSheet: [String] {
-        isRun ? ["STEEP", "UP", "FLAT", "DOWN", "STEEP_DOWN"] : view.shares.map { $0.key }.filter { $0 != "OTHER" }
+        isRun ? ["STEEP", "UP", "FLAT", "DOWN", "STEEP_DOWN"] : view.shares.map { $0.key }.filter { $0 != "OTHER" && $0 != "PAUSE" }
     }
 
     private func stateDescription(_ key: String) -> String {
