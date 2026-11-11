@@ -123,6 +123,11 @@ final class Companion: NSObject, ObservableObject {
             }
         )
         super.init()
+        // The demo Sensor Record (Android asset demo_burst.json, copied into App/Texts by CI): in memory only.
+        if let url = Bundle.main.url(forResource: "demo_burst", withExtension: "json"),
+           let json = try? String(contentsOf: url, encoding: .utf8) {
+            core.setDemoSensorRecord(json: json)
+        }
         if IOSAppAttestRegistration.available {
             core.storeRegistration = AppAttestStoreRegistration(core: core)
         }

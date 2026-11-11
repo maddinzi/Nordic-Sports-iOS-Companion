@@ -1636,7 +1636,20 @@ struct RecordingBoostScreen: View {
                     .font(.system(.footnote, design: .monospaced))
             }
             if let failure { LoadFailedRow(reason: failure) }
-            if loaded && bursts.isEmpty && failure == nil {
+            // Demo mode: a real record to try the charts on (Android `DemoBurst` row); never stored or exported.
+            let demo = companion.core.demoSensorRecordShown()
+            if demo {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(L10n.get("burst_demo_title")).font(.headline)
+                        Text(L10n.get("burst_demo_body")).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    NavigationLink(L10n.get("burst_charts_button")) { SensorRecordView(burstId: "demo-burst") }
+                        .fixedSize()
+                }
+            }
+            if loaded && bursts.isEmpty && failure == nil && !demo {
                 Text(L10n.get("recording_boost_list_empty")).foregroundStyle(.secondary)
             }
             ForEach(bursts, id: \.id) { burst in
