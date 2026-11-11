@@ -3,7 +3,7 @@
 Moved out of the workspace `CLAUDE.md` (2026-10-27). Never print or commit any of these values.
 
 ## Workflow
-`.github/workflows/ios-testflight.yml`, started by hand (Actions › iOS TestFlight › Run workflow, on `main`). It checks out Companion `main`, builds the `NordicSportsShared` XCFramework, archives and uploads to TestFlight. The build number is the run number. Push the Companion before starting a run.
+`.github/workflows/ios-testflight.yml`, started on `main` with `python -X utf8 tools/testflight.py start` (GitHub API with the login from git's credential manager; no `gh` on the Windows PC) or by hand (Actions › iOS TestFlight › Run workflow). `tools/testflight.py status`, `wait` and `errors [run_id]` show the result and a failed run's `error:` lines. It checks out Companion `main`, builds the `NordicSportsShared` XCFramework, archives and uploads to TestFlight. The build number is the run number. Push the Companion before starting a run.
 
 Signing is manual: each run creates the App Store profile "Nordic Sports Companion App Store CI" through the API, so no registered device is needed.
 
