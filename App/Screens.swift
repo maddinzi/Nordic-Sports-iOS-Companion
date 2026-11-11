@@ -534,21 +534,27 @@ struct BoostReminderCard: View {
     /// How many other activities with Boost files wait behind this one.
     var more: Int = 0
     @State private var openFeedback = false
+    @State private var expanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        // Compact: the explanation shows two lines until tapped, the date sits in the button row (as on Android).
+        VStack(alignment: .leading, spacing: 4) {
             Text(L10n.get("feedback_boost_reminder_title")).font(.headline)
             Text(String(format: L10n.get("feedback_boost_reminder_body"), reminder.title, Int(reminder.fileCount)))
                 .font(.footnote)
-            if reminder.activityStartEpochSec > 0 {
-                Text(Date(timeIntervalSince1970: TimeInterval(reminder.activityStartEpochSec)).formatted(date: .abbreviated, time: .shortened))
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+                .lineLimit(expanded ? nil : 2)
+                .onTapGesture { withAnimation { expanded.toggle() } }
             HStack {
-                if more > 0 {
-                    Text(String(format: L10n.get("home_more_waiting"), more)).font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 0) {
+                    if reminder.activityStartEpochSec > 0 {
+                        Text(Date(timeIntervalSince1970: TimeInterval(reminder.activityStartEpochSec)).formatted(date: .abbreviated, time: .shortened))
+                    }
+                    if more > 0 {
+                        Text(String(format: L10n.get("home_more_waiting"), more))
+                    }
                 }
-                Spacer()
+                .font(.caption).foregroundStyle(.secondary)
+                Spacer(minLength: 4)
                 Button(L10n.get("feedback_boost_reminder_discard")) { companion.declineBoostReminder(reminder.activityId) }
                     .buttonStyle(.borderless)
                 Button(L10n.get("feedback_boost_reminder_upload")) { openFeedback = true }
@@ -1791,13 +1797,17 @@ struct SyncStatusCard: View {
         let tone = Self.tone(status, reviewing: !toReview.isEmpty)
         if status.total == 0, let oldest = toReview.first {
             // In sync, but activities wait for their declaration: one yellow card with the sync line inside.
-            VStack(alignment: .leading, spacing: 6) {
+            // Compact: the body at most two lines, the sync line beside the button (as on Android).
+            VStack(alignment: .leading, spacing: 4) {
                 Text(reviewTitle).font(.headline).foregroundStyle(tone.title)
-                Text(String(format: L10n.get("activity_list_review_body"), oldest.title)).font(.subheadline)
-                if !nothingConnected {
-                    Label(detail, systemImage: "checkmark.circle.fill").font(.footnote).foregroundStyle(.secondary)
+                Text(String(format: L10n.get("activity_list_review_body"), oldest.title)).font(.footnote).lineLimit(2)
+                HStack(spacing: 8) {
+                    if !nothingConnected {
+                        Label(detail, systemImage: "checkmark.circle.fill").font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    Spacer(minLength: 0)
+                    reviewButton.buttonStyle(.borderedProminent).lineLimit(1).fixedSize()
                 }
-                HStack { Spacer(); reviewButton.buttonStyle(.borderedProminent) }
             }
         } else if status.total == 0 {
             VStack(alignment: .leading, spacing: 4) {
