@@ -735,7 +735,8 @@ private struct PlanRow: View {
     }
 }
 
-private struct WatchSettingRow: View {
+/// One watch setting (toggle or picker); also on "Record on my watch" (`WatchRecordStartView`).
+struct WatchSettingRow: View {
     @EnvironmentObject var companion: Companion
     let deviceId: Int64
     let item: WatchSettingItem

@@ -75,13 +75,38 @@ struct SensorRecordView: View {
     @State private var page: BurstPage = .stroke
     @State private var failed = false
     @State private var facts: BurstFacts?
+    /// The record's label and technique choices (its sport only), for the technique menu.
+    @State private var record: RecordingBoostView?
+
+    /// Saves [code] as the declared technique ("" clears it). The rest of a label stays; a first label also takes
+    /// the record's terrain and poles suggestion, as the label sheet does (Android `BurstScreen` onTechnique).
+    private func pickTechnique(_ code: String) {
+        guard let r = record else { return }
+        let first = r.labelSummary.isEmpty
+        let terrain = first && r.terrainOptions.contains(r.suggestedTerrain) ? r.suggestedTerrain : r.labelTerrain
+        let poles: Int32 = first ? (r.askPoles ? r.suggestedPoles : -1) : r.labelPoles
+        Task {
+            do {
+                try await companion.labelBoost(id: r.id, technique: code, terrain: terrain, poles: poles, note: r.labelNote, surface: r.labelSurface)
+                record = try? await companion.core.recordingBoosts().first { $0.id == burstId }
+            } catch {
+                if !error.isCancellation { WatchLinkSpike.shared.add("Sensor Record technique not saved: \(error.localizedDescription)") }
+            }
+        }
+    }
 
     var body: some View {
         Group {
             if let v = shown ?? full {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        if let full { CropBar(view: full, cycle: $cycle) }
+                        if let full {
+                            CropBar(view: full, cycle: $cycle) {
+                                if let record, !record.techniqueOptions.isEmpty {
+                                    TechniqueMenu(options: record.techniqueOptions, current: record.labelTechnique, onPick: pickTechnique)
+                                }
+                            }
+                        }
                         Picker("", selection: $page) {
                             ForEach(BurstPage.allCases, id: \.self) { Text($0.label).tag($0) }
                         }
@@ -104,6 +129,7 @@ struct SensorRecordView: View {
         .task(id: burstId) {
             full = try? await companion.core.burstView(id: burstId, fromS: -1, toS: -1)
             facts = try? await companion.core.burstFacts(id: burstId)
+            record = try? await companion.core.recordingBoosts().first { $0.id == burstId }
             failed = full == nil
         }
         .task(id: cycle) {
@@ -118,9 +144,11 @@ struct SensorRecordView: View {
 
 /// The time window: the movement strength over the record (the cycles marked), "All" or "One cycle" with the arrows to
 /// the previous and next cycle; the charts follow it.
-private struct CropBar: View {
+private struct CropBar<Trailing: View>: View {
     let view: BurstView
     @Binding var cycle: Int
+    /// At the right end of the All / One cycle row: the technique menu.
+    @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
         let envelope = view.envelope.swiftArray
@@ -158,8 +186,43 @@ private struct CropBar: View {
                     Button { cycle += 1 } label: { Image(systemName: "chevron.right") }
                         .disabled(cycle >= bounds.count - 1).accessibilityLabel(L10n.get("burst_crop_next"))
                 }
+                Spacer(minLength: 4)
+                trailing()
             }
         }
+    }
+}
+
+/// Declare the technique on the go (Android `TechniqueDropdown`): a small button with the declared technique (or
+/// "Technique"), its list limited to this record's sport, plus "mixed" and "–" to clear.
+private struct TechniqueMenu: View {
+    let options: [String]
+    let current: String
+    let onPick: (String) -> Void
+
+    private func name(_ code: String) -> String { code == "MIXED" ? L10n.get("recording_boost_label_mixed") : stateName(code) }
+
+    var body: some View {
+        Menu {
+            ForEach(options, id: \.self) { code in
+                Button { if code != current { onPick(code) } } label: {
+                    if code == current { Label(name(code), systemImage: "checkmark") } else { Text(name(code)) }
+                }
+            }
+            if !current.isEmpty {
+                Divider()
+                Button("–") { onPick("") }
+            }
+        } label: {
+            HStack(spacing: 2) {
+                Text(current.isEmpty ? L10n.get("recording_boost_label_technique") : name(current))
+                    .lineLimit(1).truncationMode(.tail)
+                Image(systemName: "chevron.down").font(.caption2)
+            }
+            .font(.subheadline)
+        }
+        .buttonStyle(.bordered)
+        .tint(current.isEmpty ? .secondary : .accentColor)
     }
 }
 

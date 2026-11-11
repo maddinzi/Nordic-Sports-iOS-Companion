@@ -158,6 +158,8 @@ struct ActivitiesScreen: View {
     @State private var watchHelp = false
     @State private var recordLive = false
     @State private var route: ActivityRoute?
+    /// A Sensor Record opened from the live card; back returns to the card (Android: `burst/{id}` over the list).
+    @State private var burstRoute: BurstRoute?
     /// Items that were open and are not any more, newest first: they stay on top of "Done" with a
     /// green frame until the next pull to refresh (as Android's `JustReviewed`).
     @State private var seenOpen: Set<String> = []
@@ -228,7 +230,7 @@ struct ActivitiesScreen: View {
                             || !companion.boostReminders.isEmpty {
                             Section {
                                 ForEach(companion.liveActivities, id: \.deviceId) { live in
-                                    WatchLiveCard(live: live)
+                                    WatchLiveCard(live: live) { burstRoute = BurstRoute(id: $0) }
                                 }
                                 if let report = companion.crashReports.first {
                                     WatchCrashCard(report: report)
@@ -274,6 +276,9 @@ struct ActivitiesScreen: View {
             .navigationDestination(item: $route) { route in
                 ActivityRouteView(id: route.id, target: route.target, pick: route.pick)
             }
+            .navigationDestination(item: $burstRoute) { route in
+                SensorRecordView(burstId: route.id)
+            }
             .onChange(of: companion.openActivityId, initial: true) { _, id in
                 guard let id else { return }
                 let pick = companion.openPick
@@ -297,7 +302,7 @@ struct ActivitiesScreen: View {
                 Button(L10n.get("add_choice_enter")) { adding = true }
                 Button(L10n.get("common_cancel"), role: .cancel) {}
             }
-            .sheet(isPresented: $watchHelp) { WatchRecordStartView() }
+            .sheet(isPresented: $watchHelp) { WatchRecordStartView().environmentObject(companion) }
             .sheet(isPresented: $recordStart) {
                 PhoneRecordStartScreen(phone: companion.phone) {
                     // The live screen opens once the start sheet is gone.
@@ -345,11 +350,19 @@ struct ActivitiesScreen: View {
     }
 }
 
+/// A Sensor Record to open from the live card.
+struct BurstRoute: Identifiable, Hashable {
+    let id: String
+}
+
 /// A recording on a watch (its `activityStart`), as Android's card: which watch, activity
-/// and training type, since when and how long, and the start position.
+/// and training type, since when and how long, the start position, and a line per Sensor Record that opens it.
 struct WatchLiveCard: View {
     @EnvironmentObject var companion: Companion
     let live: LiveActivityView
+    var onOpenBurst: (String) -> Void = { _ in }
+    /// The Sensor Records of this recording so far, newest first.
+    @State private var bursts: [RecordingBoostView] = []
     @State private var showRecording = false
     /// Drives the breathing border and the recording dot while the watch records.
     @State private var pulse = false
@@ -378,6 +391,16 @@ struct WatchLiveCard: View {
                 }
                 if live.hasPosition {
                     Text(String(format: "%.4f, %.4f", live.lat, live.lon)).font(.footnote).foregroundStyle(.secondary)
+                }
+                // One line per Sensor Record: a tap opens its charts directly, back returns to this card.
+                ForEach(bursts, id: \.id) { burst in
+                    let time = Date(timeIntervalSince1970: TimeInterval(burst.burstId)).formatted(date: .omitted, time: .shortened)
+                    Button { onOpenBurst(burst.id) } label: {
+                        Label(String(format: L10n.get("burst_live_item"), time), systemImage: "chart.xyaxis.line")
+                            .font(.subheadline).lineLimit(1)
+                            .frame(minHeight: 32)
+                    }
+                    .buttonStyle(.borderless)
                 }
             }
             .padding(.vertical, 4)
@@ -411,6 +434,15 @@ struct WatchLiveCard: View {
         }
         .fullScreenCover(isPresented: $showRecording) {
             RecordingScreen(startEpochSec: live.startEpochSec).environmentObject(companion)
+        }
+        // The Sensor Records arrive during the recording: look again every 10 s.
+        .task(id: live.startEpochSec) {
+            while !Task.isCancelled {
+                if let all = try? await companion.core.recordingBoosts() {
+                    bursts = all.filter { $0.burstId >= live.startEpochSec }.sorted { $0.burstId > $1.burstId }
+                }
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+            }
         }
     }
 }
