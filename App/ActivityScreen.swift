@@ -92,7 +92,7 @@ struct ActivityScreen: View {
                     .allowsHitTesting(mode == .entry)
                     .accessibilityHidden(mode != .entry)
                 if item.hasWatchMetrics {
-                    ActivityMetricsScreen(item: item, initialTab: metricsTab, pick: pick)
+                    ActivityMetricsScreen(item: item, initialTab: metricsTab, pick: pick, bursts: bursts)
                         .opacity(mode == .metrics ? 1 : 0)
                         .allowsHitTesting(mode == .metrics)
                         .accessibilityHidden(mode != .metrics)

@@ -421,20 +421,9 @@ struct TrendsScreen: View {
         let list = themes
         let current = min(page, max(list.count - 1, 0))
         return VStack(spacing: 10) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(Array(list.enumerated()), id: \.offset) { i, theme in
-                        Button { page = i } label: {
-                            Text(theme.label).font(.subheadline.weight(current == i ? .semibold : .regular))
-                                .padding(.horizontal, 12).padding(.vertical, 6)
-                                .background(current == i ? tone.title : Color.clear, in: Capsule())
-                                .overlay(Capsule().stroke(tone.title, lineWidth: 1.5))
-                                .foregroundStyle(current == i ? Color(.systemBackground) : tone.title)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
+            PartPills(pills: list.enumerated().map { i, theme in
+                PartPill(id: "\(i)-\(theme.label)", label: theme.label, selected: current == i) { page = i }
+            }, tint: tone.title)
             if !list.isEmpty {
                 ForEach(list[current].charts, id: \.id) { chart in
                     VStack(alignment: .leading, spacing: 8) {

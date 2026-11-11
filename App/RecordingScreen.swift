@@ -301,13 +301,14 @@ func paceText(kmh: Double) -> String? {
 
 /// What the track is coloured by (Android `TrackColour`).
 enum TrackColour: CaseIterable {
-    case technique, speed, altitude
+    case technique, speed, altitude, grade
 
     func label(run: Bool) -> String {
         switch self {
         case .technique: return L10n.get("recording_map_colour_technique")
         case .speed: return L10n.get(run ? "watch_data_field_pace" : "recording_map_colour_speed")
         case .altitude: return L10n.get("recording_map_colour_altitude")
+        case .grade: return L10n.get("recording_live_grade")
         }
     }
 }
@@ -330,6 +331,9 @@ struct TrackPoints {
     let isRun: Bool
     /// The watch reports a technique live (not on inline).
     let hasTechnique: Bool
+    /// A saved activity's track: seconds from the start and the grade (NaN none) per point; empty on the live map.
+    let seconds: [Int]
+    let gradePct: [Double]
 
     init(_ feed: LiveFeedView) {
         isRun = feed.isRun
@@ -339,9 +343,25 @@ struct TrackPoints {
         technique = feed.trackTechnique
         speedKmh = feed.trackSpeedKmh.map { $0.doubleValue }
         altitudeM = feed.trackAltitudeM.map { $0.doubleValue }
+        seconds = feed.series?.seconds.map { $0.intValue } ?? []
+        gradePct = feed.series?.gradePct.map { $0.doubleValue } ?? []
     }
 
     var count: Int { min(lat.count, lon.count) }
+    var hasAltitude: Bool { altitudeM.filter { !$0.isNaN }.count >= 2 }
+    var hasGrade: Bool { gradePct.filter { !$0.isNaN }.count >= 2 }
+
+    /// The colourings this track has data for (Android: the switch lists only those); grade only on a saved activity.
+    func colourModes(withGrade: Bool) -> [TrackColour] {
+        TrackColour.allCases.filter { mode in
+            switch mode {
+            case .technique: return hasTechnique
+            case .speed: return true
+            case .altitude: return hasAltitude
+            case .grade: return withGrade && hasGrade
+            }
+        }
+    }
 }
 
 /// The colour of each track point (the stretch that ends there) and what the legend shows (Android `trackColours`):
@@ -363,8 +383,37 @@ struct TrackColours {
             : (UIColor(red: 0x2F / 255, green: 0x6F / 255, blue: 0xDB / 255, alpha: 1), UIColor(red: 0xD6 / 255, green: 0x45 / 255, blue: 0x45 / 255, alpha: 1))
     }
 
+    /// Grade from blue (downhill) over grey (flat) to red (uphill), in quarter steps up to ±`gradeScale` per cent, the
+    /// same on every activity (Android `gradeColour`).
+    static let gradeScale = 12.0
+    static let gradeDown = UIColor(red: 0x2F / 255, green: 0x6F / 255, blue: 0xDB / 255, alpha: 1)
+    static let gradeFlat = UIColor(red: 0xB8 / 255, green: 0xBE / 255, blue: 0xC6 / 255, alpha: 1)
+    static let gradeUp = UIColor(red: 0xD6 / 255, green: 0x45 / 255, blue: 0x45 / 255, alpha: 1)
+    static func gradeColour(_ pct: Double) -> UIColor {
+        let f = (min(max(pct / gradeScale, -1), 1) * 4).rounded() / 4
+        return f < 0 ? mix(gradeFlat, gradeDown, CGFloat(-f)) : mix(gradeFlat, gradeUp, CGFloat(f))
+    }
+
+    private init(colours: [UIColor], used: [String], low: Double?, high: Double?) {
+        self.colours = colours; self.used = used; self.low = low; self.high = high
+    }
+
+    /// The same colours with every point outside [window] (seconds from the start) faint (a saved activity's time window).
+    func dimmed(outside window: ClosedRange<Int>?, seconds: [Int]) -> TrackColours {
+        guard let window, seconds.count >= colours.count else { return self }
+        let faded = colours.enumerated().map { i, c in window.contains(seconds[i]) ? c : c.withAlphaComponent(0.28) }
+        return TrackColours(colours: faded, used: used, low: low, high: high)
+    }
+
     init(_ t: TrackPoints, _ mode: TrackColour) {
         let n = t.count
+        if mode == .grade {
+            let values = Array(t.gradePct.prefix(n)) + Array(repeating: Double.nan, count: max(0, n - t.gradePct.count))
+            colours = values.map { $0.isNaN ? Self.noValue : Self.gradeColour($0) }
+            let present = values.filter { !$0.isNaN }
+            used = []; low = present.min(); high = present.max()
+            return
+        }
         if mode == .technique {
             let keys = Array(t.technique.prefix(n))
             colours = keys.map { $0.isEmpty ? Self.noValue : UIColor(stateColor($0)) }
@@ -391,7 +440,7 @@ struct TrackColours {
         var (r1, g1, b1, a1, r2, g2, b2, a2): (CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0, 0, 0, 0, 0)
         a.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
         b.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
-        return abs(r1 - r2) < 0.002 && abs(g1 - g2) < 0.002 && abs(b1 - b2) < 0.002
+        return abs(r1 - r2) < 0.002 && abs(g1 - g2) < 0.002 && abs(b1 - b2) < 0.002 && abs(a1 - a2) < 0.002
     }
 
     static func mix(_ a: UIColor, _ b: UIColor, _ f: CGFloat) -> UIColor {
@@ -415,14 +464,23 @@ struct LiveTrackMap: View {
     var onExpand: (() -> Void)? = nil
     var topInset: CGFloat = 0
     var fullScreen = false
+    /// Offers the Grade colouring (a saved activity; the live map keeps three choices).
+    var withGrade = false
+    /// A saved activity's time window (seconds from the start): the rest of the track is faint, the map frames the window.
+    var window: ClosedRange<Int>? = nil
+    /// A saved activity's picked moment (seconds from the start): an orange dot on the track there.
+    var cursor: Int? = nil
+    /// Set: a tap near the track picks the time of the nearest point.
+    var onPick: ((Int) -> Void)? = nil
     @State private var following = true
 
     private var style: String { choices.season ?? automatic }
 
     var body: some View {
-        let colours = TrackColours(points, colourBy)
+        let colours = TrackColours(points, colourBy).dimmed(outside: window, seconds: points.seconds)
         ZStack {
-            TrackMapView(points: points, colours: colours, mode: colourBy, style: style, following: $following)
+            TrackMapView(points: points, colours: colours, mode: colourBy, style: style, following: $following,
+                         window: window, cursor: cursor, onPick: onPick)
                 .ignoresSafeArea(edges: fullScreen ? .all : [])
             VStack(spacing: 0) {
                 HStack(alignment: .top) {
@@ -466,13 +524,13 @@ struct LiveTrackMap: View {
     static let ink = Color(red: 0x11 / 255, green: 0x18 / 255, blue: 0x27 / 255)
 
     /// A segmented switch over the map: 40 points high, 13 pt, for gloves (Android `MapSwitch`).
-    private func pill<Key: Equatable>(_ items: [(Key, String)], selected: Key, onPick: @escaping (Key) -> Void) -> some View {
+    private func pill<Key: Equatable>(_ items: [(Key, String)], selected: Key, tight: Bool = false, onPick: @escaping (Key) -> Void) -> some View {
         HStack(spacing: 0) {
             ForEach(items.indices, id: \.self) { i in
                 let (key, label) = items[i]
                 Button { onPick(key) } label: {
-                    Text(label).font(.system(size: 13, weight: selected == key ? .semibold : .medium)).lineLimit(1)
-                        .padding(.horizontal, 11).frame(minHeight: 40)
+                    Text(label).font(.system(size: tight ? 12 : 13, weight: selected == key ? .semibold : .medium)).lineLimit(1)
+                        .padding(.horizontal, tight ? 8 : 11).frame(minHeight: 40)
                         .foregroundStyle(selected == key ? Color.white : Color.accentColor)
                         .background(selected == key ? Color.accentColor : Color.clear, in: Capsule())
                         .contentShape(Capsule())
@@ -483,14 +541,22 @@ struct LiveTrackMap: View {
         .background(Self.plate, in: Capsule())
     }
 
-    /// What the track is coloured by: the choice, but speed on inline (no technique there; Android alike).
+    /// What the track is coloured by: the choice when this track has data for it, else the first mode it has (speed on
+    /// inline, which has no technique; Android alike).
     private var colourBy: TrackColour {
-        !points.hasTechnique && choices.colourBy == .technique ? .speed : choices.colourBy
+        let modes = points.colourModes(withGrade: withGrade)
+        return modes.contains(choices.colourBy) ? choices.colourBy : (modes.first ?? .speed)
     }
 
-    private var colourSwitch: some View {
-        pill(TrackColour.allCases.filter { $0 != .technique || points.hasTechnique }.map { ($0, $0.label(run: points.isRun)) },
-             selected: colourBy) { choices.colourBy = $0 }
+    @ViewBuilder private var colourSwitch: some View {
+        let modes = points.colourModes(withGrade: withGrade)
+        if modes.count >= 2 {
+            // Four choices scroll rather than cut the last one off on a narrow phone.
+            ScrollView(.horizontal, showsIndicators: false) {
+                pill(modes.map { ($0, $0.label(run: points.isRun)) }, selected: colourBy, tight: modes.count >= 4) { choices.colourBy = $0 }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var seasonSwitch: some View {
@@ -503,7 +569,16 @@ struct LiveTrackMap: View {
     @ViewBuilder
     private func legend(_ c: TrackColours) -> some View {
         let text = Self.ink
-        if colourBy == .technique {
+        if colourBy == .grade {
+            // The fixed scale, not the track's extremes: the same colour means the same grade on every activity.
+            HStack(spacing: 6) {
+                Text("−\(Int(TrackColours.gradeScale))").font(.system(size: 12)).foregroundStyle(text)
+                LinearGradient(colors: [Color(TrackColours.gradeDown), Color(TrackColours.gradeFlat), Color(TrackColours.gradeUp)],
+                               startPoint: .leading, endPoint: .trailing)
+                    .frame(width: 80, height: 8).clipShape(Capsule())
+                Text("+\(Int(TrackColours.gradeScale)) %").font(.system(size: 12)).foregroundStyle(text)
+            }
+        } else if colourBy == .technique {
             if !c.used.isEmpty {
                 HStack(spacing: 10) {
                     ForEach(c.used, id: \.self) { key in
@@ -648,6 +723,9 @@ private struct TrackMapView: UIViewRepresentable {
     let mode: TrackColour
     let style: String
     @Binding var following: Bool
+    var window: ClosedRange<Int>? = nil
+    var cursor: Int? = nil
+    var onPick: ((Int) -> Void)? = nil
 
     // Never closer than this while following (a short track would otherwise fill the map at street level).
     private static let minSpanMeters: CLLocationDistance = 700
@@ -662,7 +740,9 @@ private struct TrackMapView: UIViewRepresentable {
         // A drag or pinch by the athlete stops the following.
         let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.userMoved(_:)))
         let pinch = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.userMoved(_:)))
-        let recognizers: [UIGestureRecognizer] = [pan, pinch]
+        // A tap near the track picks its nearest point (a saved activity's map; the live map ignores it).
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
+        let recognizers: [UIGestureRecognizer] = [pan, pinch, tap]
         recognizers.forEach { $0.delegate = context.coordinator; map.addGestureRecognizer($0) }
         return map
     }
@@ -678,10 +758,14 @@ private struct TrackMapView: UIViewRepresentable {
             map.insertOverlay(tiles, at: 0, level: .aboveLabels)
         }
         let points = zip(self.points.lat, self.points.lon).map { CLLocationCoordinate2D(latitude: $0, longitude: $1) }
-        if c.drawnCount != points.count || c.drawnMode != mode {
+        c.coordinates = points
+        if c.drawnCount != points.count || c.drawnMode != mode || c.drawnWindow != window {
             let moved = c.drawnCount != points.count
+            // another time window: frame it (while following)
+            if c.drawnWindow != window { c.followed = false }
             c.drawnCount = points.count
             c.drawnMode = mode
+            c.drawnWindow = window
             map.removeOverlays(c.lines)
             c.lines = []
             if points.count >= 2 {
@@ -712,20 +796,38 @@ private struct TrackMapView: UIViewRepresentable {
                 c.lines.forEach { map.addOverlay($0, level: .aboveLabels) }
             }
             if moved {
-                map.removeAnnotations(map.annotations)
+                map.removeAnnotations(map.annotations.filter { ($0 as? Dot)?.isCursor != true })
                 if let first = points.first { map.addAnnotation(Dot(coordinate: first, isStart: true)) }
                 if let last = points.last, points.count > 1 { map.addAnnotation(Dot(coordinate: last, isStart: false)) }
                 c.followed = false
             }
         }
-        if following && !c.followed, !points.isEmpty {
+        // The picked moment: one orange dot, moved to the point nearest in time.
+        let at: Int? = cursor.flatMap { t in self.points.seconds.indices.min { abs(self.points.seconds[$0] - t) < abs(self.points.seconds[$1] - t) } }
+        if let at, at < points.count {
+            if let dot = c.cursorDot { dot.coordinate = points[at] } else {
+                let dot = Dot(coordinate: points[at], isStart: false, isCursor: true)
+                c.cursorDot = dot
+                map.addAnnotation(dot)
+            }
+        } else if let dot = c.cursorDot {
+            map.removeAnnotation(dot)
+            c.cursorDot = nil
+        }
+        // What the map frames: the whole track, or the points of the time window.
+        var framed = points
+        if let window, self.points.seconds.count >= points.count {
+            let inside = points.indices.filter { window.contains(self.points.seconds[$0]) }.map { points[$0] }
+            if !inside.isEmpty { framed = inside }
+        }
+        if following && !c.followed, !framed.isEmpty {
             c.followed = true
             var rect = MKMapRect.null
-            for p in points {
+            for p in framed {
                 let mp = MKMapPoint(p)
                 rect = rect.union(MKMapRect(x: mp.x, y: mp.y, width: 0, height: 0))
             }
-            let minSize = Self.minSpanMeters * MKMapPointsPerMeterAtLatitude(points[0].latitude)
+            let minSize = Self.minSpanMeters * MKMapPointsPerMeterAtLatitude(framed[0].latitude)
             if rect.size.width < minSize || rect.size.height < minSize {
                 let center = MKMapPoint(x: rect.midX, y: rect.midY)
                 rect = MKMapRect(x: center.x - minSize / 2, y: center.y - minSize / 2, width: minSize, height: minSize)
@@ -756,11 +858,28 @@ private struct TrackMapView: UIViewRepresentable {
         var lines: [TrackLine] = []
         var drawnMode: TrackColour?
         var drawnCount = -1
+        var drawnWindow: ClosedRange<Int>?
         var followed = false
+        var coordinates: [CLLocationCoordinate2D] = []
+        var cursorDot: Dot?
         /// Following comes back by itself 20 s after the last drag or pinch (Android `REFOLLOW_AFTER_MS`).
         private var refollow: DispatchWorkItem?
 
         init(_ parent: TrackMapView) { self.parent = parent }
+
+        /// A tap within 32 points of the track picks the time of its nearest point.
+        @objc func tapped(_ gesture: UITapGestureRecognizer) {
+            guard let pick = parent.onPick, let map = gesture.view as? MKMapView else { return }
+            let at = gesture.location(in: map)
+            var best = -1
+            var bestD = CGFloat.greatestFiniteMagnitude
+            for (i, c) in coordinates.enumerated() {
+                let p = map.convert(c, toPointTo: map)
+                let d = hypot(p.x - at.x, p.y - at.y)
+                if d < bestD { bestD = d; best = i }
+            }
+            if best >= 0, bestD <= 32, best < parent.points.seconds.count { pick(parent.points.seconds[best]) }
+        }
 
         @objc func userMoved(_ gesture: UIGestureRecognizer) {
             if gesture.state == .began {
@@ -768,6 +887,8 @@ private struct TrackMapView: UIViewRepresentable {
                 followed = false
                 refollow?.cancel()
             }
+            // A saved activity's map (it picks moments) stays where the athlete put it until the button is pressed.
+            if parent.onPick != nil { return }
             if gesture.state == .ended || gesture.state == .cancelled {
                 refollow?.cancel()
                 let item = DispatchWorkItem { [weak self] in
@@ -798,11 +919,12 @@ private struct TrackMapView: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
             guard let dot = annotation as? Dot else { return nil }
             let view = MKAnnotationView(annotation: dot, reuseIdentifier: nil)
-            let size: CGFloat = dot.isStart ? 14 : 16
+            let size: CGFloat = dot.isCursor ? 18 : dot.isStart ? 14 : 16
             let circle = UIView(frame: CGRect(x: 0, y: 0, width: size, height: size))
             circle.layer.cornerRadius = size / 2
-            circle.backgroundColor = dot.isStart ? .white : .systemBlue
-            circle.layer.borderColor = (dot.isStart ? UIColor.systemBlue : UIColor.white).cgColor
+            // the picked moment orange, apart from the start ring and the end dot
+            circle.backgroundColor = dot.isCursor ? UIColor(red: 1, green: 0x9F / 255, blue: 0x0A / 255, alpha: 1) : dot.isStart ? .white : .systemBlue
+            circle.layer.borderColor = (dot.isStart && !dot.isCursor ? UIColor.systemBlue : UIColor.white).cgColor
             circle.layer.borderWidth = 3
             view.addSubview(circle)
             view.frame = circle.frame
@@ -818,19 +940,21 @@ private final class TrackLine: MKPolyline {
     var width: CGFloat = 4
 }
 
-/// The track's start (a ring) or the position now (a dot).
+/// The track's start (a ring), the position now (a dot) or a saved activity's picked moment ([isCursor], orange; it moves).
 private final class Dot: NSObject, MKAnnotation {
-    let coordinate: CLLocationCoordinate2D
+    @objc dynamic var coordinate: CLLocationCoordinate2D
     let isStart: Bool
-    init(coordinate: CLLocationCoordinate2D, isStart: Bool) {
+    let isCursor: Bool
+    init(coordinate: CLLocationCoordinate2D, isStart: Bool, isCursor: Bool = false) {
         self.coordinate = coordinate
         self.isStart = isStart
+        self.isCursor = isCursor
     }
 }
 
 /// A tile overlay that names the app to the tile servers (OpenStreetMap's tile policy asks for an app-specific
 /// User-Agent).
-// PRIVACY-SYNC: The live track map loads map tiles around the athlete's position from swisstopo or OpenStreetMap while the Recording screen shows a live track (instant mode, off by default). Notice section: Live track map. Changing this? Re-check the Companion's design/privacy-notice-sync.md.
+// PRIVACY-SYNC: The track map loads map tiles around the athlete's position from swisstopo or OpenStreetMap while a track is on screen: the Recording screen's live track (instant mode, off by default) or a saved activity's stored track (Out there, Metrics > Timeline). Notice section: Live track map. Changing this? Re-check the Companion's design/privacy-notice-sync.md.
 private final class AppTileOverlay: MKTileOverlay {
     override func loadTile(at path: MKTileOverlayPath, result: @escaping (Data?, Error?) -> Void) {
         var request = URLRequest(url: url(forTilePath: path))

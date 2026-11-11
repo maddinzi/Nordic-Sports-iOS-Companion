@@ -14,9 +14,17 @@ struct ActivityMetricsScreen: View {
     @State private var vsTypical = false
     /// The charts of every theme, so the full-screen view pages through all of them (the other themes are composed out of sight).
     @State private var registry = ChartRegistry()
+    /// The Sensor Records of this activity (the time chart marks them).
+    let bursts: [RecordingBoostView]
+    /// The stored track (Instant Mode or a phone recording) for the Timeline theme's map and time chart; nil without one.
+    @State private var track: LiveFeedView?
+    @State private var trackLoaded = false
+    /// The time window and picked moment the map and the time chart share.
+    @StateObject private var timeView = TimeViewState()
 
-    init(item: ActivityItem, initialTab: MetricsTab = .data, pick: String? = nil) {
+    init(item: ActivityItem, initialTab: MetricsTab = .data, pick: String? = nil, bursts: [RecordingBoostView] = []) {
         self.item = item
+        self.bursts = bursts
         let start = MetricsPick()
         start.key = pick
         _pick = StateObject(wrappedValue: start)
@@ -31,6 +39,8 @@ struct ActivityMetricsScreen: View {
         var out: [MetricsTheme] = []
         if hasLegacyLines { out.append(.legacy) }
         if let metrics = current.enhancedMetrics { out += metrics.themes.map { MetricsTheme.enhanced($0) } }
+        // A stored track gives the Timeline theme its map and time chart, also without blocks (Android `dashboardPages(hasTrack)`).
+        if track?.series != nil && !out.contains(.enhanced(.timeline)) { out.append(.track) }
         // The guided pages (Android: SETS, STEPS, LAPS), from the watch's tables or a phone recording.
         if !current.strengthSetLines.isEmpty { out.append(.sets) }
         if !current.stepRows.isEmpty { out.append(.steps) }
@@ -148,21 +158,9 @@ struct ActivityMetricsScreen: View {
             // Level 3 of the navigation: the themes as a pill row; the first numbers stay above every theme but All data.
             if themes.count > 1 {
                 Section {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
-                            ForEach(themes, id: \.self) { entry in
-                                let on = entry == selectedTheme
-                                Button { theme = entry } label: {
-                                    Text(entry.label).font(.subheadline.weight(on ? .semibold : .regular))
-                                        .padding(.horizontal, 12).padding(.vertical, 6)
-                                        .background(on ? Color.accentColor : Color.clear, in: Capsule())
-                                        .overlay(Capsule().stroke(Color.accentColor, lineWidth: 1.5))
-                                        .foregroundStyle(on ? Color(.systemBackground) : Color.accentColor)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
+                    PartPills(pills: themes.map { entry in
+                        PartPill(id: String(describing: entry), label: entry.label, selected: entry == selectedTheme) { theme = entry }
+                    })
                 }
                 .listRowBackground(Color.clear)
             }
@@ -202,6 +200,10 @@ struct ActivityMetricsScreen: View {
         .environment(\.chartRegistry, registry)
         .background(alignment: .topLeading) { hiddenThemes }
         .task(id: item.id) { typical = await companion.typical(for: item) }
+        .task(id: item.id) {
+            track = await companion.activityTrack(of: item)
+            trackLoaded = true
+        }
         .homeTitle(L10n.get("card_lane_metrics"))
     }
 
@@ -220,8 +222,12 @@ struct ActivityMetricsScreen: View {
     private var hiddenThemes: some View {
         VStack {
             ForEach(themes.filter { $0 != selectedTheme }, id: \.self) { entry in
+                if entry == .track, let track {
+                    ActivityTimeSection(item: current, track: track, bursts: bursts, showMap: false, view: timeView)
+                }
                 if case .enhanced(let part) = entry, let metrics = current.enhancedMetrics {
                     if part == .timeline {
+                        if let track { ActivityTimeSection(item: current, track: track, bursts: bursts, showMap: false, view: timeView) }
                         TimelineSection(view: metrics, pick: pick)
                     } else {
                         EnhancedMetricsCard(view: metrics, theme: part, pick: pick)
@@ -241,6 +247,8 @@ struct ActivityMetricsScreen: View {
         switch entry {
         case .enhanced(let part):
             if let metrics = current.enhancedMetrics, part == .timeline {
+                // Everything over time together: the map and the time chart first, then the blocks.
+                timeSection
                 Section { TimelineSection(view: metrics, pick: pick) }
                     .listRowBackground(CardTone.blue.container)
             } else if let metrics = current.enhancedMetrics {
@@ -282,8 +290,21 @@ struct ActivityMetricsScreen: View {
         case .laps:
             Section(L10n.get("em_timeline_by_lap")) { guidedRows(current.lapRows) }
                 .listRowBackground(CardTone.blue.container)
+        case .track:
+            timeSection
         case .allData:
             EmptyView()
+        }
+    }
+
+    /// The map and the time chart of the stored track, or the line that says what they need.
+    @ViewBuilder private var timeSection: some View {
+        if let track {
+            Section { ActivityTimeSection(item: current, track: track, bursts: bursts, view: timeView) }
+                .listRowBackground(CardTone.blue.container)
+        } else if trackLoaded {
+            Section { NoTrackNote() }
+                .listRowBackground(Color.clear)
         }
     }
 
@@ -311,9 +332,12 @@ final class MetricsPick: ObservableObject {
 /// The themes of the Metrics screen (Android: `DashTab`): the Enhanced Metrics parts, the older technique lines and All data.
 enum MetricsTheme: Hashable {
     case enhanced(EnhancedTheme), legacy, sets, steps, laps, allData
+    /// The Timeline theme of an activity with a track but no time blocks.
+    case track
 
     var label: String {
         switch self {
+        case .track: return L10n.get("dash_tab_timeline")
         case .legacy, .enhanced(.overview): return L10n.get("dash_tab_overview")
         case .enhanced(.technique): return L10n.get("dash_tab_technique")
         case .enhanced(.terrain): return L10n.get("dash_tab_terrain")

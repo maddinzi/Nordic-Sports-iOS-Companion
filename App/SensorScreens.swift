@@ -23,20 +23,11 @@ struct SensorModeView: View {
     var body: some View {
         VStack(spacing: 0) {
             if sorted.count > 1 {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(Array(sorted.enumerated()), id: \.element.id) { i, b in
-                            Button { withAnimation { page = i } } label: {
-                                Text(chipLabel(i, b)).font(.footnote)
-                                    .padding(.horizontal, 10).padding(.vertical, 6)
-                                    .background(page == i ? Color.accentColor.opacity(0.2) : Color.clear, in: Capsule())
-                                    .overlay(Capsule().stroke(Color.secondary.opacity(0.4)))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 12).padding(.vertical, 4)
-                }
+                // The shared pill row: the open record centred, a menu with all of them when they do not fit.
+                PartPills(pills: sorted.enumerated().map { i, b in
+                    PartPill(id: b.id, label: chipLabel(i, b), selected: page == i) { withAnimation { page = i } }
+                }, light: true)
+                .padding(.horizontal, 12).padding(.vertical, 4)
             } else if let only = sorted.first {
                 Text(chipLabel(-1, only)).font(.footnote).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.vertical, 2)
