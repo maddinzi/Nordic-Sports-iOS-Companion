@@ -73,13 +73,14 @@ struct TimeSeriesData {
         return lo
     }
 
-    /// Lowest, mean and highest value of [kind] between [from] and [to] seconds; nil without a value there.
-    func stats(_ kind: TimeKind, _ from: Double, _ to: Double) -> (min: Double, mean: Double, max: Double)? {
+    /// Lowest, mean and highest value of [kind] between [from] and [to] seconds; nil without a value there. Values below
+    /// [atLeast] are left out: a pace range passes 2 km/h (30:00/km), so standing does not make its slow end "–".
+    func stats(_ kind: TimeKind, _ from: Double, _ to: Double, atLeast: Double = -Double.infinity) -> (min: Double, mean: Double, max: Double)? {
         guard let v = values[kind] else { return nil }
         var n = 0.0, sum = 0.0, lo = Double.infinity, hi = -Double.infinity
         for i in seconds.indices where Double(seconds[i]) >= from && Double(seconds[i]) <= to {
             let x = v[i]
-            if x.isNaN { continue }
+            if x.isNaN || x < atLeast { continue }
             n += 1; sum += x; lo = min(lo, x); hi = max(hi, x)
         }
         if n == 0 { return nil }
@@ -345,6 +346,11 @@ private struct TimeChart: View {
             let i = data.index(at: Double(sec))
             guard i >= 0, let v = data.values[kind]?[i], !v.isNaN else { return "–" }
             return valueText(kind, v)
+        }
+        if kind == .speed && run {
+            // only speeds that have a pace (Android ActivityTimeView)
+            guard let st = data.stats(kind, from, to, atLeast: 2) else { return "–" }
+            return "\(valueText(kind, st.min).replacingOccurrences(of: " /km", with: ""))–\(valueText(kind, st.max))"
         }
         guard let st = data.stats(kind, from, to) else { return nil }
         return "\(valueText(kind, st.min)) – \(valueText(kind, st.max))"
