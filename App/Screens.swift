@@ -843,6 +843,7 @@ struct ActivityDetailScreen: View {
                     if showStravaTab { Text("Strava").tag(EntryTab.strava) }
                 }
                 .pickerStyle(.segmented)
+                .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0))
             }
             .listRowBackground(Color.clear)
             if current.reviewPending {
@@ -1064,6 +1065,8 @@ struct ActivityDetailScreen: View {
         // Denser than the default list: less height per row and between the sections (Android: tighter Entry cards).
         .environment(\.defaultMinListRowHeight, 34)
         .listSectionSpacing(.compact)
+        // No grouped top margin: the tabs sit right under the mode switch.
+        .contentMargins(.top, 4, for: .scrollContent)
         .homeTitle(L10n.get("card_lane_entry"))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

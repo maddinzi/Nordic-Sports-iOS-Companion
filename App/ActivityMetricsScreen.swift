@@ -156,19 +156,24 @@ struct ActivityMetricsScreen: View {
         Form {
             // The title, sync ticks and demo declaration are in the top card of ActivityScreen.
             // Level 3 of the navigation: the themes as a pill row; the first numbers stay above every theme but All data.
-            if themes.count > 1 {
+            // The pills and "Clear selection" share one tight section: on their own each cost a full section gap.
+            let showPills = themes.count > 1
+            let showClear = !pick.isEmpty && selectedTheme != .allData
+            if showPills || showClear {
                 Section {
-                    PartPills(pills: themes.map { entry in
-                        PartPill(id: String(describing: entry), label: entry.label, selected: entry == selectedTheme) { theme = entry }
-                    })
+                    if showPills {
+                        PartPills(pills: themes.map { entry in
+                            PartPill(id: String(describing: entry), label: entry.label, selected: entry == selectedTheme) { theme = entry }
+                        })
+                        .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0))
+                    }
+                    if showClear {
+                        Button(L10n.get("dash_pick_clear")) { pick.clear() }.font(.footnote)
+                            .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 2, trailing: 0))
+                    }
                 }
                 .listRowBackground(Color.clear)
-            }
-            if !pick.isEmpty && selectedTheme != .allData {
-                Section {
-                    Button(L10n.get("dash_pick_clear")) { pick.clear() }.font(.footnote)
-                }
-                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
             if selectedTheme == .allData {
                 dataSections
@@ -197,6 +202,9 @@ struct ActivityMetricsScreen: View {
             }
         }
         .textSelection(.enabled)
+        // Dense like the Entry mode: compact section gaps, and no grouped top margin under the mode switch.
+        .listSectionSpacing(.compact)
+        .contentMargins(.top, 4, for: .scrollContent)
         .environment(\.chartRegistry, registry)
         .background(alignment: .topLeading) { hiddenThemes }
         .task(id: item.id) { typical = await companion.typical(for: item) }
