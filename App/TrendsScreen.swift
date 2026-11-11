@@ -144,14 +144,21 @@ struct TrendsScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     filterBar
-                    kpiGrid
-                    selectionRow
-                    if visible.isEmpty {
-                        emptyCard
-                    } else {
-                        chartPager
+                    // A tap anywhere below the open filter closes it; the tap still does its own thing (Android
+                    // `closeFilterOnTapOutside`).
+                    VStack(alignment: .leading, spacing: 12) {
+                        kpiGrid
+                        selectionRow
+                        if visible.isEmpty {
+                            emptyCard
+                        } else {
+                            chartPager
+                        }
+                        activityList
                     }
-                    activityList
+                    .simultaneousGesture(TapGesture().onEnded {
+                        if filterOpen { withAnimation(.easeInOut(duration: 0.2)) { filterOpen = false } }
+                    }, including: filterOpen ? .all : .subviews)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
@@ -228,41 +235,37 @@ struct TrendsScreen: View {
     }
 
     private var filterChips: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ScrollView(.horizontal, showsIndicators: false) {
-              HStack(spacing: 10) {
-                Picker("", selection: Binding(get: { periodDays }, set: { periodDays = $0; bucket = -1; picked = "" })) {
-                    Text(L10n.get("trends_period_week")).tag(7)
-                    Text(L10n.get("trends_period_month")).tag(30)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 150)
+        // Period, the two switches, then sports and styles over as many lines as they need (Android in step).
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("", selection: Binding(get: { periodDays }, set: { periodDays = $0; bucket = -1; picked = "" })) {
+                Text(L10n.get("trends_period_week")).tag(7)
+                Text(L10n.get("trends_period_month")).tag(30)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 180)
+            HStack(spacing: 16) {
                 miniSwitch(L10n.get("trends_compare_short"), isOn: $compare)
                 miniSwitch(L10n.get("trends_other_short"), isOn: Binding(get: { includeOther }, set: { on in
                     includeOther = on
                     if !on && family == "OTHER" { family = "ALL"; style = "ALL" }
                 }))
-              }
             }
+            Divider()
             let counts = Trends.shared.familyCounts(all: all, q: query)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(includeOther ? ["ALL", "XC", "ROLLSKI", "RUNNING", "INLINE", "OTHER"] : ["ALL", "XC", "ROLLSKI", "RUNNING", "INLINE"], id: \.self) { f in
-                        trendChip("\(familyName(f)) \(counts[f]?.intValue ?? 0)", on: family == f) {
-                            family = f; style = "ALL"; tech = ""; picked = ""; bucket = -1
-                        }
+            ChipFlow(spacing: 8) {
+                ForEach(includeOther ? ["ALL", "XC", "ROLLSKI", "RUNNING", "INLINE", "OTHER"] : ["ALL", "XC", "ROLLSKI", "RUNNING", "INLINE"], id: \.self) { f in
+                    trendChip("\(familyName(f)) \(counts[f]?.intValue ?? 0)", on: family == f) {
+                        family = f; style = "ALL"; tech = ""; picked = ""; bucket = -1
                     }
                 }
             }
             let styles = styleKeys(family)
             if !styles.isEmpty {
                 let styleCounts = Trends.shared.styleCounts(all: all, q: query)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        trendChip(L10n.get("trends_style_all"), on: style == "ALL") { style = "ALL"; picked = "" }
-                        ForEach(styles, id: \.self) { s in
-                            trendChip("\(trendStyleName(s)) \(styleCounts[s]?.intValue ?? 0)", on: style == s) { style = s; picked = "" }
-                        }
+                ChipFlow(spacing: 8) {
+                    trendChip(L10n.get("trends_style_all"), on: style == "ALL") { style = "ALL"; picked = "" }
+                    ForEach(styles, id: \.self) { s in
+                        trendChip("\(trendStyleName(s)) \(styleCounts[s]?.intValue ?? 0)", on: style == s) { style = s; picked = "" }
                     }
                 }
             }
@@ -545,14 +548,15 @@ func trendBucketLabel(_ index: Int, _ periodDays: Int) -> String {
 }
 
 /// A filter that takes one slim row while closed: [summary] says in words what is shown; a tap opens [content] (the
-/// chips that change it) below the row, another tap closes it (Android `ui/FilterBar.kt`).
+/// chips that change it) below the row, another tap closes it (Android `ui/FilterBar.kt`). Open, the row and the
+/// chips sit in one card; the screen closes it on a tap elsewhere.
 struct FilterBar<Content: View>: View {
     let summary: String
     @Binding var expanded: Bool
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 0) {
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
             } label: {
@@ -564,11 +568,19 @@ struct FilterBar<Content: View>: View {
                         .rotationEffect(.degrees(expanded ? 180 : 0))
                 }
                 .padding(.horizontal, 12).padding(.vertical, 8)
-                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(L10n.get("filter_bar_change") + ": " + summary)
-            if expanded { content() }
+            if expanded {
+                content()
+                    .padding(.horizontal, 12).padding(.bottom, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            if expanded { RoundedRectangle(cornerRadius: 12).strokeBorder(Color(.separator), lineWidth: 1) }
         }
     }
 }
