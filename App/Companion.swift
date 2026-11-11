@@ -64,6 +64,12 @@ final class Companion: NSObject, ObservableObject {
     @Published var openActivityId: String?
     /// With [openActivityId]: a technique or terrain to pick on the Metrics screen (a row of Trends opens it that way).
     @Published var openPick: String?
+    /// With [openActivityId] from a notification: where it opens (the diary declaration while a review is due, else
+    /// Metrics; Android `ActivityNotificationManager`). Nil: the diary, or Metrics with [openPick].
+    @Published var openActivityTarget: ActivityTarget?
+    /// A Sensor Record to show at once (its database id): stored whole just now with the app in front, or tapped in its
+    /// notification (Android `FreshSensorRecords`). The root view shows its charts and clears this.
+    @Published var openSensorRecordId: String?
     /// "More statistics in the Trends" on a Metrics screen: the Trends tab opens on this sport and style (family, style).
     @Published var trendsRequest: TrendsRequest?
 
@@ -419,6 +425,7 @@ final class Companion: NSObject, ObservableObject {
             let now = Int64(Date().timeIntervalSince1970 * 1000)
             let result = try await core.receiveWatchMessage(json: json, variant: variant, nowEpochMillis: now)
             storeFailures = 0
+            if !result.storedBurstId.isEmpty { openFreshSensorRecord(result.storedBurstId) }
             WatchLinkSpike.shared.add("activity from \(variant): \(result.summary)")
             // A burst arrives in dozens of chunks: only the last one (stored) changes anything.
             if result.partialBurst { return (0, 0, 0, "") }
@@ -574,12 +581,29 @@ final class Companion: NSObject, ObservableObject {
 
     /// Android's new-activity notification (title with the nickname, review or not); iOS
     /// shows it while the app is not on screen.
+    /// A whole Sensor Record was stored: its charts open right away with the app in front, else a notification offers them.
+    private func openFreshSensorRecord(_ id: String) {
+        if UIApplication.shared.applicationState == .active {
+            openSensorRecordId = id
+            return
+        }
+        let content = UNMutableNotificationContent()
+        content.title = L10n.get("sensor_record_notification_title")
+        content.body = L10n.get("sensor_record_notification_body")
+        content.threadIdentifier = "sensor-records"
+        content.userInfo = ["sensorRecordId": id]
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "sensor-record-\(id)", content: content, trigger: nil)) { error in
+            if let error { WatchLinkSpike.shared.add("notification not shown: \(error.localizedDescription)") }
+        }
+    }
+
     private func notifyNewActivity(_ result: WatchMessageResult) {
         let content = UNMutableNotificationContent()
         content.title = result.notificationTitle
         content.body = result.notificationBody
         content.threadIdentifier = "activity-reviews"
-        content.userInfo = ["activityId": result.activityId]
+        // A tap opens the diary declaration while a review is due, else the activity's Metrics.
+        content.userInfo = ["activityId": result.activityId, "target": result.awaitsReview ? ActivityTarget.diary.rawValue : ActivityTarget.data.rawValue]
         UNUserNotificationCenter.current().add(
             UNNotificationRequest(identifier: "activity-\(result.activityId)", content: content, trigger: nil)
         ) { error in

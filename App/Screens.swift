@@ -39,6 +39,21 @@ struct RootView: View {
         .onChange(of: companion.openActivityId) { _, id in
             if id != nil { tab = 0 }
         }
+        // A fresh Sensor Record (stored just now, or its notification tapped) shows its charts over any tab.
+        .sheet(item: Binding(
+            get: { companion.openSensorRecordId.map { OpenSensorRecord(id: $0) } },
+            set: { companion.openSensorRecordId = $0?.id }
+        )) { record in
+            NavigationStack {
+                SensorRecordView(burstId: record.id)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button(L10n.get("em_sheet_close")) { companion.openSensorRecordId = nil }
+                        }
+                    }
+            }
+            .environmentObject(companion)
+        }
         .onChange(of: companion.trendsRequest) { _, request in
             if request != nil { tab = 2 }
         }
@@ -105,6 +120,11 @@ struct RootView: View {
 // MARK: - Activities
 
 /// A request to show one activity, from a tapped notification.
+/// The Sensor Record the root view shows in a sheet ([Companion.openSensorRecordId]).
+struct OpenSensorRecord: Identifiable {
+    let id: String
+}
+
 struct ActivityRoute: Hashable {
     let id: String
     var target: ActivityTarget = .diary
@@ -255,9 +275,10 @@ struct ActivitiesScreen: View {
             .onChange(of: companion.openActivityId, initial: true) { _, id in
                 guard let id else { return }
                 let pick = companion.openPick
-                route = ActivityRoute(id: id, target: pick == nil ? .diary : .data, pick: pick)
+                route = ActivityRoute(id: id, target: companion.openActivityTarget ?? (pick == nil ? .diary : .data), pick: pick)
                 companion.openActivityId = nil
                 companion.openPick = nil
+                companion.openActivityTarget = nil
             }
             .onChange(of: openItems.map { $0.id }, initial: true) { _, ids in trackOpen(Set(ids)) }
             .onAppear { companion.refreshWatchCards() }

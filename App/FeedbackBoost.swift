@@ -112,8 +112,9 @@ enum BoostText {
         BoostDeclaration(
             activityType: catalogs.contains(c.view.catalog) ? c.view.catalog : "",
             technique: c.view.labelTechnique,
-            terrain: c.view.labelTerrain,
-            poles: c.view.labelPoles,
+            // Facts the record makes known fill what the label leaves open (run terrain, poles); never the technique.
+            terrain: c.view.labelTerrain.isEmpty && c.view.catalog == "running" ? c.view.suggestedTerrain : c.view.labelTerrain,
+            poles: c.view.labelPoles >= 0 ? c.view.labelPoles : c.view.suggestedPoles,
             note: c.view.labelNote,
             competence: c.view.competence.isEmpty ? (UserDefaults.standard.string(forKey: competenceKey) ?? "") : c.view.competence,
             surface: c.view.labelSurface
@@ -324,6 +325,10 @@ struct BoostDeclareView: View {
                                 if !BoostText.leadTechniques.contains(next.technique) { next.lead = "" }
                                 declarations[candidate.key] = next
                             }
+                        }
+                        if options.techniques.contains(candidate.view.watchTechnique) {
+                            Text(String(format: L10n.get("feedback_boost_watch_said"), BoostText.code(candidate.view.watchTechnique), Int(candidate.view.watchSeconds), Int(candidate.view.recordSeconds)))
+                                .font(.caption).foregroundStyle(.secondary)
                         }
                         // V1 and V2A pole on one side: which one leads (Android: a drop-down after the technique).
                         if BoostText.leadTechniques.contains(d.technique) {

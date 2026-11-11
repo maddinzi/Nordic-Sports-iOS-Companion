@@ -8,8 +8,15 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate {
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
-        if let id = response.notification.request.content.userInfo["activityId"] as? String, !id.isEmpty {
-            Task { @MainActor in Companion.shared.openActivityId = id }
+        let info = response.notification.request.content.userInfo
+        if let id = info["sensorRecordId"] as? String, !id.isEmpty {
+            Task { @MainActor in Companion.shared.openSensorRecordId = id }
+        } else if let id = info["activityId"] as? String, !id.isEmpty {
+            let target = (info["target"] as? String).flatMap(ActivityTarget.init(rawValue:))
+            Task { @MainActor in
+                Companion.shared.openActivityTarget = target
+                Companion.shared.openActivityId = id
+            }
         }
         completionHandler()
     }
