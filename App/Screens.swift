@@ -348,15 +348,23 @@ struct WatchLiveCard: View {
     @EnvironmentObject var companion: Companion
     let live: LiveActivityView
     @State private var showRecording = false
+    /// Drives the breathing border and the recording dot while the watch records.
+    @State private var pulse = false
+    private static let liveRed = Color(red: 0xE5 / 255, green: 0x39 / 255, blue: 0x35 / 255)
     /// Recordings whose screen opened by itself already (once per recording and app run, as on Android).
     private static var autoOpened = Set<Int64>()
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             VStack(alignment: .leading, spacing: 4) {
-                Text(String(format: L10n.get(live.discarded ? "watch_live_discarded_title" : "watch_live_title"), live.watchName))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    if !live.discarded {
+                        Circle().fill(Self.liveRed).frame(width: 9, height: 9).opacity(pulse ? 0.35 : 1)
+                    }
+                    Text(String(format: L10n.get(live.discarded ? "watch_live_discarded_title" : "watch_live_title"), live.watchName))
+                        .font(live.discarded ? .caption : .caption.bold())
+                        .foregroundStyle(live.discarded ? Color.secondary : CardTone.red.title)
+                }
                 Text(live.title).font(.headline)
                 let started = Date(timeIntervalSince1970: TimeInterval(live.startEpochSec)).formatted(date: .omitted, time: .shortened)
                 if live.discarded {
@@ -378,9 +386,23 @@ struct WatchLiveCard: View {
             // A tap opens the Recording screen (live values and the track with instant mode), as on Android.
             .onTapGesture { if !live.discarded { showRecording = true } }
         }
-        .listRowBackground(live.discarded ? CardTone.grey.container : CardTone.blue.container)
+        // While the watch records the card stands out from the blue activity rows (Android's live card): recording
+        // red, a border that breathes and a pulsing dot by the title. A discarded recording stays grey.
+        .listRowBackground(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(live.discarded ? CardTone.grey.container : CardTone.red.container)
+                .overlay {
+                    if !live.discarded {
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(pulse ? CardTone.red.border : Self.liveRed, lineWidth: 2.5)
+                    }
+                }
+        )
         // A recording that just started opens its screen by itself, once.
         .onAppear {
+            if !live.discarded {
+                withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { pulse = true }
+            }
             let age = Int64(Date().timeIntervalSince1970) - live.startEpochSec
             if !live.discarded && age < 120 && !Self.autoOpened.contains(live.startEpochSec) {
                 Self.autoOpened.insert(live.startEpochSec)
