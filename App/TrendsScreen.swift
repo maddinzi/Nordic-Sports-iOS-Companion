@@ -272,7 +272,7 @@ struct TrendsScreen: View {
             Divider()
             let counts = Trends.shared.familyCounts(all: all, q: query)
             ChipFlow(spacing: 8) {
-                ForEach(includeOther ? ["ALL", "XC", "ROLLSKI", "RUNNING", "INLINE", "OTHER"] : ["ALL", "XC", "ROLLSKI", "RUNNING", "INLINE"], id: \.self) { f in
+                ForEach(includeOther ? ["ALL", "XC", "ROLLSKI", "RUNNING", "INLINE", "WALK", "OTHER"] : ["ALL", "XC", "ROLLSKI", "RUNNING", "INLINE", "WALK"], id: \.self) { f in
                     trendChip("\(familyName(f)) \(counts[f]?.intValue ?? 0)", on: family == f) {
                         family = f; style = "ALL"; tech = ""; picked = ""; bucket = -1
                     }
@@ -316,6 +316,7 @@ struct TrendsScreen: View {
         case "ROLLSKI": return L10n.get("trends_family_rollski")
         case "RUNNING": return L10n.get("trends_family_running")
         case "INLINE": return L10n.get("trends_family_inline")
+        case "WALK": return L10n.get("phone_family_walk")
         default: return L10n.get("trends_family_other")
         }
     }
@@ -495,6 +496,7 @@ func styleKeys(_ family: String) -> [String] {
     switch family {
     case "XC", "ROLLSKI": return ["SKATING", "CLASSIC", "DOUBLE_POLE"]
     case "RUNNING": return ["ROAD", "TRAIL", "TRACK", "POLE"]
+    case "WALK": return ["WALK", "HIKE", "NORDIC_WALK"]
     default: return []
     }
 }
@@ -508,6 +510,9 @@ func trendStyleName(_ style: String) -> String {
     case "TRAIL": return L10n.get("trends_style_trail")
     case "TRACK": return L10n.get("trends_style_track")
     case "POLE": return L10n.get("trends_style_pole")
+    case "WALK": return L10n.get("watch_preset_walk")
+    case "HIKE": return L10n.get("watch_preset_hike")
+    case "NORDIC_WALK": return L10n.get("watch_preset_nordicWalk")
     default: return ""
     }
 }
@@ -522,8 +527,11 @@ func trendGroupName(_ group: String) -> String {
     case "ROLLSKI": name = L10n.get("trends_family_rollski")
     case "RUNNING": name = L10n.get("trends_family_running")
     case "INLINE": name = L10n.get("trends_family_inline")
+    case "WALK": name = L10n.get("phone_family_walk")
     default: name = L10n.get("trends_family_other")
     }
+    // Walking's styles name themselves ("Hike", not "Walk Hike"; Android alike).
+    if family == "WALK" && !style.isEmpty { return trendStyleName(style) }
     return style.isEmpty ? name : "\(name) \(trendStyleName(style))"
 }
 
@@ -544,10 +552,15 @@ func trendGroupColor(_ group: String) -> Color {
     case "RUNNING|TRACK": return rgb(0x5FBF7F)
     case "RUNNING|POLE": return rgb(0x9AD5AE)
     case "INLINE|": return rgb(0x7B5EA7)
+    // Walking in earth brown: hike dark, walk middle, Nordic walk light (Android alike).
+    case "WALK|HIKE": return rgb(0x6B4A2F)
+    case "WALK|WALK": return rgb(0x9A6B45)
+    case "WALK|NORDIC_WALK": return rgb(0xC9A27E)
     default:
         if group.hasPrefix("XC") { return rgb(0x2A6DBD) }
         if group.hasPrefix("ROLLSKI") { return rgb(0xE8892B) }
         if group.hasPrefix("RUNNING") { return rgb(0x2E8B57) }
+        if group.hasPrefix("WALK") { return rgb(0x9A6B45) }
         return rgb(0x8D99A6)
     }
 }

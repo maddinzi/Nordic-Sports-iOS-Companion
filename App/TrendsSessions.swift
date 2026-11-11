@@ -9,9 +9,9 @@ private func sessionDate(_ epochSec: Int64) -> String {
     Date(timeIntervalSince1970: TimeInterval(epochSec)).formatted(date: .abbreviated, time: .omitted)
 }
 
-/// Pace for running, km/h otherwise.
+/// Pace for running and walking, km/h otherwise.
 private func sessionSpeed(_ mps: Double, family: String) -> String {
-    if family == "RUNNING" {
+    if family == "RUNNING" || family == "WALK" {
         guard let pace = ActivityFigures.shared.paceSecPerKm(speedMps: Float(mps))?.int32Value else { return "–" }
         return ActivityFigures.shared.paceText(secPerKm: pace) + " /km"
     }
