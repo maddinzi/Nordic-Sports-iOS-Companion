@@ -215,10 +215,12 @@ struct ActivitiesScreen: View {
                     }
                     }
                 } else {
+                    let open = openItems
                     List {
                         if let status = companion.syncStatus {
+                            let review = open
                             Section {
-                                SyncStatusCard(status: status)
+                                SyncStatusCard(status: status, toReview: review) { id in route = ActivityRoute(id: id, target: .diary) }
                                     .padding(.trailing, 40)
                                     .overlay(alignment: .trailing) {
                                         Button { compactList.toggle() } label: {
@@ -229,7 +231,7 @@ struct ActivitiesScreen: View {
                                         .accessibilityLabel(L10n.get(compactList ? "list_density_full" : "list_density_compact"))
                                     }
                             }
-                                .listRowBackground(status.total == 0 ? CardTone.green.container : CardTone.orange.container)
+                                .listRowBackground(SyncStatusCard.tone(status, reviewing: !review.isEmpty).container)
                         }
                         // A recording on this phone (running, or left unfinished by a closed app).
                         PhoneRecordingSection(phone: companion.phone) { recordLive = true }
@@ -254,7 +256,6 @@ struct ActivitiesScreen: View {
                         }
                         // As Android: activities still to review on top, oldest first (the order the
                         // diary fills a day's slots in), then the rest under "Done".
-                        let open = openItems
                         let openIds = Set(open.map { $0.id })
                         let finished = justDone.compactMap { id in companion.activities.first { $0.id == id } }
                         let finishedIds = Set(finished.map { $0.id })
@@ -1725,6 +1726,19 @@ struct ViewOnStravaLink: View {
 struct SyncStatusCard: View {
     @EnvironmentObject var companion: Companion
     let status: SyncStatusView
+    /// Activities that wait for the athlete's declaration, oldest first (Android `toReview`).
+    var toReview: [ActivityItem] = []
+    var onReview: (String) -> Void = { _ in }
+
+    /// One card by priority, as Android: problems orange, activities to declare yellow, all fine green, grey while
+    /// neither Strava nor a diary is connected (nothing to be "caught up" with).
+    static func tone(_ status: SyncStatusView, reviewing: Bool) -> CardTone {
+        if status.total > 0 { return .orange }
+        if reviewing { return .yellow }
+        return !status.stravaConnected && !status.diaryConnected ? .grey : .green
+    }
+
+    private var nothingConnected: Bool { !status.stravaConnected && !status.diaryConnected }
 
     /// One open category; [activityId] is the activity a tap opens (the first one it counts).
     private struct Line: Hashable {
@@ -1759,19 +1773,52 @@ struct SyncStatusCard: View {
         }
     }
 
+    private var reviewTitle: String { L10n.plural("activity_list_review_title", toReview.count) }
+
+    @ViewBuilder private var reviewButton: some View {
+        if let oldest = toReview.first {
+            Button(L10n.get("activity_list_review_button")) { onReview(oldest.id) }
+        }
+    }
+
     var body: some View {
-        if status.total == 0 {
+        let tone = Self.tone(status, reviewing: !toReview.isEmpty)
+        if status.total == 0, let oldest = toReview.first {
+            // In sync, but activities wait for their declaration: one yellow card with the sync line inside.
+            VStack(alignment: .leading, spacing: 6) {
+                Text(reviewTitle).font(.headline).foregroundStyle(tone.title)
+                Text(String(format: L10n.get("activity_list_review_body"), oldest.title)).font(.subheadline)
+                if !nothingConnected {
+                    Label(detail, systemImage: "checkmark.circle.fill").font(.footnote).foregroundStyle(.secondary)
+                }
+                HStack { Spacer(); reviewButton.buttonStyle(.borderedProminent) }
+            }
+        } else if status.total == 0 {
             VStack(alignment: .leading, spacing: 4) {
-                Label(companion.nickname.isEmpty
-                      ? L10n.get("activity_list_up_to_date")
-                      : String(format: L10n.get("activity_list_up_to_date_named"), companion.nickname),
-                      systemImage: "checkmark.circle.fill")
-                    .font(.headline)
-                    .foregroundStyle(.green)
+                if nothingConnected {
+                    Text(companion.nickname.isEmpty
+                         ? L10n.get("activity_list_hello")
+                         : String(format: L10n.get("activity_list_hello_named"), companion.nickname))
+                        .font(.headline)
+                        .foregroundStyle(tone.title)
+                } else {
+                    Label(companion.nickname.isEmpty
+                          ? L10n.get("activity_list_up_to_date")
+                          : String(format: L10n.get("activity_list_up_to_date_named"), companion.nickname),
+                          systemImage: "checkmark.circle.fill")
+                        .font(.headline)
+                        .foregroundStyle(.green)
+                }
                 Text(detail).font(.footnote).foregroundStyle(.secondary)
             }
         } else {
             VStack(alignment: .leading, spacing: 6) {
+                Label(companion.nickname.isEmpty
+                      ? L10n.plural("activity_list_needs_attention_count", Int(status.total))
+                      : L10n.plural("activity_list_needs_attention_count_named", Int(status.total), companion.nickname),
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.headline)
+                    .foregroundStyle(tone.title)
                 ForEach(lines, id: \.self) { line in
                     if let item = companion.activities.first(where: { $0.id == line.activityId }) {
                         NavigationLink {
@@ -1781,6 +1828,14 @@ struct SyncStatusCard: View {
                         }
                     } else {
                         Label(line.text, systemImage: "exclamationmark.circle").font(.subheadline).foregroundStyle(.orange)
+                    }
+                }
+                // The activities to declare share this card (Android: the review line in the problem box).
+                if !toReview.isEmpty {
+                    HStack {
+                        Text(reviewTitle).font(.subheadline.weight(.semibold))
+                        Spacer()
+                        reviewButton.buttonStyle(.borderless)
                     }
                 }
             }
