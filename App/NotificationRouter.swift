@@ -9,6 +9,11 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         let info = response.notification.request.content.userInfo
+        // A database from a newer build: nothing may create Companion.shared (DatabaseGuard).
+        if DatabaseGuard.tooNew {
+            completionHandler()
+            return
+        }
         if let id = info["sensorRecordId"] as? String, !id.isEmpty {
             Task { @MainActor in Companion.shared.openSensorRecordId = id }
         } else if let id = info["activityId"] as? String, !id.isEmpty {

@@ -45,6 +45,12 @@ final class BackgroundSpike {
     }
 
     private func run(_ task: BGTask, kind: String) {
+        // A database from a newer build is never opened (DatabaseGuard); no next run is requested either.
+        if DatabaseGuard.tooNew {
+            log("bg: \(kind) task skipped, the database is newer than this build")
+            task.setTaskCompleted(success: true)
+            return
+        }
         let key = "spike.bg.last.\(kind)"
         let now = Date()
         let since = (defaults.object(forKey: key) as? Date).map { Self.duration(now.timeIntervalSince($0)) } ?? "first run"
