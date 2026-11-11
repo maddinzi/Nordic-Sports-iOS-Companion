@@ -195,6 +195,20 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         // iOS was never accepted (log3: every receipt "success", the watch resent them all).
         // Follow-up tables (strength sets, interval steps; `activityTables`) are stored the same way and confirmed with
         // `{"type": "tablesReceipt", "startTime", "kind"}` (Android `ConnectIqWatchEventSource.handleTablePart`).
+        // A Sensor Record's countdown started (watch 0.9.124): answer at once with this phone's clock, stamped on
+        // arrival (Android `ConnectIqWatchEventSource.answerSensorRecordStart`, shared `sensorRecordAckMessage`).
+        // Int32 values, as every number the watch matches.
+        if let dict, type == "sensorRecordStart", let at = (dict["at"] as? NSNumber)?.int64Value {
+            let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+            let ack: [String: Any] = [
+                "type": "sensorRecordAck",
+                "at": NSNumber(value: Int32(truncatingIfNeeded: at)),
+                "phoneS": NSNumber(value: Int32(truncatingIfNeeded: nowMs / 1000)),
+                "phoneMs": NSNumber(value: Int32(nowMs % 1000)),
+            ]
+            send(ack, to: app, what: "Sensor Record answer \(at)")
+            return
+        }
         if let dict, type == "activity" || type == "recordingBoostBurst" || type == "activityTables" {
             let variant = variantName(app)
             Task { @MainActor in
