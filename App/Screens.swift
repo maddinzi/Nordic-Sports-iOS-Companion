@@ -370,8 +370,8 @@ struct WatchLiveCard: View {
     @EnvironmentObject var companion: Companion
     let live: LiveActivityView
     var onOpenBurst: (String) -> Void = { _ in }
-    /// The Sensor Records of this recording so far, newest first.
-    @State private var bursts: [RecordingBoostView] = []
+    /// The Sensor Records of this recording so far, newest first (id and capture time only).
+    @State private var bursts: [BurstRef] = []
     @State private var showRecording = false
     /// Drives the breathing border and the recording dot while the watch records.
     @State private var pulse = false
@@ -444,11 +444,11 @@ struct WatchLiveCard: View {
         .fullScreenCover(isPresented: $showRecording) {
             RecordingScreen(startEpochSec: live.startEpochSec).environmentObject(companion)
         }
-        // The Sensor Records arrive during the recording: look again every 10 s.
+        // The Sensor Records arrive during the recording: look again every 10 s (ids only, no sensor data).
         .task(id: live.startEpochSec) {
             while !Task.isCancelled {
-                if let all = try? await companion.core.recordingBoosts() {
-                    bursts = all.filter { $0.burstId >= live.startEpochSec }.sorted { $0.burstId > $1.burstId }
+                if let refs = try? await companion.core.recordingBoostRefsSince(sinceEpochSec: live.startEpochSec) {
+                    bursts = refs
                 }
                 try? await Task.sleep(nanoseconds: 10_000_000_000)
             }
