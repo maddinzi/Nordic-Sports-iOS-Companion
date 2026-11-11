@@ -62,6 +62,8 @@ struct TrendsScreen: View {
     @State private var views: [String: Int] = [:]
     @State private var page = 0
     @State private var expandedId: String?
+    /// The filter bar: closed it is one line saying what is shown; a tap opens the chips (Android `FilterBar`).
+    @State private var filterOpen = false
     @State private var registry = ChartRegistry()
     private let tone = CardTone.blue
 
@@ -211,7 +213,21 @@ struct TrendsScreen: View {
 
     // MARK: Filter bar
 
+    /// What is shown, in words: "Last 7 days · Rollski · Skating · compared with the 7 days before".
+    private var filterSummary: String {
+        var parts = [L10n.get(periodDays == 7 ? "trends_summary_week" : "trends_summary_month"),
+                     family == "ALL" ? L10n.get("trends_summary_all_sports") : familyName(family)]
+        if style != "ALL" { parts.append(trendStyleName(style)) }
+        if compare { parts.append(String(format: L10n.get("trends_summary_compare"), periodDays)) }
+        if includeOther && family == "ALL" { parts.append(L10n.get("trends_summary_other")) }
+        return parts.joined(separator: " \u{00B7} ")
+    }
+
     private var filterBar: some View {
+        FilterBar(summary: filterSummary, expanded: $filterOpen) { filterChips }
+    }
+
+    private var filterChips: some View {
         VStack(alignment: .leading, spacing: 8) {
             ScrollView(.horizontal, showsIndicators: false) {
               HStack(spacing: 10) {
@@ -526,4 +542,33 @@ func trendBucketLabel(_ index: Int, _ periodDays: Int) -> String {
     let end = calendar.date(byAdding: .day, value: -index * 7, to: Date()) ?? Date()
     let c = calendar.dateComponents([.day, .month], from: end)
     return "\(c.day ?? 0).\(c.month ?? 0)."
+}
+
+/// A filter that takes one slim row while closed: [summary] says in words what is shown; a tap opens [content] (the
+/// chips that change it) below the row, another tap closes it (Android `ui/FilterBar.kt`).
+struct FilterBar<Content: View>: View {
+    let summary: String
+    @Binding var expanded: Bool
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
+            } label: {
+                HStack {
+                    Text(summary).font(.subheadline).foregroundStyle(.primary)
+                        .lineLimit(expanded ? 3 : 1).truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "chevron.down").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(expanded ? 180 : 0))
+                }
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.get("filter_bar_change") + ": " + summary)
+            if expanded { content() }
+        }
+    }
 }

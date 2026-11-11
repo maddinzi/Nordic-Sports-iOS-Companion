@@ -1648,8 +1648,16 @@ struct RecordingBoostScreen: View {
             }
             ForEach(bursts, id: \.id) { burst in
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(Date(timeIntervalSince1970: TimeInterval(burst.burstId)).formatted(date: .abbreviated, time: .standard))
+                    // The capture start a complete record carries; else burstId, the capture end.
+                    Text(Date(timeIntervalSince1970: TimeInterval(burst.startEpochSec > 0 ? burst.startEpochSec : burst.burstId))
+                            .formatted(date: .abbreviated, time: .standard))
                         .font(.headline)
+                    if burst.complete {
+                        Text(L10n.get("recording_boost_list_complete")).font(.caption.bold()).foregroundStyle(.tint)
+                        if burst.roundTripMs >= 0 {
+                            Text(String(format: L10n.get("recording_boost_list_phone_synced"), Int(burst.roundTripMs))).font(.caption)
+                        }
+                    }
                     let seconds = burst.sampleRateHz > 0 ? Int(burst.sampleCount) / Int(burst.sampleRateHz) : 0
                     Text(String(format: L10n.get("recording_boost_list_samples"), Int(burst.sampleCount), seconds, Int(burst.sampleRateHz)))
                     Text(String(format: L10n.get("recording_boost_list_received"),
@@ -1743,8 +1751,15 @@ struct BurstLabelSheet: View {
         NavigationStack {
             Form {
                 Section { Text(L10n.get("recording_boost_label_hint")).font(.footnote) }
-                Section(L10n.get("recording_boost_label_technique")) {
+                Section {
                     choices(burst.techniqueOptions, selected: $technique)
+                } header: {
+                    Text(L10n.get("recording_boost_label_technique"))
+                } footer: {
+                    // The watch's own verdict as a reminder, never preselected (the label is what it is checked against).
+                    if burst.techniqueOptions.contains(burst.watchTechnique) {
+                        Text(String(format: L10n.get("feedback_boost_watch_said"), BoostText.code(burst.watchTechnique), Int(burst.watchSeconds), Int(burst.recordSeconds)))
+                    }
                 }
                 Section(L10n.get("recording_boost_label_terrain")) {
                     choices(burst.terrainOptions, selected: $terrain)
@@ -1787,6 +1802,11 @@ struct BurstLabelSheet: View {
                 surface = burst.labelSurface
                 poles = burst.labelPoles
                 note = burst.labelNote
+                // A first label starts from what the record makes known (run terrain, poles); never the technique.
+                if burst.labelSummary.isEmpty {
+                    if burst.terrainOptions.contains(burst.suggestedTerrain) { terrain = burst.suggestedTerrain }
+                    if burst.askPoles { poles = burst.suggestedPoles }
+                }
             }
         }
     }

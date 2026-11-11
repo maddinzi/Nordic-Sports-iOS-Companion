@@ -74,6 +74,7 @@ struct SensorRecordView: View {
     @State private var cycle = -1
     @State private var page: BurstPage = .stroke
     @State private var failed = false
+    @State private var facts: BurstFacts?
 
     var body: some View {
         Group {
@@ -90,7 +91,7 @@ struct SensorRecordView: View {
                         case .stroke: StrokePage(v: v)
                         case .rhythm: RhythmPage(v: v)
                         case .path: PathPage(v: v)
-                        case .context: ContextPage(v: v)
+                        case .context: ContextPage(v: v, facts: facts)
                         }
                         Text(L10n.get("burst_caveat")).font(.caption2).foregroundStyle(.secondary)
                     }
@@ -102,6 +103,7 @@ struct SensorRecordView: View {
         }
         .task(id: burstId) {
             full = try? await companion.core.burstView(id: burstId, fromS: -1, toS: -1)
+            facts = try? await companion.core.burstFacts(id: burstId)
             failed = full == nil
         }
         .task(id: cycle) {
@@ -556,7 +558,20 @@ private struct ContextLine {
 
 private struct ContextPage: View {
     let v: BurstView
+    let facts: BurstFacts?
     @State private var sel: Int?
+
+    /// Where the record sits (complete records): its start, the distance into the activity and the activity's own time.
+    private func whereLine(_ ctx: BurstContext) -> String? {
+        guard let start = facts?.startEpochSec?.int64Value else { return nil }
+        let km = ctx.distanceM.swiftArray.first { !$0.isNaN }.map { String(format: "%.2f", $0 / 1000) } ?? "?"
+        let timer = facts?.activityTimerMs.map { ms -> String in
+            let t = ms.int64Value / 1000
+            return String(format: "%d:%02d:%02d", t / 3600, t / 60 % 60, t % 60)
+        } ?? "?"
+        let time = Date(timeIntervalSince1970: TimeInterval(start)).formatted(date: .omitted, time: .standard)
+        return String(format: L10n.get("burst_ctx_where"), time, km, timer)
+    }
 
     var body: some View {
         let ctx = v.context
@@ -572,12 +587,25 @@ private struct ContextPage: View {
             ("burst_feat_rest", "restPct", Color(red: 0x8D / 255, green: 0x6A / 255, blue: 0x2E / 255)),
             ("burst_feat_pole", "poleRate", Color(red: 0x1F / 255, green: 0x6F / 255, blue: 0xB5 / 255)),
         ].compactMap { key, feature, color in ctx.features[feature].map { ContextLine(label: L10n.get(key), values: $0.swiftArray, color: color) } }
+        // What the FIT record of each second got (complete records, burst schema 3).
+        let recorded: [ContextLine] = [
+            ("burst_met_impulse", "impulseMs", Color(red: 0x1F / 255, green: 0x6F / 255, blue: 0xB5 / 255)),
+            ("burst_met_duty", "dutyPct", Color(red: 0x2E / 255, green: 0x8B / 255, blue: 0x6E / 255)),
+            ("burst_met_push", "pushMs", Color(red: 0x7A / 255, green: 0x4F / 255, blue: 0xB5 / 255)),
+            ("burst_met_swing", "swingDeg", Color(red: 0x1F / 255, green: 0x6F / 255, blue: 0xB5 / 255)),
+            ("burst_met_swing_cv", "swingCvPct", Color(red: 0x8D / 255, green: 0x6A / 255, blue: 0x2E / 255)),
+            ("burst_met_step_balance", "stepBalancePct", Color(red: 0x2E / 255, green: 0x8B / 255, blue: 0x6E / 255)),
+            ("burst_met_impact_balance", "impactBalancePct", Color(red: 0xB5 / 255, green: 0x52 / 255, blue: 0x4F / 255)),
+            ("burst_met_wrist_gct", "wristGctMs", Color(red: 0x7A / 255, green: 0x4F / 255, blue: 0xB5 / 255)),
+            ("burst_met_vertical", "verticalMh", Color(red: 0x8D / 255, green: 0x6A / 255, blue: 0x2E / 255)),
+        ].compactMap { key, metric, color in ctx.metrics[metric].map { ContextLine(label: L10n.get(key), values: $0.swiftArray, color: color) } }
         let watchKeys = ctx.stateKeys
         let hasWatch = watchKeys.contains { !$0.isEmpty }
         let hasReplay = v.replayKeys.contains { !$0.isEmpty }
         let info = pageInfo((hasReplay ? ["burst_read_replay"] : []) + ["burst_read_context"])
         let offset = Int(v.ctxOffsetS)
         burstCard {
+            if let line = whereLine(ctx) { Text(line).font(.caption).foregroundStyle(.secondary) }
             if hasWatch || hasReplay {
                 let watchLabel = ctx.algorithm.isEmpty ? L10n.get("burst_replay_watch_plain") : String(format: L10n.get("burst_replay_watch"), ctx.algorithm)
                 let rows: [(String, [String])] = (hasWatch ? [(watchLabel, watchKeys)] : [])
@@ -600,7 +628,15 @@ private struct ContextPage: View {
                     }
                 }
             }
-            if series.isEmpty && !hasWatch && !hasReplay {
+            if !recorded.isEmpty {
+                Text(L10n.get("burst_met_heading")).font(.caption).foregroundStyle(.secondary)
+                ForEach(recorded.indices, id: \.self) { i in
+                    ChartFrame(title: recorded[i].label) { space in
+                        MultiSeriesChart(lines: [recorded[i]], offset: offset, space: space, selected: $sel, axis: true)
+                    }
+                }
+            }
+            if series.isEmpty && !hasWatch && !hasReplay && recorded.isEmpty {
                 Text(L10n.get("burst_ctx_none")).font(.footnote)
             }
         }
