@@ -1795,6 +1795,11 @@ enum L10n {
     static func plural(_ name: String, _ count: Int) -> String {
         String(format: text(name), locale: Locale(identifier: language), count)
     }
+
+    /// A `<plurals>` text for [count] with one more value (`%2$s`, e.g. the nickname).
+    static func plural(_ name: String, _ count: Int, _ extra: String) -> String {
+        String(format: text(name), locale: Locale(identifier: language), count, extra)
+    }
 }
 
 /// A title and a text to confirm something that happened (an alert with OK).

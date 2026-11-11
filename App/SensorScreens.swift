@@ -71,7 +71,8 @@ struct SensorRecordView: View {
     let burstId: String
     @State private var full: BurstView?
     @State private var shown: BurstView?
-    @State private var cycle = -1
+    /// The time window in seconds; nil = the whole record (Android `BurstScreen` from/to).
+    @State private var window: BurstWindow?
     @State private var page: BurstPage = .stroke
     @State private var failed = false
     @State private var facts: BurstFacts?
@@ -101,7 +102,7 @@ struct SensorRecordView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         if let full {
-                            CropBar(view: full, cycle: $cycle) {
+                            CropBar(view: full, window: $window) {
                                 if let record, !record.techniqueOptions.isEmpty {
                                     TechniqueMenu(options: record.techniqueOptions, current: record.labelTechnique, onPick: pickTechnique)
                                 }
@@ -132,63 +133,170 @@ struct SensorRecordView: View {
             record = try? await companion.core.recordingBoosts().first { $0.id == burstId }
             failed = full == nil
         }
-        .task(id: cycle) {
-            guard let full, cycle >= 0, cycle < full.cycleBoundsS.count else { shown = nil; return }
-            let bounds = full.cycleBoundsS[cycle]
-            let from = (bounds.first as? KotlinDouble)?.doubleValue ?? -1
-            let to = (bounds.second as? KotlinDouble)?.doubleValue ?? -1
-            shown = try? await companion.core.burstView(id: burstId, fromS: from, toS: to)
+        .task(id: window) {
+            guard let window else { shown = nil; return }
+            shown = try? await companion.core.burstView(id: burstId, fromS: window.from, toS: window.to)
         }
     }
 }
 
-/// The time window: the movement strength over the record (the cycles marked), "All" or "One cycle" with the arrows to
-/// the previous and next cycle; the charts follow it.
+/// A part of a Sensor Record, in seconds from its start.
+struct BurstWindow: Equatable {
+    var from: Double
+    var to: Double
+}
+
+/// The time window (Android `CropBar`): the movement strength over the record with the arm cycles marked and the window
+/// framed. Drag either end, or the window itself, to change it; "All" or "One cycle" with the arrows to the previous
+/// and next cycle. The charts follow when a drag ends or a button is pressed.
 private struct CropBar<Trailing: View>: View {
     let view: BurstView
-    @Binding var cycle: Int
+    @Binding var window: BurstWindow?
     /// At the right end of the All / One cycle row: the technique menu.
     @ViewBuilder var trailing: () -> Trailing
+    /// The window shown while dragging (follows [window] otherwise).
+    @State private var dragFrom = 0.0
+    @State private var dragTo = 0.0
+    /// What the touch took: 1 the start, 2 the end, 3 the window, 0 nothing; nil before the drag.
+    @State private var part: Int?
+    @State private var lastX: CGFloat = 0
+    private static let minWindow = 1.0
+
+    private var total: Double { max(view.seconds, 0.1) }
+    private var bounds: [(Double, Double)] {
+        view.cycleBoundsS.map { (($0.first as? KotlinDouble)?.doubleValue ?? 0, ($0.second as? KotlinDouble)?.doubleValue ?? 0) }
+    }
+    /// The cycle the window is on, -1 for none.
+    private var cycle: Int {
+        guard let window else { return -1 }
+        return bounds.firstIndex { abs($0.0 - window.from) < 0.06 && abs($0.1 - window.to) < 0.06 } ?? -1
+    }
+
+    private func setCycle(_ i: Int) {
+        let all = bounds
+        guard i >= 0, i < all.count else { return }
+        window = BurstWindow(from: all[i].0, to: all[i].1)
+    }
+
+    private func f1(_ v: Double) -> String { String(format: "%.1f", v) }
+
+    /// The x position of second [s] on a bar [w] wide with [pad] at each side.
+    private func xOf(_ s: Double, _ w: CGFloat, _ pad: CGFloat) -> CGFloat { pad + w * CGFloat(s / total) }
+
+    private func drag(_ g: DragGesture.Value, _ w: CGFloat, _ pad: CGFloat) {
+        if part == nil {
+            let hit: CGFloat = 28
+            let ds = abs(g.startLocation.x - xOf(dragFrom, w, pad))
+            let de = abs(g.startLocation.x - xOf(dragTo, w, pad))
+            if ds <= hit && ds <= de {
+                part = 1
+            } else if de <= hit {
+                part = 2
+            } else if g.startLocation.x >= xOf(dragFrom, w, pad) && g.startLocation.x <= xOf(dragTo, w, pad) {
+                part = 3
+            } else {
+                part = 0
+            }
+            lastX = g.startLocation.x
+        }
+        let seconds = Double((g.location.x - lastX) / w) * total
+        lastX = g.location.x
+        switch part {
+        case 1: dragFrom = min(max(dragFrom + seconds, 0), dragTo - Self.minWindow)
+        case 2: dragTo = min(max(dragTo + seconds, dragFrom + Self.minWindow), total)
+        case 3:
+            let len = dragTo - dragFrom
+            dragFrom = min(max(dragFrom + seconds, 0), total - len)
+            dragTo = dragFrom + len
+        default: break
+        }
+    }
+
+    private func dragEnded() {
+        if let p = part, p != 0 {
+            window = dragFrom <= 0.05 && dragTo >= total - 0.05 ? nil : BurstWindow(from: dragFrom, to: dragTo)
+        }
+        part = nil
+    }
 
     var body: some View {
         let envelope = view.envelope.swiftArray
         let top = max(envelope.max() ?? 1, 0.2)
-        let total = max(view.seconds, 0.1)
-        let bounds = view.cycleBoundsS.map { (($0.first as? KotlinDouble)?.doubleValue ?? 0, ($0.second as? KotlinDouble)?.doubleValue ?? 0) }
+        let all = bounds
+        let current = cycle
+        let best = Int(view.bestCycle)
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(L10n.get("burst_crop_title")).font(.caption).foregroundStyle(.secondary)
                 Spacer()
+                Text(String(format: L10n.get("burst_crop_range"), f1(dragFrom), f1(dragTo), f1(dragTo - dragFrom)))
+                    .font(.caption).monospacedDigit()
                 ChartInfoButton(title: L10n.get("burst_crop_title"), text: L10n.get("burst_crop_hint"))
             }
-            Canvas { ctx, size in
-                let bar = size.width / CGFloat(max(envelope.count, 1))
-                for (i, v) in envelope.enumerated() {
-                    let h = (size.height - 6) * CGFloat(min(max(v / top, 0.02), 1))
-                    ctx.fill(Path(CGRect(x: CGFloat(i) * bar, y: size.height - h, width: max(bar - 0.5, 0.5), height: h)),
-                             with: .color(.secondary.opacity(0.5)))
-                }
-                if cycle >= 0, cycle < bounds.count {
-                    let a = size.width * CGFloat(bounds[cycle].0 / total), b = size.width * CGFloat(bounds[cycle].1 / total)
+            GeometryReader { geo in
+                let pad: CGFloat = 8
+                let w = max(geo.size.width - 2 * pad, 1)
+                Canvas { ctx, size in
+                    let base = size.height - 6
+                    let tall = size.height - 16
+                    let bar = w / CGFloat(max(envelope.count, 1))
+                    for (i, v) in envelope.enumerated() {
+                        let h = tall * CGFloat(min(max(v / top, 0.02), 1))
+                        ctx.fill(Path(CGRect(x: pad + CGFloat(i) * bar, y: base - h, width: max(bar - 0.5, 0.5), height: h)),
+                                 with: .color(.secondary.opacity(0.55)))
+                    }
+                    // The arm cycles: a tick at each start, the proposed one stronger.
+                    for (i, c) in all.enumerated() {
+                        let xs = xOf(c.0, w, pad)
+                        var tick = Path()
+                        tick.move(to: CGPoint(x: xs, y: 4))
+                        tick.addLine(to: CGPoint(x: xs, y: base))
+                        ctx.stroke(tick, with: .color(.accentColor.opacity(i == best ? 0.9 : 0.45)), lineWidth: i == best ? 2 : 1)
+                    }
+                    // Outside the window dimmed, the window framed, a handle at each end.
+                    let a = xOf(dragFrom, w, pad)
+                    let b = xOf(dragTo, w, pad)
+                    let dim = Color(.secondarySystemBackground).opacity(0.7)
+                    ctx.fill(Path(CGRect(x: 0, y: 0, width: a, height: size.height)), with: .color(dim))
+                    ctx.fill(Path(CGRect(x: b, y: 0, width: size.width - b, height: size.height)), with: .color(dim))
                     ctx.stroke(Path(roundedRect: CGRect(x: a, y: 1, width: b - a, height: size.height - 2), cornerRadius: 6),
                                with: .color(.accentColor), lineWidth: 2)
+                    for edge in [a, b] {
+                        ctx.fill(Path(roundedRect: CGRect(x: edge - 3, y: 8, width: 6, height: size.height - 16), cornerRadius: 3),
+                                 with: .color(.accentColor))
+                    }
                 }
+                .contentShape(Rectangle())
+                // Over the ScrollView's own drag: the bar is short, the page still scrolls above and below it.
+                .highPriorityGesture(
+                    DragGesture(minimumDistance: 2)
+                        .onChanged { drag($0, w, pad) }
+                        .onEnded { _ in dragEnded() }
+                )
             }
             .frame(height: 64)
             .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+            .accessibilityElement()
+            .accessibilityLabel(L10n.get("burst_crop_title"))
             HStack(spacing: 8) {
-                Button(L10n.get("burst_crop_all")) { cycle = -1 }.buttonStyle(.bordered).tint(cycle < 0 ? .accentColor : .secondary)
-                Button(L10n.get("burst_crop_cycle")) { cycle = max(Int(view.bestCycle), 0) }
-                    .buttonStyle(.bordered).tint(cycle >= 0 ? .accentColor : .secondary).disabled(bounds.isEmpty)
-                if cycle >= 0 {
-                    Button { cycle -= 1 } label: { Image(systemName: "chevron.left") }
-                        .disabled(cycle <= 0).accessibilityLabel(L10n.get("burst_crop_prev"))
-                    Button { cycle += 1 } label: { Image(systemName: "chevron.right") }
-                        .disabled(cycle >= bounds.count - 1).accessibilityLabel(L10n.get("burst_crop_next"))
+                Button(L10n.get("burst_crop_all")) { window = nil }
+                    .buttonStyle(.bordered).tint(window == nil ? .accentColor : .secondary)
+                Button(L10n.get("burst_crop_cycle")) { setCycle(current >= 0 ? current : max(best, 0)) }
+                    .buttonStyle(.bordered).tint(current >= 0 ? .accentColor : .secondary).disabled(all.isEmpty)
+                if current >= 0 {
+                    Button { setCycle(current - 1) } label: { Image(systemName: "chevron.left") }
+                        .disabled(current <= 0).accessibilityLabel(L10n.get("burst_crop_prev"))
+                    Button { setCycle(current + 1) } label: { Image(systemName: "chevron.right") }
+                        .disabled(current >= all.count - 1).accessibilityLabel(L10n.get("burst_crop_next"))
                 }
                 Spacer(minLength: 4)
                 trailing()
             }
+        }
+        // Outside a drag the shown window is the chosen one (the whole record for nil).
+        .onChange(of: window, initial: true) { _, chosen in
+            dragFrom = chosen?.from ?? 0
+            dragTo = chosen?.to ?? total
         }
     }
 }
