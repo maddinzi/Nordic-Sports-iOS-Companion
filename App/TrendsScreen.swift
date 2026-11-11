@@ -97,9 +97,21 @@ struct TrendsScreen: View {
     /// Strength per exercise. Strength counts as an "other" sport, so this reads the period itself (with every sport or
     /// "other" picked), whatever the "other" switch says (as Android).
     private var strengthExercises: [TrendExercise] {
-        guard family == "ALL" || family == "OTHER" else { return [] }
-        return Trends.shared.strengthExercises(list: all.filter { Int($0.daysAgo) < periodDays }, holds: StrengthCatalog.shared.HOLD_EXERCISES)
+        Trends.shared.strengthExercises(list: trainingCur, holds: StrengthCatalog.shared.HOLD_EXERCISES)
     }
+
+    /// The Training page's sessions: the period (and the one before, for compare) with every sport or "other" picked.
+    private var trainingCur: [TrendActivity] {
+        guard family == "ALL" || family == "OTHER" else { return [] }
+        return all.filter { Int($0.daysAgo) < periodDays }
+    }
+    private var trainingPrev: [TrendActivity] {
+        guard family == "ALL" || family == "OTHER" else { return [] }
+        return all.filter { Int($0.daysAgo) >= periodDays && Int($0.daysAgo) < 2 * periodDays }
+    }
+    private var trainingSum: TrendTrainingSummary { Trends.shared.trainingSummary(list: trainingCur, holds: StrengthCatalog.shared.HOLD_EXERCISES) }
+    private var trainingShares: [TrendTrainingShare] { Trends.shared.trainingShares(list: trainingCur) }
+    private var topExercises: [TrendTopExercise] { Trends.shared.topExercises(list: trainingCur, holds: StrengthCatalog.shared.HOLD_EXERCISES, limit: 5) }
 
     private var charts: [TrendChartDef] {
         let cur = self.cur, window = self.window
@@ -117,6 +129,9 @@ struct TrendsScreen: View {
                           info: ["\(L10n.get("em_rmssd_name")): \(L10n.get("em_rmssd_desc"))",
                                  L10n.get("em_hrv_note")].joined(separator: "\n\n")),
             TrendChartDef(id: "climb", title: L10n.get("trends_c_climb"), show: cur.contains { $0.ascentM > 0 || $0.descentM > 0 }),
+            TrendChartDef(id: "trainSum", title: L10n.get("trends_c_training_sum"), show: trainingSum.sessions > 0),
+            TrendChartDef(id: "trainShare", title: L10n.get("trends_c_training_share"), show: !trainingShares.isEmpty),
+            TrendChartDef(id: "topEx", title: L10n.get("trends_c_top_exercises"), show: !topExercises.isEmpty),
             TrendChartDef(id: "intervals", title: L10n.get("trends_c_intervals"), show: !intervalSessions.isEmpty),
             TrendChartDef(id: "strength", title: L10n.get("trends_c_strength"), show: !strengthExercises.isEmpty),
         ]
@@ -131,7 +146,7 @@ struct TrendsScreen: View {
             (L10n.get("trends_theme_intensity"), ["int", "rec"]),
             (L10n.get("dash_tab_technique"), ["mix", "matrix"]),
             (L10n.get("trends_theme_performance"), ["pol", "slope", "eff"]),
-            (L10n.get("trends_theme_sessions"), ["intervals", "strength"]),
+            (L10n.get("trends_theme_sessions"), ["trainSum", "trainShare", "topEx", "intervals", "strength"]),
         ]
         return spec.map { (label, ids) in (label: label, charts: ids.compactMap { id in shown.first { $0.id == id } }) }
             .filter { !$0.charts.isEmpty }
@@ -213,7 +228,11 @@ struct TrendsScreen: View {
         case "eff": TrendEfficiencyChart(data: d, space: space)
         case "rec": TrendRecoveryChart(data: d, space: space)
         case "intervals": TrendIntervalSessionsChart(sessions: intervalSessions) { companion.openActivityId = $0 }
-        case "strength": TrendStrengthExercisesChart(exercises: strengthExercises) { companion.openActivityId = $0 }
+        case "trainSum": trainingTiles
+        case "trainShare": TrendTrainingShareChart(shares: trainingShares)
+        case "topEx": TrendTopExercisesChart(top: topExercises)
+        // The sessions of every exercise: the long list, collapsed at the end of the page.
+        case "strength": TrendCollapsedList { TrendStrengthExercisesChart(exercises: strengthExercises) { companion.openActivityId = $0 } }
         default: TrendClimbChart(data: d, space: space)
         }
     }
@@ -315,6 +334,24 @@ struct TrendsScreen: View {
                 kpi(L10n.get("trends_kpi_sessions"), "\(k.sessions)", "", Double(k.sessions), Double(p.sessions))
                 kpi(L10n.get("trends_kpi_hr"), k.avgHr > 0 ? "\(k.avgHr)" : "–", "bpm", Double(k.avgHr), Double(p.avgHr))
                 kpi(L10n.get("trends_kpi_hard"), k.hardSeconds > 0 ? trendDuration(Int(k.hardSeconds)) : "–", "", Double(k.hardSeconds), Double(p.hardSeconds))
+            }
+        }
+    }
+
+    /// The Training page's key numbers: sessions, time, sets, reps and weight moved, each against the period before.
+    private var trainingTiles: some View {
+        let k = trainingSum, p = Trends.shared.trainingSummary(list: trainingPrev, holds: StrengthCatalog.shared.HOLD_EXERCISES)
+        return Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+            GridRow {
+                kpi(L10n.get("trends_kpi_sessions"), "\(k.sessions)", "", Double(k.sessions), Double(p.sessions))
+                kpi(L10n.get("trends_kpi_time"), k.seconds > 0 ? trendDuration(Int(k.seconds)) : "–", "", Double(k.seconds), Double(p.seconds))
+            }
+            if k.sets > 0 {
+                GridRow {
+                    kpi(L10n.get("trends_train_sets"), "\(k.sets)", "", Double(k.sets), Double(p.sets))
+                    kpi(L10n.get("trends_train_reps"), "\(k.reps)", "", Double(k.reps), Double(p.reps))
+                    kpi(L10n.get("trends_train_weight"), k.volumeKg.formatted(.number.precision(.fractionLength(0))), "kg", k.volumeKg, p.volumeKg)
+                }
             }
         }
     }

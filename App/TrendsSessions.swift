@@ -85,6 +85,109 @@ private struct RepBars: View {
     }
 }
 
+/// Where the training time went (Android `TrainingShareChart`): one bar split by training type, strength by its
+/// purpose, then a line per slice with its time, share and sessions.
+struct TrendTrainingShareChart: View {
+    let shares: [TrendTrainingShare]
+    private static let colours: [Color] = [
+        Color(red: 0.12, green: 0.44, blue: 0.70), Color(red: 0.88, green: 0.48, blue: 0.22), Color(red: 0.24, green: 0.60, blue: 0.37),
+        Color(red: 0.56, green: 0.36, blue: 0.71), Color(red: 0.79, green: 0.31, blue: 0.43), Color(red: 0.16, green: 0.65, blue: 0.63),
+        Color(red: 0.61, green: 0.48, blue: 0.24),
+    ]
+
+    var body: some View {
+        let total = max(1, shares.reduce(0) { $0 + Int($1.seconds) })
+        VStack(alignment: .leading, spacing: 8) {
+            GeometryReader { geo in
+                HStack(spacing: 0) {
+                    ForEach(Array(shares.enumerated()), id: \.offset) { i, s in
+                        Self.colours[i % Self.colours.count].frame(width: geo.size.width * CGFloat(s.seconds) / CGFloat(total))
+                    }
+                }
+            }
+            .frame(height: 18)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            ForEach(Array(shares.enumerated()), id: \.offset) { i, s in
+                HStack(spacing: 8) {
+                    RoundedRectangle(cornerRadius: 3).fill(Self.colours[i % Self.colours.count]).frame(width: 10, height: 10)
+                    Text(label(s)).font(.subheadline).lineLimit(1)
+                    Spacer()
+                    Text("\(trendDuration(Int(s.seconds))) · \(Int((Double(s.seconds) * 100 / Double(total)).rounded())) % · \(s.sessions)×")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func label(_ s: TrendTrainingShare) -> String {
+        let presetKey = "watch_preset_\(s.preset)"
+        let preset = L10n.get(presetKey) == presetKey ? s.preset : L10n.get(presetKey)
+        guard !s.trainingType.isEmpty else { return preset }
+        let typeKey = "watch_training_type_\(s.trainingType)"
+        return L10n.get(typeKey) == typeKey ? preset : "\(preset) · \(L10n.get(typeKey))"
+    }
+}
+
+/// The most performed exercises (Android `TopExercisesChart`): a bar per exercise by sets, with reps or seconds and the
+/// weight moved.
+struct TrendTopExercisesChart: View {
+    let top: [TrendTopExercise]
+
+    var body: some View {
+        let most = max(1, top.map { Int($0.sets) }.max() ?? 1)
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(top, id: \.exercise) { e in
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .lastTextBaseline) {
+                        Text(name(e.exercise)).font(.subheadline.weight(.semibold)).lineLimit(1)
+                        Spacer()
+                        if e.volumeKg > 0 {
+                            Text("\(e.volumeKg.formatted(.number.precision(.fractionLength(0)))) kg").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    GeometryReader { geo in
+                        RoundedRectangle(cornerRadius: 3).fill(Color.accentColor)
+                            .frame(width: geo.size.width * CGFloat(e.sets) / CGFloat(most))
+                    }
+                    .frame(height: 10)
+                    Text(String(format: L10n.get(e.hold ? "trends_top_line_hold" : "trends_top_line"), Int(e.sets), Int(e.reps)))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func name(_ exercise: String) -> String {
+        let key = "watch_exercise_\(exercise)"
+        let text = L10n.get(key)
+        return text == key ? exercise : text
+    }
+}
+
+/// A long list that starts closed (Android `CollapsedList`): a "Show" row with a chevron, the list once opened.
+struct TrendCollapsedList<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    @State private var open = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { open.toggle() }
+            } label: {
+                HStack {
+                    Text(L10n.get(open ? "trends_hide" : "trends_show")).font(.subheadline)
+                    Spacer()
+                    Image(systemName: "chevron.down").rotationEffect(.degrees(open ? 180 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.accentColor)
+            if open { content() }
+        }
+    }
+}
+
 /// Strength per exercise over the period, by volume: per session the sets, reps or seconds, kg moved and the
 /// heaviest set, newest first. A tap on a session opens the activity.
 struct TrendStrengthExercisesChart: View {
