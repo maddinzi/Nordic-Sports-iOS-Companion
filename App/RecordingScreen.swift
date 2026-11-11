@@ -181,8 +181,8 @@ struct RecordingScreen: View {
     static func figures(_ feed: LiveFeedView) -> [Figure?] {
         [
             Figure(value: feed.heartRate >= 0 ? "\(feed.heartRate)" : "–", unit: "bpm", label: L10n.get("recording_live_hr")),
-            // A run reads pace and walk/run; the other sports speed and technique (Android alike).
-            feed.isRun
+            // A run reads pace and walk/run, a walk pace; the other sports speed and technique (Android alike).
+            feed.usesPace
                 ? Figure(value: paceText(kmh: feed.speedKmh) ?? "–", unit: "/km", label: L10n.get("watch_data_field_pace"))
                 : Figure(value: feed.speedKmh.isNaN ? "–" : String(format: "%.1f", feed.speedKmh), unit: "km/h", label: L10n.get("recording_live_speed")),
             // No technique on inline (the watch classifies none): left out, not a lasting "–".
@@ -336,7 +336,8 @@ struct TrackPoints {
     let gradePct: [Double]
 
     init(_ feed: LiveFeedView) {
-        isRun = feed.isRun
+        // pace for runs and walks (the legend and the colour switch label)
+        isRun = feed.usesPace
         hasTechnique = feed.hasTechnique
         lat = feed.trackLat.map { $0.doubleValue }
         lon = feed.trackLon.map { $0.doubleValue }

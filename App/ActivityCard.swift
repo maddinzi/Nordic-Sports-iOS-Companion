@@ -155,7 +155,10 @@ struct ActivityCard: View {
             let numbers = [
                 item.distanceM > 0 ? String(format: "%.1f km", Double(item.distanceM) / 1000) : nil,
                 item.avgHeartRate > 0 ? "\(item.avgHeartRate) bpm" : nil,
-                item.avgSpeedMps > 0 ? String(format: "%.1f km/h", Double(item.avgSpeedMps) * 3.6) : nil,
+                // pace for runs and walks, as the key figures (ActivityFigures.usesPace)
+                item.avgSpeedMps <= 0 ? nil : ActivityFigures.shared.usesPace(art: item.sportArt)
+                    ? ActivityFigures.shared.paceSecPerKm(speedMps: item.avgSpeedMps).map { ActivityFigures.shared.paceText(secPerKm: $0.int32Value) + " /km" }
+                    : Optional(String(format: "%.1f km/h", Double(item.avgSpeedMps) * 3.6)),
             ].compactMap { $0 }.joined(separator: " · ")
             chip(numbers.isEmpty ? L10n.get("card_lane_metrics") : numbers, symbol: "chart.bar.fill") { onOpen(.data) }
         }
