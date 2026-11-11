@@ -151,7 +151,8 @@ private struct CropBar<Trailing: View>: View {
     /// What the touch took: 1 the start, 2 the end, 3 the window, 0 nothing; nil before the drag.
     @State private var part: Int?
     @State private var lastX: CGFloat = 0
-    private static let minWindow = 1.0
+    /// Computed: a generic type cannot hold a stored static.
+    private static var minWindow: Double { 1.0 }
 
     private var total: Double { max(view.seconds, 0.1) }
     private var bounds: [(Double, Double)] {

@@ -1,3 +1,4 @@
+import NordicSportsShared
 import SwiftUI
 
 /// "Record on my watch" (Android `WatchRecordStartScreen`), for athletes who know their Garmin: first the settings
