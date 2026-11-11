@@ -376,9 +376,6 @@ struct WatchLiveCard: View {
                 if live.hasPosition {
                     Text(String(format: "%.4f, %.4f", live.lat, live.lon)).font(.footnote).foregroundStyle(.secondary)
                 }
-                if !live.discarded {
-                    Text(L10n.get("watch_live_hint")).font(.footnote).foregroundStyle(.secondary)
-                }
             }
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
