@@ -85,11 +85,11 @@ private struct StackedBlocks: View {
                         }
                     }
                     .contentShape(Rectangle())
-                    .gesture(DragGesture(minimumDistance: 0).onEnded { drag in
-                        guard abs(drag.translation.width) < 12 else { return }
-                        let i = min(max(Int(drag.location.x / slot), 0), blocks.count - 1)
+                    // A plain tap, not a zero-distance drag: inside the scrolling list the drag lost quick taps.
+                    .onTapGesture(coordinateSpace: .local) { point in
+                        let i = min(max(Int(point.x / slot), 0), blocks.count - 1)
                         block = block == i ? nil : i
-                    })
+                    }
                 }
                 .frame(height: 180 * space.scale)
                 .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
@@ -176,11 +176,10 @@ private struct RunBlocks: View {
                 }
             }
             .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 0).onEnded { drag in
-                guard abs(drag.translation.width) < 12 else { return }
-                let i = min(max(Int(drag.location.x / slot), 0), values.count - 1)
+            .onTapGesture(coordinateSpace: .local) { point in
+                let i = min(max(Int(point.x / slot), 0), values.count - 1)
                 if values[i] != nil { block = block == i ? nil : i }
-            })
+            }
         }
         .frame(height: 110 * space.scale)
         .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))

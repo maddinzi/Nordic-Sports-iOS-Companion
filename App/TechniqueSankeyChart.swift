@@ -177,6 +177,8 @@ private struct SankeyCanvas: View {
                                     leftNeed: labelWidth(column: 0, suffix: ""),
                                     rightNeed: labelWidth(column: 2, suffix: " 100%" + (textScale > 1 ? " · 0:00:00" : "")))
             Canvas { context, _ in draw(&context, frame) }
+                // A Canvas redraws only when its view changes, not when what its closure captures does (see TrendsData.redrawKey).
+                .id("\(ObjectIdentifier(sankey))|\(selected)|\(textScale)")
                 .contentShape(Rectangle())
                 .onTapGesture { point in
                     let hit = sankey.nodes.first { frame.rect($0).insetBy(dx: -frame.hitSlop, dy: -frame.hitSlop).contains(point) }

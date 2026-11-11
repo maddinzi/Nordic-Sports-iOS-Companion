@@ -357,7 +357,6 @@ struct EnhancedMetricsCard: View {
         get { pick.key }
         nonmutating set { pick.key = newValue }
     }
-    @State private var selectedAngle: Double?
     /// The heart rate zone (0...4) picked on the zone donut.
     private var selectedZone: Int? {
         get { pick.zone }
@@ -553,6 +552,9 @@ struct EnhancedMetricsCard: View {
                     }
                     .chartLegend(.hidden)
                     .frame(width: size, height: size)
+                    .modifier(DonutTap(values: zonePercents.map { max($0, 0.1) }) { index in
+                        withAnimation(.easeInOut(duration: 0.2)) { selectedZone = index == selectedZone ? nil : index }
+                    })
                     .accessibilityLabel(L10n.get("ios_hr_zones"))
                     VStack(spacing: 0) {
                         if let zone = selectedZone {
@@ -907,12 +909,10 @@ struct EnhancedMetricsCard: View {
     /// A second tap on the picked state, or the legend row again, clears the selection.
     private func toggleSelection(_ key: String) {
         withAnimation(.easeInOut(duration: 0.2)) { selectedKey = selectedKey == key ? nil : key }
-        selectedAngle = nil
     }
 
     private func clearSelection() {
         withAnimation(.easeInOut(duration: 0.2)) { selectedKey = nil }
-        selectedAngle = nil
     }
 
     private func donut(_ space: ChartSpace) -> some View {
@@ -927,16 +927,10 @@ struct EnhancedMetricsCard: View {
                         .foregroundStyle(stateColor(share.key).opacity(terrainKey == nil || terrainKey == share.key ? 1 : 0.3))
                 }
                 .chartLegend(.hidden)
-                .chartAngleSelection(value: $selectedAngle)
-                .onChange(of: selectedAngle) { _, angle in
-                    guard let angle else { return }
-                    var end = 0.0
-                    for share in view.shares {
-                        end += Double(max(share.percent, 0.1))
-                        if angle <= end { toggleSelection(share.key); break }
-                    }
-                }
                 .frame(width: size, height: size)
+                .modifier(DonutTap(values: view.shares.map { Double(max($0.percent, 0.1)) }) { index in
+                    if let index { toggleSelection(view.shares[index].key) } else { clearSelection() }
+                })
                 .accessibilityLabel(L10n.get("em_share_a11y"))
                 if let key = terrainKey, let share = view.shares.first(where: { $0.key == key }) {
                     VStack(spacing: 0) {
@@ -953,9 +947,6 @@ struct EnhancedMetricsCard: View {
                         Text(L10n.get("em_share_tracked")).font(centerCaption(f)).foregroundStyle(.secondary)
                     }
                 }
-                // The hole: a tap here clears the selection (the chart's angle selection would pick a slice).
-                Color.clear.frame(width: 64 * f, height: 64 * f).contentShape(Circle())
-                    .onTapGesture { clearSelection() }
             }
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(view.shares, id: \.key) { share in
@@ -1155,5 +1146,41 @@ struct EnhancedMetricsCard: View {
         case "STEEP_DOWN": return L10n.get("em_desc_steep_down")
         default: return ""
         }
+    }
+}
+
+/// A tap on a donut drawn with SectorMarks (clockwise from the top, inner radius 0.62 of the frame): the index of the
+/// slice under it, nil for the hole or outside (Android `detectDonutTap`). Replaces `chartAngleSelection`, which follows
+/// a drag: inside the scrolling list it lost quick taps and toggled every slice a finger crossed. The overlay lies over
+/// the chart only, so the texts in the hole stay where they are and a tap there clears.
+private struct DonutTap: ViewModifier {
+    let values: [Double]
+    let onHit: (Int?) -> Void
+
+    func body(content: Content) -> some View {
+        content.overlay(
+            GeometryReader { geo in
+                Color.clear.contentShape(Rectangle())
+                    .onTapGesture(coordinateSpace: .local) { point in onHit(Self.slice(at: point, in: geo.size, values)) }
+            }
+        )
+    }
+
+    static func slice(at point: CGPoint, in size: CGSize, _ values: [Double]) -> Int? {
+        let radius = Double(min(size.width, size.height)) / 2
+        let dx = Double(point.x - size.width / 2)
+        let dy = Double(point.y - size.height / 2)
+        let distance = (dx * dx + dy * dy).squareRoot()
+        let total = values.reduce(0, +)
+        guard total > 0, distance >= radius * 0.55, distance <= radius + 6 else { return nil }
+        var angle = atan2(dy, dx) * 180 / .pi + 90
+        if angle < 0 { angle += 360 }
+        var start = 0.0
+        for (index, value) in values.enumerated() {
+            let sweep = value / total * 360
+            if angle >= start && angle < start + sweep { return index }
+            start += sweep
+        }
+        return nil
     }
 }

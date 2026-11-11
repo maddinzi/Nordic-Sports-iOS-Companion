@@ -108,6 +108,7 @@ private struct TrendColumns: View {
         let frame = chartFrame(space)
         GeometryReader { geo in
             Canvas { ctx, size in draw(&ctx, size) }
+                .id("\(data.redrawKey)|\(space.scale)")
                 .contentShape(Rectangle())
                 .onTapGesture { point in
                     guard !columns.isEmpty else { return }
@@ -325,6 +326,7 @@ struct TrendClimbChart: View {
         return VStack(alignment: .leading, spacing: 6) {
             GeometryReader { geo in
                 Canvas { ctx, size in draw(&ctx, size) }
+                    .id("\(data.redrawKey)|\(space.scale)")
                     .contentShape(Rectangle())
                     .onTapGesture { point in
                         let n = max(data.buckets.count, 1)
@@ -482,6 +484,7 @@ private struct TrendScatter: View {
         let frame = chartFrame(space)
         GeometryReader { geo in
             Canvas { ctx, size in draw(&ctx, size) }
+                .id("\(data.redrawKey)|\(space.scale)")
                 .contentShape(Rectangle())
                 .onTapGesture { point in
                     let hit = dots.min { a, b in
@@ -686,6 +689,7 @@ struct TrendEfficiencyChart: View {
             } else {
                 GeometryReader { geo in
                     Canvas { ctx, size in draw(&ctx, size, pts, fade) }
+                        .id("\(data.redrawKey)|\(space.scale)")
                         .contentShape(Rectangle())
                         .onTapGesture { point in
                             let days = Double(data.periodDays * 2 - 1)
@@ -790,6 +794,7 @@ struct TrendRecoveryChart: View {
             } else {
                 GeometryReader { geo in
                     Canvas { ctx, size in draw(&ctx, size, withHrv) }
+                        .id("\(data.redrawKey)|\(space.scale)")
                         .contentShape(Rectangle())
                         .onTapGesture { point in
                             let days = data.periodDays * 2

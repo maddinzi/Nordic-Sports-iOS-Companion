@@ -24,6 +24,14 @@ struct TrendsData {
     let tone: CardTone
 
     func view(_ id: String) -> Int { views[id] ?? 0 }
+    /// Everything a Trends chart draws from, as one value. A `Canvas` only redraws when SwiftUI sees the view change, and
+    /// what its draw closure captures does not count: without this key a view switch (Time / Distance) or a tap that
+    /// picks a column changed the state but the chart kept its old drawing.
+    var redrawKey: String {
+        let shownViews = views.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
+        let ids = cur.map { "\($0.id)" }.joined(separator: ",")
+        return "\(periodDays)|\(compare)|\(tech)|\(zone)|\(bucket)|\(picked)|\(shownViews)|\(window.count)|\(ids.hashValue)"
+    }
     func dimTech(_ key: String) -> Double { !tech.isEmpty && tech != key ? 0.25 : 1 }
     func dimZone(_ zone1: Int) -> Double { zone != 0 && zone != zone1 ? 0.25 : 1 }
     func dimBucket(_ index: Int) -> Double { bucket >= 0 && bucket != index ? 0.4 : 1 }
