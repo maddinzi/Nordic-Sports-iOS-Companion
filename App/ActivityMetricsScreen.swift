@@ -202,8 +202,7 @@ struct ActivityMetricsScreen: View {
         .environment(\.chartRegistry, registry)
         .background(alignment: .topLeading) { hiddenThemes }
         .task(id: item.id) { typical = await companion.typical(for: item) }
-        .navigationTitle(L10n.get("card_lane_metrics"))
-        .navigationBarTitleDisplayMode(.inline)
+        .homeTitle(L10n.get("card_lane_metrics"))
     }
 
     /// The technical data (the sets have their own page).

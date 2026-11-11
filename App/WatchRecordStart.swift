@@ -50,8 +50,7 @@ struct WatchRecordStartView: View {
                 }
                 .listRowBackground(tone.container)
             }
-            .navigationTitle(L10n.get("add_choice_watch_title"))
-            .navigationBarTitleDisplayMode(.inline)
+            .homeTitle(L10n.get("add_choice_watch_title"))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button { dismiss() } label: { Image(systemName: "xmark") }

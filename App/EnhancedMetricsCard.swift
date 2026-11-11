@@ -1120,8 +1120,7 @@ struct EnhancedMetricsCard: View {
                     if isRun { Text(L10n.get("em_terrain_method")).font(.footnote) }
                 }
             }
-            .navigationTitle(L10n.get("em_sheet_title"))
-            .navigationBarTitleDisplayMode(.inline)
+            .homeTitle(L10n.get("em_sheet_title"))
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L10n.get("em_sheet_close")) { explaining = false }

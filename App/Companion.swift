@@ -39,6 +39,11 @@ final class Companion: NSObject, ObservableObject {
     /// The JSON and CSV destinations (the TTB diary is `diaryName` and friends).
     @Published private(set) var folderDestinations: [DestinationView] = []
     @Published private(set) var watchSettings: [WatchSettingsView] = []
+    /// Counts the taps on a screen title ([goHome]): the root view then shows the activity list from the start.
+    @Published private(set) var goHomeRequest = 0
+
+    /// A tap on a screen's title (Android `LocalGoHome`): back to the activity list on the Activities tab.
+    func goHome() { goHomeRequest += 1 }
     @Published private(set) var liveActivities: [LiveActivityView] = []
     @Published private(set) var crashReports: [CrashReportView] = []
     /// Whether a watch has ever talked to this app, and the reminder to install the watch app until it has.

@@ -181,8 +181,7 @@ private struct WeatherDetailsSheet: View {
                     }
                 }
             }
-            .navigationTitle(L10n.get("weather_details"))
-            .navigationBarTitleDisplayMode(.inline)
+            .homeTitle(L10n.get("weather_details"))
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button(L10n.get("em_sheet_close")) { dismiss() } }
             }

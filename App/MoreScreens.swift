@@ -99,7 +99,7 @@ struct WatchSettingsScreen: View {
                 }
             }
         }
-        .navigationTitle(L10n.get("settings_tile_watch"))
+        .homeTitle(L10n.get("settings_tile_watch"))
         .onAppear { companion.refreshWatchSettings() }
     }
 }
@@ -179,8 +179,7 @@ struct WatchSportAutoScreen: View {
                 }
             }
         }
-        .navigationTitle(auto?.title ?? "")
-        .navigationBarTitleDisplayMode(.inline)
+        .homeTitle(auto?.title ?? "")
     }
 }
 
@@ -225,8 +224,7 @@ struct WatchSkillLevelScreen: View {
                 }
             }
         }
-        .navigationTitle(skillLevel?.title ?? "")
-        .navigationBarTitleDisplayMode(.inline)
+        .homeTitle(skillLevel?.title ?? "")
     }
 }
 
@@ -293,8 +291,7 @@ struct WatchDataFieldsScreen: View {
                 }
             }
         }
-        .navigationTitle(L10n.get("watch_data_fields_title"))
-        .navigationBarTitleDisplayMode(.inline)
+        .homeTitle(L10n.get("watch_data_fields_title"))
     }
 }
 
@@ -335,8 +332,7 @@ struct WatchShareScreen: View {
                 }
             }
         }
-        .navigationTitle(L10n.get("watch_share_title"))
-        .navigationBarTitleDisplayMode(.inline)
+        .homeTitle(L10n.get("watch_share_title"))
         .onAppear {
             sets = companion.shareableWatchSets(deviceId: deviceId)
             picked = Set(sets.map(\.id))
@@ -410,8 +406,7 @@ struct WatchImportScreen: View {
                 }
             }
         }
-        .navigationTitle(L10n.get("watch_import_title"))
-        .navigationBarTitleDisplayMode(.inline)
+        .homeTitle(L10n.get("watch_import_title"))
     }
 }
 
@@ -470,8 +465,7 @@ struct WatchPlansScreen: View {
                 }
             }
         }
-        .navigationTitle(L10n.get(routines ? "watch_strength_routines" : "watch_interval_menu"))
-        .navigationBarTitleDisplayMode(.inline)
+        .homeTitle(L10n.get(routines ? "watch_strength_routines" : "watch_interval_menu"))
         .onAppear { companion.refreshWatchSettings() }
     }
 }
@@ -539,8 +533,7 @@ private struct WatchCustomExercisesScreen: View {
                 }
             }
         }
-        .navigationTitle(L10n.get("watch_strength_custom_exercises"))
-        .navigationBarTitleDisplayMode(.inline)
+        .homeTitle(L10n.get("watch_strength_custom_exercises"))
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button(L10n.get("common_cancel")) { dismiss() }
@@ -826,7 +819,7 @@ struct LogScreen: View {
 
     var body: some View {
         LogList(lines: lines, loaded: loaded)
-            .navigationTitle(title)
+            .homeTitle(title)
             .toolbar { ShareLogButton(kinds: shareKinds) }
             .task {
                 lines = await companion.logLines(kind)
@@ -850,7 +843,7 @@ struct ActivityLogScreen: View {
 
     var body: some View {
         LogList(lines: lines, loaded: loaded, empty: L10n.get("activity_change_log_empty"), failure: failure)
-            .navigationTitle(L10n.get("activity_change_log_title"))
+            .homeTitle(L10n.get("activity_change_log_title"))
             .toolbar { ShareLogButton(kinds: [.activityHistory], activityId: activityId) }
             .task {
                 do { lines = try await companion.activityLog(activityId) } catch {
@@ -924,7 +917,7 @@ struct StravaApiUsageScreen: View {
                 }
             }
         }
-        .navigationTitle(L10n.get("strava_api_usage_title"))
+        .homeTitle(L10n.get("strava_api_usage_title"))
         .toolbar { ShareLogButton(kinds: [.stravaApi]) }
         .task { await load() }
         .refreshable { await load() }
@@ -1373,7 +1366,7 @@ struct AboutScreen: View {
                 Text(L10n.get("about_trademark_disclaimer_ios")).font(.footnote).foregroundStyle(.secondary)
             }
         }
-        .navigationTitle(L10n.get("about_title"))
+        .homeTitle(L10n.get("about_title"))
     }
 }
 
@@ -1603,8 +1596,7 @@ struct LicensesScreen: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
         }
-        .navigationTitle(L10n.get("licenses_title"))
-        .navigationBarTitleDisplayMode(.inline)
+        .homeTitle(L10n.get("licenses_title"))
     }
 }
 
@@ -1624,7 +1616,7 @@ struct ChangelogScreen: View {
                 }
             }
         }
-        .navigationTitle(L10n.get("changelog_title"))
+        .homeTitle(L10n.get("changelog_title"))
     }
 }
 
@@ -1699,7 +1691,7 @@ struct RecordingBoostScreen: View {
                 }
             }
         }
-        .navigationTitle(L10n.get("recording_boost_list_title"))
+        .homeTitle(L10n.get("recording_boost_list_title"))
         .task { await load() }
         .refreshable { await load() }
         .sheet(item: $labelling) { burst in
@@ -2214,7 +2206,7 @@ struct FeedbackHubScreen: View {
                 }
             }
         }
-        .navigationTitle(L10n.get("feedback_title"))
+        .homeTitle(L10n.get("feedback_title"))
     }
 }
 
@@ -3110,8 +3102,7 @@ struct DiaryLocationsScreen: View {
             }
         }
         .disabled(companion.diaryBusy)
-        .navigationTitle(L10n.get("connect_diary_title"))
-        .navigationBarTitleDisplayMode(.inline)
+        .homeTitle(L10n.get("connect_diary_title"))
         .fileImporter(isPresented: $pickingFile, allowedContentTypes: [Self.xlsx]) { result in
             switch result {
             case .success(let url): Task { await companion.connectDiary(url) }

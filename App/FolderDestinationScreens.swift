@@ -48,8 +48,7 @@ struct AddFolderDestinationScreen: View {
             }
         }
         .disabled(companion.diaryBusy)
-        .navigationTitle(L10n.get(isCsv ? "connect_csv_title" : "connect_json_title"))
-        .navigationBarTitleDisplayMode(.inline)
+        .homeTitle(L10n.get(isCsv ? "connect_csv_title" : "connect_json_title"))
         // Cancel always; Add only once a folder is chosen, so it never looks as if something was set up
         // while nothing was (Android: Cancel and a disabled Done in the folder step).
         .navigationBarBackButtonHidden(true)
@@ -233,8 +232,7 @@ struct FolderDestinationPage: View {
                 }
             }
         }
-        .navigationTitle(destination?.name ?? "")
-        .navigationBarTitleDisplayMode(.inline)
+        .homeTitle(destination?.name ?? "")
         .task { await companion.refreshFolderDestinations() }
         .confirmationDialog(
             String(format: L10n.get("destination_remove_confirm_title"), destination?.name ?? ""),

@@ -24,8 +24,7 @@ struct RecordingScreen: View {
             Group {
                 if let live { content(live) } else { Color.clear }
             }
-            .navigationTitle(L10n.get("recording_title"))
-            .navigationBarTitleDisplayMode(.inline)
+            .homeTitle(L10n.get("recording_title"))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button { dismiss() } label: { Image(systemName: "xmark") }

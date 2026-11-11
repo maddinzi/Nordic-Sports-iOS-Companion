@@ -104,7 +104,6 @@ struct ActivityScreen: View {
             }
         }
         .task(id: item.id) { bursts = await companion.recordingBoosts(of: item.id) }
-        .navigationTitle(L10n.get(mode == .entry ? "card_lane_entry" : mode == .metrics ? "card_lane_metrics" : "card_lane_sensor"))
-        .navigationBarTitleDisplayMode(.inline)
+        .homeTitle(L10n.get(mode == .entry ? "card_lane_entry" : mode == .metrics ? "card_lane_metrics" : "card_lane_sensor"))
     }
 }

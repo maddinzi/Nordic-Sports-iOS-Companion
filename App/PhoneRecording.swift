@@ -381,8 +381,7 @@ struct PhoneRecordStartScreen: View {
                     }
                 }
             }
-            .navigationTitle(L10n.get("phone_start_title"))
-            .navigationBarTitleDisplayMode(.inline)
+            .homeTitle(L10n.get("phone_start_title"))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button(L10n.get("common_cancel")) { dismiss() } }
             }
@@ -476,8 +475,7 @@ struct PhoneRecordingLiveScreen: View {
                     ProgressView()
                 }
             }
-            .navigationTitle(L10n.get("phone_recording_notification_title"))
-            .navigationBarTitleDisplayMode(.inline)
+            .homeTitle(L10n.get("phone_recording_notification_title"))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button { dismiss() } label: { Image(systemName: "xmark") }

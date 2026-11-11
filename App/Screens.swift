@@ -25,13 +25,16 @@ struct RootView: View {
 
     private var mainTabs: some View {
         TabView(selection: $tab) {
+            // A new go-home request rebuilds the stack: every pushed screen, sheet and cover on it closes.
             ActivitiesScreen()
+                .id(companion.goHomeRequest)
                 .tabItem { Label(L10n.get("ios_tab_activities"), systemImage: "list.bullet") }
                 .tag(0)
             TrendsScreen()
                 .tabItem { Label(L10n.get("trends_tab_trends"), systemImage: "chart.bar.xaxis") }
                 .tag(2)
             SettingsScreen()
+                .id(companion.goHomeRequest)
                 .tabItem { Label(L10n.get("status_title"), systemImage: "gearshape") }
                 .tag(1)
         }
@@ -53,6 +56,11 @@ struct RootView: View {
                     }
             }
             .environmentObject(companion)
+        }
+        // A tap on a screen's title: the activity list, also from the other tabs and the Sensor Record sheet.
+        .onChange(of: companion.goHomeRequest) { _, _ in
+            companion.openSensorRecordId = nil
+            tab = 0
         }
         .onChange(of: companion.trendsRequest) { _, request in
             if request != nil { tab = 2 }
@@ -482,8 +490,7 @@ struct ActivityBoostsSheet: View {
                     }
                 }
             }
-            .navigationTitle(L10n.get("activity_detail_boosts_title"))
-            .navigationBarTitleDisplayMode(.inline)
+            .homeTitle(L10n.get("activity_detail_boosts_title"))
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L10n.get("activity_detail_boosts_close")) { dismiss() }
@@ -1050,8 +1057,7 @@ struct ActivityDetailScreen: View {
         // Denser than the default list: less height per row and between the sections (Android: tighter Entry cards).
         .environment(\.defaultMinListRowHeight, 34)
         .listSectionSpacing(.compact)
-        .navigationTitle(L10n.get("card_lane_entry"))
-        .navigationBarTitleDisplayMode(.inline)
+        .homeTitle(L10n.get("card_lane_entry"))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { editing = true } label: { Image(systemName: "pencil") }
@@ -1219,7 +1225,7 @@ struct SettingsWatchPage: View {
                     NavigationLink(L10n.get("settings_tile_watch")) { WatchSettingsScreen() }
                 }
         }
-        .navigationTitle(L10n.get("settings_tile_watch"))
+        .homeTitle(L10n.get("settings_tile_watch"))
     }
 }
 
@@ -1341,7 +1347,7 @@ struct SettingsAppPage: View {
                 }
                 .onDisappear { if nicknameDraft != companion.nickname { companion.setNickname(nicknameDraft) } }
         }
-        .navigationTitle(L10n.get("settings_group_app"))
+        .homeTitle(L10n.get("settings_group_app"))
     }
 
     /// The offer was closed without a choice: the picker goes back to the language in use.
@@ -1385,7 +1391,7 @@ struct SettingsSyncPage: View {
                     }
                 }
         }
-        .navigationTitle(L10n.get("sync_mode_section_title"))
+        .homeTitle(L10n.get("sync_mode_section_title"))
     }
 }
 
@@ -1455,7 +1461,7 @@ struct SettingsStravaPage: View {
                     }
                 }
         }
-        .navigationTitle("Strava")
+        .homeTitle("Strava")
         .disabled(companion.stravaBusy != nil)
         .overlay {
             // Connecting and disconnecting take a few seconds: say so, and block a second tap.
@@ -1515,7 +1521,7 @@ struct SettingsDiaryPage: View {
                 }
                 .disabled(companion.diaryBusy)
         }
-        .navigationTitle(L10n.get("status_diary_label"))
+        .homeTitle(L10n.get("status_diary_label"))
     }
 }
 
@@ -1543,7 +1549,7 @@ struct SettingsLogsPage: View {
                     }
                 }
         }
-        .navigationTitle(L10n.get("status_data_logs_heading"))
+        .homeTitle(L10n.get("status_data_logs_heading"))
     }
 }
 
@@ -1569,7 +1575,7 @@ struct SettingsPrivacyPage: View {
                     Text(L10n.get("status_delete_confirm_body"))
                 }
         }
-        .navigationTitle(L10n.get("settings_page_privacy"))
+        .homeTitle(L10n.get("settings_page_privacy"))
     }
 }
 

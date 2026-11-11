@@ -11,8 +11,7 @@ struct DeveloperLogScreen: View {
                 Text(line).font(.caption.monospaced())
             }
         }
-        .navigationTitle(L10n.get("ios_developer_log"))
-        .navigationBarTitleDisplayMode(.inline)
+        .homeTitle(L10n.get("ios_developer_log"))
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 ShareLink(item: spike.log.joined(separator: "\n")) { Image(systemName: "square.and.arrow.up") }
