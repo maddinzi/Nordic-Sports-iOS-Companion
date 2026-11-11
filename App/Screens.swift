@@ -1607,6 +1607,12 @@ enum Format {
         Date(timeIntervalSince1970: TimeInterval(epochSec)).formatted(date: .abbreviated, time: .shortened)
     }
 
+    /// Today only the time (a narrow row has room for little more), otherwise like [date].
+    static func dateOrTimeToday(_ epochSec: Int64) -> String {
+        let d = Date(timeIntervalSince1970: TimeInterval(epochSec))
+        return Calendar.current.isDateInToday(d) ? d.formatted(date: .omitted, time: .shortened) : date(epochSec)
+    }
+
     static func duration(_ seconds: Int32) -> String {
         let s = Int(seconds)
         return s >= 3600

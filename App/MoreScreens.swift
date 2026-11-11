@@ -21,7 +21,7 @@ struct WatchSettingsScreen: View {
             }
             ForEach(companion.watchSettings, id: \.deviceId) { watch in
                 Section {
-                    Text(String(format: L10n.get("watch_settings_as_of"), Format.date(watch.reportedAtEpochSec)))
+                    Text(String(format: L10n.get("watch_settings_as_of"), Format.dateOrTimeToday(watch.reportedAtEpochSec)))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                     if watch.pendingCount > 0 {
