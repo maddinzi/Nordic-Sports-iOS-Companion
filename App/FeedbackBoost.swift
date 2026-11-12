@@ -13,8 +13,7 @@ struct BoostCandidate: Identifiable, Hashable {
     let view: FeedbackBoostFileView
     let content: String
     /// The phone's motion record of this Sensor Record (`PhoneMotionCapture`), nil when there is none or it is too large.
-    var phoneText: String? = nil
-    var phoneFileName = ""
+    var phoneURL: URL? = nil
     var id: String { key }
 
     static func == (a: BoostCandidate, b: BoostCandidate) -> Bool { a.key == b.key }
@@ -151,7 +150,7 @@ struct FeedbackBoostPickerSheet: View {
         selected.compactMap { key in (manual + stored).first { $0.key == key } }
     }
 
-    private func withPhone(_ c: BoostCandidate) -> Bool { c.phoneText != nil && !phoneOff.contains(c.key) }
+    private func withPhone(_ c: BoostCandidate) -> Bool { c.phoneURL != nil && !phoneOff.contains(c.key) }
 
     /// Files that go out: each chosen record plus its phone motion record (both count toward the server's limit).
     private var fileCount: Int { chosen.count + chosen.filter { withPhone($0) }.count }
@@ -160,7 +159,7 @@ struct FeedbackBoostPickerSheet: View {
     private func choose(_ item: BoostCandidate) {
         guard !selected.contains(item.key), fileCount < capacity else { return }
         selected.append(item.key)
-        if item.phoneText != nil && fileCount > capacity { phoneOff.insert(item.key) }
+        if item.phoneURL != nil && fileCount > capacity { phoneOff.insert(item.key) }
     }
 
     /// The stored files in the core's order, one group per activity (its bursts are listed together).
@@ -238,13 +237,14 @@ struct FeedbackBoostPickerSheet: View {
             .task {
                 let files = await companion.feedbackBoostFiles()
                 let maxChars = Int(companion.core.feedbackBoostMaxChars)
+                // One folder listing; the files themselves are read only when the message is sent.
+                let phones = PhoneMotionCapture.storedAll()
                 stored = files.map { f in
                     var c = BoostCandidate(key: "burst:\(f.id)", view: f, content: "")
                     // The phone's motion record of this Sensor Record, found by the watch's record id in its file name.
-                    if let url = PhoneMotionCapture.storedURL(burstId: PhoneMotionCapture.burstId(fileName: f.fileName)),
-                       let text = try? String(contentsOf: url, encoding: .utf8), text.utf8.count <= maxChars {
-                        c.phoneText = text
-                        c.phoneFileName = url.lastPathComponent
+                    if let url = phones[PhoneMotionCapture.burstId(fileName: f.fileName)],
+                       let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size <= maxChars {
+                        c.phoneURL = url
                     }
                     return c
                 }
@@ -263,7 +263,7 @@ struct FeedbackBoostPickerSheet: View {
         recordRow(item)
         // The phone's motion record of the same moment, right under its record: ticked by default, only with the
         // record, and declared together with it.
-        if item.phoneText != nil {
+        if item.phoneURL != nil {
             let on = selected.contains(item.key) && withPhone(item)
             let can = selected.contains(item.key) && (on || fileCount < capacity)
             Button {

@@ -1509,8 +1509,9 @@ final class Companion: NSObject, ObservableObject {
                         terrain: a.declaration.terrain, poles: a.declaration.poles,
                         note: a.declaration.note.trimmingCharacters(in: .whitespacesAndNewlines),
                         competence: a.declaration.competence, surface: a.declaration.surface, lead: a.declaration.lead,
-                        phoneFileName: a.withPhone ? a.candidate.phoneFileName : "",
-                        phoneContent: a.withPhone ? (a.candidate.phoneText ?? "") : "")
+                        phoneFileName: a.withPhone ? (a.candidate.phoneURL?.lastPathComponent ?? "") : "",
+                        // Read only now (the picker keeps where it is); unreadable leaves the record alone.
+                        phoneContent: a.withPhone ? (a.candidate.phoneURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "") : "")
                 }
             )
             if result == "sent", !attachments.isEmpty { refreshBoostReminders() }

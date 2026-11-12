@@ -45,8 +45,9 @@ struct PhoneMotionSettingsSection: View {
 /// File (format 1, the same as Android's, so `src/phone_watch_align.py` and the Android overlay read it): a first line
 /// `# phoneRecord {json}`, then `tEpochNs,type,x,y,z` rows: `a` accelerometer in m/s² with Android's sign (iOS reports
 /// -1 g face up, Android +9.81, so x -9.80665), `g` gyroscope in rad/s. Saved in Documents/recording-boost (Files: On My
-/// iPhone > Nordic Sports). TestFlight builds only, behind a switch (Settings > App), off by default; nothing is sent.
-// PRIVACY-SYNC: phone motion (no position) recorded on the athlete's switch (TestFlight builds), saved on this phone only. Changing this? Re-check the Companion's design/privacy-notice-sync.md.
+/// iPhone > Nordic Sports). TestFlight builds only, behind a switch (Settings > App), off by default. It leaves the phone
+/// only when the athlete sends it with its Sensor Record in the feedback form (`FeedbackBoost.swift`, kind phone_motion).
+// PRIVACY-SYNC: phone motion (accelerometer and gyroscope, no position) recorded on the athlete's switch (TestFlight builds), saved on this phone, sent only with its Sensor Record in a feedback message. Notice: feedback paragraph, "Phone motion record". Changing this? Re-check the Companion's design/privacy-notice-sync.md.
 final class PhoneMotionCapture {
     static let shared = PhoneMotionCapture()
 
@@ -81,6 +82,20 @@ final class PhoneMotionCapture {
             .appendingPathComponent(Self.folder, isDirectory: true),
             let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return nil }
         return names.first { $0.hasSuffix("-\(burstId)-phone.csv") }.map { dir.appendingPathComponent($0) }
+    }
+
+    /// Every phone motion record in Documents/recording-boost by its Sensor Record's id, from one folder listing.
+    static func storedAll() -> [Int64: URL] {
+        guard let dir = try? FileManager.default
+            .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
+            .appendingPathComponent(Self.folder, isDirectory: true),
+            let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return [:] }
+        var out: [Int64: URL] = [:]
+        for name in names where name.hasSuffix("-phone.csv") {
+            let id = burstId(fileName: name)
+            if id > 0 { out[id] = dir.appendingPathComponent(name) }
+        }
+        return out
     }
 
     static func storedText(burstId: Int64) -> String? {
@@ -204,8 +219,15 @@ final class PhoneMotionCapture {
             guard let self, !s.done else { return }
             s.done = true
             DispatchQueue.main.sync {
-                self.motion.stopAccelerometerUpdates()
-                self.motion.stopGyroUpdates()
+                // A capture that started meanwhile (the next heads-up) has its own handlers on the same manager: its
+                // updates keep running; only with no capture left are they stopped.
+                self.lock.lock()
+                let newer = self.session
+                self.lock.unlock()
+                if newer == nil {
+                    self.motion.stopAccelerometerUpdates()
+                    self.motion.stopGyroUpdates()
+                }
             }
             self.write(s, burstId: burstId, reason: reason)
             DispatchQueue.main.async {
@@ -224,7 +246,9 @@ final class PhoneMotionCapture {
         let lag = Int64(clock_gettime_nsec_np(CLOCK_UPTIME_RAW)) - uptimeNs
         if lag < s.lagMinNs { s.lagMinNs = lag }
         if lag > s.lagMaxNs { s.lagMaxNs = lag }
-        s.rows += "\(PhoneClock.epochNs(uptimeNs: uptimeNs)),\(type),\(Float(x)),\(Float(y)),\(Float(z))\n"
+        // Fixed notation: Swift writes small values as "1e-05", which the server's format check (Android's "1.0E-5" only)
+        // refuses, and with it the whole feedback message.
+        s.rows += "\(PhoneClock.epochNs(uptimeNs: uptimeNs)),\(type),\(String(format: "%.6f", x)),\(String(format: "%.6f", y)),\(String(format: "%.6f", z))\n"
         s.count += 1
     }
 

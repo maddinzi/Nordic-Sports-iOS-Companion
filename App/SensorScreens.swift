@@ -148,8 +148,24 @@ struct SensorRecordView: View {
                 }
             }
         }
-        .navigationDestination(isPresented: $uploading) {
-            FeedbackScreen(startCategory: "boost", preselectActivityId: "burst:\(burstId)")
+        .modifier(UploadDestination(on: showUpload, presented: $uploading, burstId: burstId))
+    }
+}
+
+/// The Upload button's target, attached only where the button exists: an activity's Sensor mode pages through its
+/// records in a lazy container, where SwiftUI ignores (and warns about) a navigation destination.
+private struct UploadDestination: ViewModifier {
+    let on: Bool
+    @Binding var presented: Bool
+    let burstId: String
+
+    func body(content: Content) -> some View {
+        if on {
+            content.navigationDestination(isPresented: $presented) {
+                FeedbackScreen(startCategory: "boost", preselectActivityId: "burst:\(burstId)")
+            }
+        } else {
+            content
         }
     }
 }
