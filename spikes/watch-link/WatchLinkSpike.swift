@@ -238,6 +238,20 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
                 "phoneMs": NSNumber(value: Int32(nowMs % 1000)),
             ]
             send(ack, to: app, what: "Sensor Record answer \(at)")
+            // After the answer is out: its send time ("txMs") is the clock sample closest to the record (shared
+            // WatchClockLog, as Android logs every message). The core does not handle the type; that is expected.
+            if JSONSerialization.isValidJSONObject(dict),
+               let data = try? JSONSerialization.data(withJSONObject: dict),
+               let json = String(data: data, encoding: .utf8) {
+                let deviceId = Self.deviceId(app.device)
+                let watchName = app.device.friendlyName ?? "?"
+                let appId = app.uuid.uuidString.lowercased()
+                Task { @MainActor in
+                    _ = Companion.shared.core.watchMessage(
+                        deviceId: deviceId, watchName: watchName, appId: appId, json: json, arrivedAtEpochMillis: arrivedAt
+                    )
+                }
+            }
             return
         }
         if let dict, type == "activity" || type == "recordingBoostBurst" || type == "activityTables" {
