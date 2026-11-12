@@ -1342,6 +1342,10 @@ struct SettingsAppPage: View {
                     Text(L10n.get("settings_group_app"))
                 }
                 .onAppear { nicknameDraft = companion.nickname }
+                // The phone's own motion record with each Sensor Record (TestFlight builds only, off by default).
+                if PhoneMotionCapture.isAvailable {
+                    PhoneMotionSettingsSection()
+                }
                 Section {
                     Toggle(L10n.get("demo_switch"), isOn: Binding(
                         get: { companion.demoOn },

@@ -238,6 +238,8 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
                 "phoneMs": NSNumber(value: Int32(nowMs % 1000)),
             ]
             send(ack, to: app, what: "Sensor Record answer \(at)")
+            // The phone's own motion record of the same moment (TestFlight, switch in Settings > App).
+            PhoneMotionCapture.shared.onHeadsUp(at: at, arrivedAtMs: arrivedAt)
             // After the answer is out: its send time ("txMs") is the clock sample closest to the record (shared
             // WatchClockLog, as Android logs every message). The core does not handle the type; that is expected.
             if JSONSerialization.isValidJSONObject(dict),
@@ -253,6 +255,18 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
                 }
             }
             return
+        }
+        if let dict, type == "recordingBoostBurst", let burstId = (dict["burstId"] as? NSNumber)?.int64Value {
+            // The watch's 20 s are over once its record arrives: the phone's motion record stops.
+            PhoneMotionCapture.shared.onRecordChunk(burstId: burstId)
+            // While the record arrives, every 8th chunk: a clock ping (phone motion record on, watch that stamps its
+            // chunks), echoed inside the next chunks, so the pair can be placed (Android CLOCK_PING_EVERY, seq = index).
+            let index = (dict["chunkIndex"] as? NSNumber)?.intValue ?? -1
+            if index >= 0, index % 8 == 0, dict["txMs"] != nil, PhoneMotionCapture.isEnabled {
+                Task { @MainActor in
+                    self.send(["type": "clockPing", "seq": NSNumber(value: Int32(index))], to: app, what: "clock ping \(index)")
+                }
+            }
         }
         if let dict, type == "activity" || type == "recordingBoostBurst" || type == "activityTables" {
             let variant = variantName(app)

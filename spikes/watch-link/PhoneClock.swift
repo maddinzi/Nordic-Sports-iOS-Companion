@@ -8,7 +8,8 @@ import NordicSportsShared
 /// stepped by network time at any moment; read once here and never again, a step cannot split the message stamps.
 /// Used for watch message arrivals, the phone time sent to the watch (`phoneS`, `phoneMs`), the Sensor Record
 /// answer and clock pings. The anchor goes into each Sensor Record (meta `clock.phone`, shared `WatchClockLog`).
-/// A future Core Motion record must convert its timestamps (`systemUptime`, which stops in sleep) to this clock.
+/// The phone motion record (`PhoneMotionCapture`) converts Core Motion's timestamps (`CLOCK_UPTIME_RAW`, which stops
+/// in sleep) to this clock with [epochNs(uptimeNs:)].
 enum PhoneClock {
     private static let anchor: (epochMs: Int64, monotonicNs: Int64) = {
         let ns = Int64(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW))
@@ -21,6 +22,19 @@ enum PhoneClock {
     static func nowMs() -> Int64 {
         let a = anchor
         return a.epochMs + (Int64(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)) - a.monotonicNs) / 1_000_000
+    }
+
+    /// The anchor (epoch ms, CLOCK_MONOTONIC_RAW ns) for the phone motion record's header (`phoneClock`).
+    static var anchorEpochMs: Int64 { anchor.epochMs }
+    static var anchorMonotonicNs: Int64 { anchor.monotonicNs }
+
+    /// A Core Motion timestamp ([uptimeNs]: CLOCK_UPTIME_RAW, `CMLogItem.timestamp` × 1e9) as epoch ns on this clock.
+    /// Uptime stops while the phone sleeps and the monotonic clock does not, so their difference is read now: within a
+    /// capture of seconds the phone is awake and it stays the same.
+    static func epochNs(uptimeNs: Int64) -> Int64 {
+        let a = anchor
+        let monotonicMinusUptime = Int64(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)) - Int64(clock_gettime_nsec_np(CLOCK_UPTIME_RAW))
+        return a.epochMs * 1_000_000 + (uptimeNs + monotonicMinusUptime - a.monotonicNs)
     }
 
     /// [message] with this phone's clock as it goes to the watch, Int32 values like every number the watch matches
