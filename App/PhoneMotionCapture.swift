@@ -74,6 +74,25 @@ final class PhoneMotionCapture {
         set { UserDefaults.standard.set(newValue, forKey: keyPlacement) }
     }
 
+    /// The phone motion record of Sensor Record [burstId] (watch id) in Documents/recording-boost, nil when there is none.
+    static func storedURL(burstId: Int64) -> URL? {
+        guard burstId > 0, let dir = try? FileManager.default
+            .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
+            .appendingPathComponent(Self.folder, isDirectory: true),
+            let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return nil }
+        return names.first { $0.hasSuffix("-\(burstId)-phone.csv") }.map { dir.appendingPathComponent($0) }
+    }
+
+    static func storedText(burstId: Int64) -> String? {
+        storedURL(burstId: burstId).flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+    }
+
+    /// The watch's record id in a Sensor Record file name ("…_recording-boost-1794516072.csv"), 0 when there is none.
+    static func burstId(fileName: String) -> Int64 {
+        guard let range = fileName.range(of: #"recording-boost-(\d+)"#, options: .regularExpression) else { return 0 }
+        return Int64(fileName[range].dropFirst("recording-boost-".count)) ?? 0
+    }
+
     private let motion = CMMotionManager()
     private let queue: OperationQueue = {
         let q = OperationQueue()

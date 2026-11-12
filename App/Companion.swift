@@ -1508,7 +1508,9 @@ final class Companion: NSObject, ObservableObject {
                         activityType: a.declaration.activityType, technique: a.declaration.technique,
                         terrain: a.declaration.terrain, poles: a.declaration.poles,
                         note: a.declaration.note.trimmingCharacters(in: .whitespacesAndNewlines),
-                        competence: a.declaration.competence, surface: a.declaration.surface, lead: a.declaration.lead)
+                        competence: a.declaration.competence, surface: a.declaration.surface, lead: a.declaration.lead,
+                        phoneFileName: a.withPhone ? a.candidate.phoneFileName : "",
+                        phoneContent: a.withPhone ? (a.candidate.phoneText ?? "") : "")
                 }
             )
             if result == "sent", !attachments.isEmpty { refreshBoostReminders() }

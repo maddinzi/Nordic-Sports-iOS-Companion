@@ -1982,7 +1982,7 @@ struct FeedbackScreen: View {
             if sending {
                 ProgressView().frame(maxWidth: .infinity)
             } else {
-                Text(boost ? String(format: L10n.get("feedback_boost_send"), attached.count) : L10n.get("feedback_send"))
+                Text(boost ? String(format: L10n.get("feedback_boost_send"), attached.count + attached.filter { $0.withPhone }.count) : L10n.get("feedback_send"))
                     .frame(maxWidth: .infinity)
             }
         }
@@ -2115,7 +2115,8 @@ struct FeedbackScreen: View {
         .sheet(isPresented: $showBoostPicker) {
             FeedbackBoostPickerSheet(
                 attachedKeys: Set(attached.map { $0.id }),
-                capacity: Int(companion.core.feedbackBoostMaxFiles) - attached.count,
+                // A record's phone motion record is a file of its own.
+                capacity: Int(companion.core.feedbackBoostMaxFiles) - attached.count - attached.filter { $0.withPhone }.count,
                 preselectActivityId: preselectActivityId
             ) { done in
                 for item in done {

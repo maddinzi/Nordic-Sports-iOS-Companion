@@ -60,6 +60,14 @@ private enum BurstPage: String, CaseIterable {
 struct SensorRecordView: View {
     @EnvironmentObject var companion: Companion
     let burstId: String
+    /// An Upload button in the bar that opens "Send Recording Boost data" with this record chosen (Android `BurstScreen`
+    /// onUpload); off where the view is part of an activity's Sensor mode.
+    var showUpload = false
+    @State private var uploading = false
+    /// The phone's motion record of this Sensor Record (`PhoneMotionCapture`), nil for the watch alone.
+    @State private var phoneText: String?
+    /// The phone's curves are shown unless its chip hides them (the chips exist only with a phone record).
+    @State private var showPhone = true
     @State private var full: BurstView?
     @State private var shown: BurstView?
     /// The time window in seconds; nil = the whole record (Android `BurstScreen` from/to).
@@ -92,8 +100,11 @@ struct SensorRecordView: View {
             if let v = shown ?? full {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
+                        if let overlay = full?.phone {
+                            SourceRow(phone: overlay, shown: $showPhone)
+                        }
                         if let full {
-                            CropBar(view: full, window: $window) {
+                            CropBar(view: full, window: $window, phoneEnvelope: showPhone ? full.phone?.envelope.swiftArray : nil) {
                                 if let record, !record.techniqueOptions.isEmpty {
                                     TechniqueMenu(options: record.techniqueOptions, current: record.labelTechnique, onPick: pickTechnique)
                                 }
@@ -105,8 +116,8 @@ struct SensorRecordView: View {
                         .pickerStyle(.segmented)
                         BurstHero(v: v)
                         switch page {
-                        case .stroke: StrokePage(v: v)
-                        case .rhythm: RhythmPage(v: v)
+                        case .stroke: StrokePage(v: v, phone: showPhone ? v.phone : nil)
+                        case .rhythm: RhythmPage(v: v, phone: showPhone ? v.phone : nil)
                         case .path: PathPage(v: v)
                         case .context: ContextPage(v: v, facts: facts)
                         }
@@ -119,14 +130,77 @@ struct SensorRecordView: View {
             }
         }
         .task(id: burstId) {
-            full = try? await companion.core.burstView(id: burstId, fromS: -1, toS: -1)
-            facts = try? await companion.core.burstFacts(id: burstId)
             record = try? await companion.core.recordingBoosts().first { $0.id == burstId }
+            // The phone's file is found by the watch's record id (its name ends in "-<id>-phone.csv").
+            if let r = record { phoneText = PhoneMotionCapture.storedText(burstId: r.burstId) }
+            full = try? await companion.core.burstView(id: burstId, fromS: -1, toS: -1, phoneText: phoneText)
+            facts = try? await companion.core.burstFacts(id: burstId)
             failed = full == nil
         }
         .task(id: window) {
             guard let window else { shown = nil; return }
-            shown = try? await companion.core.burstView(id: burstId, fromS: window.from, toS: window.to)
+            shown = try? await companion.core.burstView(id: burstId, fromS: window.from, toS: window.to, phoneText: phoneText)
+        }
+        .toolbar {
+            if showUpload {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(L10n.get("feedback_boost_reminder_upload")) { uploading = true }
+                }
+            }
+        }
+        .navigationDestination(isPresented: $uploading) {
+            FeedbackScreen(startCategory: "boost", preselectActivityId: "burst:\(burstId)")
+        }
+    }
+}
+
+/// The phone's curves: one colour everywhere, dashed, so they read as the second device (Android `PHONE_COLOR`).
+let phoneColor = Color(red: 0x1E / 255, green: 0x9E / 255, blue: 0x8A / 255)
+
+/// Which devices the charts show (Android `SourceRow`): the watch always, the phone with where it was carried. A tap on
+/// the phone hides or shows its curves; the line under it says how the two clocks were matched.
+private struct SourceRow: View {
+    let phone: PhoneOverlay
+    @Binding var shown: Bool
+
+    private var placement: String {
+        ["chest", "belt", "pocket", "backpack", "hand"].contains(phone.placement)
+            ? L10n.get("phone_motion_placement_\(phone.placement)") : phone.placement
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                Label(L10n.get("burst_source_watch"), systemImage: "applewatch")
+                    .font(.subheadline).padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(Color.accentColor.opacity(0.15), in: Capsule())
+                Button { shown.toggle() } label: {
+                    Label([L10n.get("burst_source_phone"), placement].filter { !$0.isEmpty }.joined(separator: " · "), systemImage: "iphone")
+                        .font(.subheadline).lineLimit(1)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .foregroundStyle(shown ? phoneColor : .secondary)
+                        .background((shown ? phoneColor : Color.secondary).opacity(0.15), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            if shown {
+                Text(phone.byMotion ? String(format: L10n.get("burst_phone_by_motion"), String(format: "%.2f", phone.r))
+                                    : L10n.get("burst_phone_by_clock"))
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// A legend entry with the device's symbol in front: which curve is the watch's and which the phone's.
+private struct DeviceLegend: View {
+    let symbol: String
+    let color: Color
+    let text: String
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: symbol).font(.caption).foregroundStyle(color)
+            Text(text).font(.caption)
         }
     }
 }
@@ -143,6 +217,8 @@ struct BurstWindow: Equatable {
 private struct CropBar<Trailing: View>: View {
     let view: BurstView
     @Binding var window: BurstWindow?
+    /// The phone's strength over time (same tenth-of-a-second bins), a line over the watch's bars; nil = watch only.
+    var phoneEnvelope: [Float]? = nil
     /// At the right end of the All / One cycle row: the technique menu.
     @ViewBuilder var trailing: () -> Trailing
     /// The window shown while dragging (follows [window] otherwise).
@@ -236,6 +312,17 @@ private struct CropBar<Trailing: View>: View {
                         let h = tall * CGFloat(min(max(v / top, 0.02), 1))
                         ctx.fill(Path(CGRect(x: pad + CGFloat(i) * bar, y: base - h, width: max(bar - 0.5, 0.5), height: h)),
                                  with: .color(.secondary.opacity(0.55)))
+                    }
+                    // The phone's strength on its own scale, a line through the bars' centres.
+                    if let pe = phoneEnvelope, pe.count > 1 {
+                        let ptop = max(pe.max() ?? 1, 0.05)
+                        let pbar = w / CGFloat(pe.count)
+                        var line = Path()
+                        for (i, v) in pe.enumerated() {
+                            let pt = CGPoint(x: pad + (CGFloat(i) + 0.5) * pbar, y: base - tall * CGFloat(min(max(v / ptop, 0), 1)))
+                            if i == 0 { line.move(to: pt) } else { line.addLine(to: pt) }
+                        }
+                        ctx.stroke(line, with: .color(phoneColor), lineWidth: 1.5)
                     }
                     // The arm cycles: a tick at each start, the proposed one stronger.
                     for (i, c) in all.enumerated() {
@@ -420,17 +507,21 @@ private func timeGuides(_ ctx: GraphicsContext, xs: [CGFloat], top: CGFloat, bot
 
 private struct StrokePage: View {
     let v: BurstView
+    /// The phone over the same arm cycles (dashed, own scale); nil = watch only.
+    var phone: PhoneOverlay? = nil
     @State private var selA: Int?
     @State private var selG: Int?
 
     var body: some View {
         if let a = v.strokeAccel, let g = v.strokeGyro {
             burstCard {
-                ChartFrame(title: L10n.get("burst_stroke_accel"), info: pageInfo(["burst_read_stroke"])) { space in
-                    BandChart(band: a, cycleS: v.cycleS, color: .accentColor, unit: "g", space: space, selected: $selA)
+                ChartFrame(title: L10n.get("burst_stroke_accel"),
+                           info: pageInfo(phone != nil ? ["burst_read_stroke", "burst_read_phone"] : ["burst_read_stroke"])) { space in
+                    BandChart(band: a, cycleS: v.cycleS, color: .accentColor, unit: "g", space: space, selected: $selA, phone: phone?.strokeAccel)
                 }
                 ChartFrame(title: L10n.get("burst_stroke_gyro")) { space in
-                    BandChart(band: g, cycleS: v.cycleS, color: .accentColor, unit: "°/s", space: space, selected: $selG)
+                    BandChart(band: g, cycleS: v.cycleS, color: .accentColor, unit: "°/s", space: space, selected: $selG,
+                              phone: phone?.strokeGyro, phoneGyro: true)
                 }
             }
         } else {
@@ -447,10 +538,15 @@ private struct BandChart: View {
     let unit: String
     let space: ChartSpace
     @Binding var selected: Int?
+    /// The phone's median over the same cycles: dashed, on its own scale (right edge), so its timing compares.
+    var phone: StrokeBand? = nil
+    /// The phone's curve is its rotation speed |ω| (the watch's is the arm's turn about Z).
+    var phoneGyro = false
 
     var body: some View {
         let median = band.median.swiftArray, q1 = band.q1.swiftArray, q3 = band.q3.swiftArray
         let n = median.count
+        let pm = phone.map { $0.median.swiftArray }.flatMap { $0.count == n ? $0 : nil }
         let lo = min(q1.min() ?? 0, median.min() ?? 0), hi = max(q3.max() ?? 1, median.max() ?? 1)
         VStack(alignment: .leading, spacing: 4) {
             GeometryReader { geo in
@@ -476,6 +572,18 @@ private struct BandChart: View {
                     ctx.draw(Text("0 s").font(.system(size: 10)).foregroundColor(.secondary), at: CGPoint(x: left, y: bottom + 8), anchor: .leading)
                     ctx.draw(Text(String(format: "%.1f s", cycleS)).font(.system(size: 10)).foregroundColor(.secondary),
                              at: CGPoint(x: size.width - 8, y: bottom + 8), anchor: .trailing)
+                    if let pm, let plo = pm.min(), let phi = pm.max() {
+                        let py = { (v: Float) -> CGFloat in bottom - (bottom - top) * CGFloat((v - plo) / max(phi - plo, 1e-6)) }
+                        var pline = Path()
+                        pline.move(to: CGPoint(x: x(0), y: py(pm[0])))
+                        for i in 1..<n { pline.addLine(to: CGPoint(x: x(i), y: py(pm[i]))) }
+                        ctx.stroke(pline, with: .color(phoneColor), style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                        let pfmt = phi - plo < 20 ? "%.1f" : "%.0f"
+                        ctx.draw(Text(String(format: pfmt, phi)).font(.system(size: 10)).foregroundColor(phoneColor),
+                                 at: CGPoint(x: size.width - 2, y: top), anchor: .trailing)
+                        ctx.draw(Text(String(format: pfmt, plo)).font(.system(size: 10)).foregroundColor(phoneColor),
+                                 at: CGPoint(x: size.width - 2, y: bottom - 8), anchor: .trailing)
+                    }
                     if let s = selected, s < n {
                         var mark = Path(); mark.move(to: CGPoint(x: x(s), y: top)); mark.addLine(to: CGPoint(x: x(s), y: bottom))
                         ctx.stroke(mark, with: .color(.primary.opacity(0.6)), lineWidth: 1.5)
@@ -491,16 +599,36 @@ private struct BandChart: View {
             }
             .frame(height: chartHeight(space, 150))
             .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 12))
-            HStack(spacing: 14) {
-                LegendSwatch(color: color, text: L10n.get("burst_legend_median"))
-                LegendSwatch(color: color.opacity(0.3), text: L10n.get("burst_legend_band"))
+            if pm == nil {
+                HStack(spacing: 14) {
+                    LegendSwatch(color: color, text: L10n.get("burst_legend_median"))
+                    LegendSwatch(color: color.opacity(0.3), text: L10n.get("burst_legend_band"))
+                }
+            } else {
+                ViewThatFits {
+                    HStack(spacing: 14) { legendWithPhone }
+                    VStack(alignment: .leading, spacing: 4) { legendWithPhone }
+                }
             }
             Readout(text: selected.flatMap { s in
                 s < n ? String(format: L10n.get("burst_sel_band"), String(format: "%.2f", cycleS * Double(s) / Double(max(n - 1, 1))),
                                Int((100.0 * Double(s) / Double(max(n - 1, 1))).rounded()), String(format: "%.1f", median[s]), unit,
                                String(format: "%.1f", q1[s]), String(format: "%.1f", q3[s])) : nil
             })
+            if let s = selected, let pm, s < pm.count {
+                Text(String(format: L10n.get("burst_sel_phone"), String(format: "%.1f", pm[s]), phoneGyro ? "°/s" : "g"))
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
         }
+    }
+}
+
+extension BandChart {
+    /// The legend with the devices' symbols (only with the phone's curve).
+    @ViewBuilder var legendWithPhone: some View {
+        DeviceLegend(symbol: "applewatch", color: color, text: L10n.get("burst_legend_median"))
+        LegendSwatch(color: color.opacity(0.3), text: L10n.get("burst_legend_band"))
+        DeviceLegend(symbol: "iphone", color: phoneColor, text: L10n.get(phoneGyro ? "burst_legend_phone_gyro" : "burst_legend_phone_accel"))
     }
 }
 
@@ -508,6 +636,8 @@ private struct BandChart: View {
 
 private struct RhythmPage: View {
     let v: BurstView
+    /// The phone's movement spectrum next to the arm's (dashed); nil = watch only.
+    var phone: PhoneOverlay? = nil
     @State private var sel: Int?
 
     var body: some View {
@@ -515,8 +645,10 @@ private struct RhythmPage: View {
             burstCard { Text(L10n.get("burst_no_rhythm")).font(.footnote) }
         } else {
             burstCard {
-                ChartFrame(title: L10n.get("burst_rhythm_title"), info: pageInfo(["burst_read_rhythm"])) { space in
-                    SpectrumChart(gyro: v.spectrumGyro, accel: v.spectrumAccel, rhythmic: v.rhythmic, space: space, selected: $sel)
+                ChartFrame(title: L10n.get("burst_rhythm_title"),
+                           info: pageInfo(phone?.spectrumAccel != nil ? ["burst_read_rhythm", "burst_read_phone_rhythm"] : ["burst_read_rhythm"])) { space in
+                    SpectrumChart(gyro: v.spectrumGyro, accel: v.spectrumAccel, rhythmic: v.rhythmic, space: space, selected: $sel,
+                                  phone: phone?.spectrumAccel)
                 }
             }
         }
@@ -529,6 +661,8 @@ private struct SpectrumChart: View {
     let rhythmic: Bool
     let space: ChartSpace
     @Binding var selected: Int?
+    /// The phone's movement (|a|) spectrum, dashed: the trunk's rhythm next to the arm's.
+    var phone: Spectrum? = nil
     private let accColor = Color(red: 0x9A / 255, green: 0x6B / 255, blue: 0x2F / 255)
 
     var body: some View {
@@ -563,6 +697,16 @@ private struct SpectrumChart: View {
                     }
                     draw(accel, aPower, accColor, dot: false)
                     draw(gyro, gPower, .accentColor, dot: rhythmic)
+                    if let phone {
+                        let pf = phone.freqHz.swiftArray, pp = phone.power.swiftArray
+                        var pline = Path()
+                        for (i, fr) in pf.enumerated() where i < pp.count {
+                            let pt = CGPoint(x: x(fr), y: y(pp[i]))
+                            if i == 0 { pline.move(to: pt) } else { pline.addLine(to: pt) }
+                        }
+                        ctx.stroke(pline, with: .color(phoneColor), style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                        ctx.fill(Path(ellipseIn: CGRect(x: x(phone.peakHz) - 4, y: y(1) - 4, width: 8, height: 8)), with: .color(phoneColor))
+                    }
                     if let s = selected, s < grid.count {
                         var m = Path(); m.move(to: CGPoint(x: x(grid[s]), y: top)); m.addLine(to: CGPoint(x: x(grid[s]), y: bottom))
                         ctx.stroke(m, with: .color(.primary.opacity(0.6)), lineWidth: 1.5)
@@ -577,9 +721,19 @@ private struct SpectrumChart: View {
             }
             .frame(height: chartHeight(space, 170))
             .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 12))
-            HStack(spacing: 14) {
-                LegendSwatch(color: .accentColor, text: L10n.get("burst_legend_arm"))
-                LegendSwatch(color: accColor, text: L10n.get("burst_legend_accel"))
+            if phone == nil {
+                HStack(spacing: 14) {
+                    LegendSwatch(color: .accentColor, text: L10n.get("burst_legend_arm"))
+                    LegendSwatch(color: accColor, text: L10n.get("burst_legend_accel"))
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 14) {
+                        DeviceLegend(symbol: "applewatch", color: .accentColor, text: L10n.get("burst_legend_arm"))
+                        DeviceLegend(symbol: "applewatch", color: accColor, text: L10n.get("burst_legend_accel"))
+                    }
+                    DeviceLegend(symbol: "iphone", color: phoneColor, text: L10n.get("burst_legend_phone_accel"))
+                }
             }
             Readout(text: selected.flatMap { s in
                 guard s < grid.count else { return nil }

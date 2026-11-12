@@ -12,6 +12,9 @@ struct BoostCandidate: Identifiable, Hashable {
     let key: String
     let view: FeedbackBoostFileView
     let content: String
+    /// The phone's motion record of this Sensor Record (`PhoneMotionCapture`), nil when there is none or it is too large.
+    var phoneText: String? = nil
+    var phoneFileName = ""
     var id: String { key }
 
     static func == (a: BoostCandidate, b: BoostCandidate) -> Bool { a.key == b.key }
@@ -36,6 +39,8 @@ struct BoostDeclaration: Equatable {
 struct BoostAttached: Identifiable {
     let candidate: BoostCandidate
     var declaration: BoostDeclaration
+    /// The phone's motion record goes along with the same declaration (a second file).
+    var withPhone = false
     var id: String { candidate.key }
 }
 
@@ -139,9 +144,23 @@ struct FeedbackBoostPickerSheet: View {
     @State private var importing = false
     @State private var problem: String?
     @State private var declaring = false
+    /// Records whose phone motion record the athlete unticked (it goes along by default).
+    @State private var phoneOff: Set<String> = []
 
     private var chosen: [BoostCandidate] {
         selected.compactMap { key in (manual + stored).first { $0.key == key } }
+    }
+
+    private func withPhone(_ c: BoostCandidate) -> Bool { c.phoneText != nil && !phoneOff.contains(c.key) }
+
+    /// Files that go out: each chosen record plus its phone motion record (both count toward the server's limit).
+    private var fileCount: Int { chosen.count + chosen.filter { withPhone($0) }.count }
+
+    /// Chooses [item] when there is room; its phone record goes along only while there is room for it too.
+    private func choose(_ item: BoostCandidate) {
+        guard !selected.contains(item.key), fileCount < capacity else { return }
+        selected.append(item.key)
+        if item.phoneText != nil && fileCount > capacity { phoneOff.insert(item.key) }
     }
 
     /// The stored files in the core's order, one group per activity (its bursts are listed together).
@@ -194,7 +213,7 @@ struct FeedbackBoostPickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button(L10n.get("common_cancel")) { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(String(format: L10n.get("feedback_boost_pick_continue"), selected.count)) { declaring = true }
+                    Button(String(format: L10n.get("feedback_boost_pick_continue"), fileCount)) { declaring = true }
                         .disabled(selected.isEmpty)
                 }
             }
@@ -204,7 +223,12 @@ struct FeedbackBoostPickerSheet: View {
                     candidates: chosen,
                     initial: Dictionary(uniqueKeysWithValues: chosen.map { ($0.key, BoostText.defaults($0, catalogs: catalogs)) })
                 ) { done in
-                    onDone(done)
+                    // One declaration per record: its phone motion record takes the same answers.
+                    onDone(done.map { a in
+                        var out = a
+                        out.withPhone = withPhone(a.candidate)
+                        return out
+                    })
                     dismiss()
                 }
             }
@@ -213,24 +237,58 @@ struct FeedbackBoostPickerSheet: View {
             }
             .task {
                 let files = await companion.feedbackBoostFiles()
-                stored = files.map { BoostCandidate(key: "burst:\($0.id)", view: $0, content: "") }
+                let maxChars = Int(companion.core.feedbackBoostMaxChars)
+                stored = files.map { f in
+                    var c = BoostCandidate(key: "burst:\(f.id)", view: f, content: "")
+                    // The phone's motion record of this Sensor Record, found by the watch's record id in its file name.
+                    if let url = PhoneMotionCapture.storedURL(burstId: PhoneMotionCapture.burstId(fileName: f.fileName)),
+                       let text = try? String(contentsOf: url, encoding: .utf8), text.utf8.count <= maxChars {
+                        c.phoneText = text
+                        c.phoneFileName = url.lastPathComponent
+                    }
+                    return c
+                }
                 loaded = true
-                if !preselectActivityId.isEmpty, selected.isEmpty {
-                    selected = stored.filter { $0.view.activityId == preselectActivityId && !attachedKeys.contains($0.key) }
-                        .prefix(max(capacity, 0)).map { $0.key }
+                if preselectActivityId.hasPrefix("burst:"), selected.isEmpty {
+                    // A Sensor Record screen's Upload: just that record (and its phone motion record).
+                    stored.filter { $0.key == preselectActivityId && !attachedKeys.contains($0.key) }.forEach { choose($0) }
+                } else if !preselectActivityId.isEmpty, selected.isEmpty {
+                    stored.filter { $0.view.activityId == preselectActivityId && !attachedKeys.contains($0.key) }.forEach { choose($0) }
                 }
             }
         }
     }
 
-    private func row(_ item: BoostCandidate) -> some View {
+    @ViewBuilder private func row(_ item: BoostCandidate) -> some View {
+        recordRow(item)
+        // The phone's motion record of the same moment, right under its record: ticked by default, only with the
+        // record, and declared together with it.
+        if item.phoneText != nil {
+            let on = selected.contains(item.key) && withPhone(item)
+            let can = selected.contains(item.key) && (on || fileCount < capacity)
+            Button {
+                if on { phoneOff.insert(item.key) } else { phoneOff.remove(item.key) }
+            } label: {
+                HStack {
+                    Image(systemName: "iphone").foregroundStyle(phoneColor)
+                    Text(L10n.get("feedback_boost_with_phone")).font(.footnote).foregroundStyle(.secondary)
+                    Spacer()
+                    if on { Image(systemName: "checkmark") }
+                }
+                .padding(.leading, 16)
+            }
+            .disabled(!can)
+        }
+    }
+
+    private func recordRow(_ item: BoostCandidate) -> some View {
         let already = attachedKeys.contains(item.key)
         let on = already || selected.contains(item.key)
         return Button {
             if selected.contains(item.key) {
                 selected.removeAll { $0 == item.key }
-            } else if selected.count < capacity {
-                selected.append(item.key)
+            } else {
+                choose(item)
             }
         } label: {
             HStack {
@@ -274,7 +332,7 @@ struct FeedbackBoostPickerSheet: View {
             }
             let candidate = BoostCandidate(key: "file:\(UUID().uuidString)", view: view, content: text)
             manual.append(candidate)
-            if selected.count < capacity { selected.append(candidate.key) }
+            choose(candidate)
         }
     }
 }
@@ -427,7 +485,11 @@ struct BoostEditSheet: View {
     var body: some View {
         NavigationStack {
             BoostDeclareView(candidates: [attached.candidate], initial: [attached.candidate.key: attached.declaration]) { done in
-                if let first = done.first { onDone(first) }
+                // The phone motion record stays with its record (its answers follow the record's).
+                if var first = done.first {
+                    first.withPhone = attached.withPhone
+                    onDone(first)
+                }
                 dismiss()
             }
         }
@@ -448,6 +510,10 @@ struct FeedbackBoostSection: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.candidate.view.fileName)
                     Text(BoostText.summary(item.declaration)).font(.footnote).foregroundStyle(.secondary)
+                    if item.withPhone {
+                        Label(L10n.get("feedback_boost_with_phone"), systemImage: "iphone")
+                            .font(.footnote).foregroundStyle(phoneColor)
+                    }
                     HStack(spacing: 16) {
                         Button(L10n.get("feedback_boost_edit")) { editing = item }
                         Button(L10n.get("feedback_boost_remove"), role: .destructive) {
@@ -458,7 +524,7 @@ struct FeedbackBoostSection: View {
                     .font(.footnote)
                 }
             }
-            if attached.count < Int(companion.core.feedbackBoostMaxFiles) {
+            if attached.count + attached.filter({ $0.withPhone }).count < Int(companion.core.feedbackBoostMaxFiles) {
                 Button(L10n.get("feedback_boost_add")) { showPicker = true }
             }
             if let tooLargeFile {

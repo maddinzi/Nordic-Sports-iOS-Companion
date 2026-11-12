@@ -48,7 +48,7 @@ struct RootView: View {
             set: { companion.openSensorRecordId = $0?.id }
         )) { record in
             NavigationStack {
-                SensorRecordView(burstId: record.id)
+                SensorRecordView(burstId: record.id, showUpload: true)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
                             Button(L10n.get("em_sheet_close")) { companion.openSensorRecordId = nil }
@@ -286,7 +286,7 @@ struct ActivitiesScreen: View {
                 ActivityRouteView(id: route.id, target: route.target, pick: route.pick)
             }
             .navigationDestination(item: $burstRoute) { route in
-                SensorRecordView(burstId: route.id)
+                SensorRecordView(burstId: route.id, showUpload: true)
             }
             .onChange(of: companion.openActivityId, initial: true) { _, id in
                 guard let id else { return }
