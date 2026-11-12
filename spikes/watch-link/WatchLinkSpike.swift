@@ -197,6 +197,9 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
 
     @objc(receivedMessage:fromApp:)
     func receivedMessage(_ message: Any!, from app: IQApp!) {
+        // The arrival on this phone's one clock, first thing: with the watch's send time ("txMs") it is a clock
+        // sample (shared WatchClockLog; Android ConnectIqWatchEventSource.onAppMessage).
+        let arrivedAt = PhoneClock.nowMs()
         // The SDK headers carry no nullability: a message without its app would crash at the first use below.
         guard let app else {
             add("message without an app ignored")
@@ -227,7 +230,7 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         // arrival (Android `ConnectIqWatchEventSource.answerSensorRecordStart`, shared `sensorRecordAckMessage`).
         // Int32 values, as every number the watch matches.
         if let dict, type == "sensorRecordStart", let at = (dict["at"] as? NSNumber)?.int64Value {
-            let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+            let nowMs = arrivedAt
             let ack: [String: Any] = [
                 "type": "sensorRecordAck",
                 "at": NSNumber(value: Int32(truncatingIfNeeded: at)),
@@ -239,9 +242,12 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         }
         if let dict, type == "activity" || type == "recordingBoostBurst" || type == "activityTables" {
             let variant = variantName(app)
+            let deviceId = Self.deviceId(app.device)
             Task { @MainActor in
                 if type == "recordingBoostBurst" { self.lastRecordApp = app }
-                let (startTime, burstId, tablesStartTime, tablesKind) = await Companion.shared.receive(message: dict, variant: variant)
+                let (startTime, burstId, tablesStartTime, tablesKind) = await Companion.shared.receive(
+                    message: dict, variant: variant, arrivedAt: arrivedAt, deviceId: deviceId
+                )
                 if tablesStartTime > 0 && !tablesKind.isEmpty {
                     let tablesTime = NSNumber(value: Int32(truncatingIfNeeded: tablesStartTime))
                     self.send(["type": "tablesReceipt", "startTime": tablesTime, "kind": tablesKind], to: app, what: "tables receipt \(tablesKind) \(tablesStartTime)")
@@ -274,8 +280,18 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
             let deviceId = Self.deviceId(app.device)
             let watchName = app.device.friendlyName ?? "?"
             let appId = app.uuid.uuidString.lowercased()
+            // A watch that stamps its messages (ClockSync.mc) gets a clock ping back for its settings snapshot (sent at
+            // every watch app start): it echoes the arrival in its next message, so each app start gives both bounds.
+            let pingBack = type == "settings" && dict["txMs"] != nil
             Task { @MainActor in
-                if !Companion.shared.core.watchMessage(deviceId: deviceId, watchName: watchName, appId: appId, json: json) {
+                if pingBack {
+                    self.snapshotPings &+= 1
+                    let seq = NSNumber(value: Int32(10_000 + self.snapshotPings % 10_000))
+                    self.send(["type": "clockPing", "seq": seq], to: app, what: "clock ping \(seq)")
+                }
+                if !Companion.shared.core.watchMessage(
+                    deviceId: deviceId, watchName: watchName, appId: appId, json: json, arrivedAtEpochMillis: arrivedAt
+                ) {
                     self.add("message of type \(type) not handled")
                 }
                 Companion.shared.refreshWatchSettings()
@@ -286,8 +302,12 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
 
     // MARK: - Helpers
 
+    /// Counts the clock pings that answer settings snapshots (their seq, apart from Android's record pings; main thread).
+    private var snapshotPings = 0
+
+    /// Every message to the watch goes out here, with this phone's clock as it is sent (PhoneClock.stamped).
     private func send(_ message: [String: Any], to app: IQApp, what: String, done: ((IQSendMessageResult) -> Void)? = nil) {
-        ConnectIQ.sharedInstance().sendMessage(message, to: app, progress: { _, _ in }) { result in
+        ConnectIQ.sharedInstance().sendMessage(PhoneClock.stamped(message), to: app, progress: { _, _ in }) { result in
             self.add("\(what) to \(self.label(app)): \(Self.name(of: result))")
             done?(result)
         }

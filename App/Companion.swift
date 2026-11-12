@@ -423,7 +423,9 @@ final class Companion: NSObject, ObservableObject {
     /// One message from the watch app [variant] (a Connect IQ dictionary).
     /// Stores an activity, a burst chunk or a follow-up table; returns what to confirm to the watch (0 / "" = nothing):
     /// the activity's start time, the burst id, and a complete table's start time and kind (`tablesReceipt`).
-    func receive(message dict: [String: Any], variant: String) async -> (startTime: Int64, burstId: Int64, tablesStartTime: Int64, tablesKind: String) {
+    /// [arrivedAt] is the message's arrival on PhoneClock, [deviceId] the watch it came from: a Sensor Record keeps
+    /// both with its chunks (meta `clock`), and every other message's clock sample goes into WatchClockLog.
+    func receive(message dict: [String: Any], variant: String, arrivedAt: Int64, deviceId: Int64) async -> (startTime: Int64, burstId: Int64, tablesStartTime: Int64, tablesKind: String) {
         guard !outdated else { return (0, 0, 0, "") }
         guard JSONSerialization.isValidJSONObject(dict),
               let data = try? JSONSerialization.data(withJSONObject: dict),
@@ -432,8 +434,7 @@ final class Companion: NSObject, ObservableObject {
             return (0, 0, 0, "")
         }
         do {
-            let now = Int64(Date().timeIntervalSince1970 * 1000)
-            let result = try await core.receiveWatchMessage(json: json, variant: variant, nowEpochMillis: now)
+            let result = try await core.receiveWatchMessage(json: json, variant: variant, nowEpochMillis: arrivedAt, deviceId: deviceId)
             storeFailures = 0
             if !result.storedBurstId.isEmpty { openFreshSensorRecord(result.storedBurstId) }
             WatchLinkSpike.shared.add("activity from \(variant): \(result.summary)")
