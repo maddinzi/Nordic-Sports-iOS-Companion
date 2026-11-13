@@ -920,6 +920,8 @@ private struct ContextPage: View {
             ("burst_feat_rest", "restPct", Color(red: 0x8D / 255, green: 0x6A / 255, blue: 0x2E / 255)),
             ("burst_feat_pole", "poleRate", Color(red: 0x1F / 255, green: 0x6F / 255, blue: 0xB5 / 255)),
         ].compactMap { key, feature, color in ctx.features[feature].map { ContextLine(label: L10n.get(key), values: $0.swiftArray, color: color) } }
+            // A channel the watch sent but never filled gets no chart (Android BurstScreen, 2026-11-11).
+            .filter { $0.values.contains { !$0.isNaN } }
         // What the FIT record of each second got (complete records, burst schema 3).
         let recorded: [ContextLine] = [
             ("burst_met_impulse", "impulseMs", Color(red: 0x1F / 255, green: 0x6F / 255, blue: 0xB5 / 255)),
@@ -932,6 +934,7 @@ private struct ContextPage: View {
             ("burst_met_wrist_gct", "wristGctMs", Color(red: 0x7A / 255, green: 0x4F / 255, blue: 0xB5 / 255)),
             ("burst_met_vertical", "verticalMh", Color(red: 0x8D / 255, green: 0x6A / 255, blue: 0x2E / 255)),
         ].compactMap { key, metric, color in ctx.metrics[metric].map { ContextLine(label: L10n.get(key), values: $0.swiftArray, color: color) } }
+            .filter { $0.values.contains { !$0.isNaN } }
         let watchKeys = ctx.stateKeys
         let hasWatch = watchKeys.contains { !$0.isEmpty }
         let hasReplay = v.replayKeys.contains { !$0.isEmpty }
