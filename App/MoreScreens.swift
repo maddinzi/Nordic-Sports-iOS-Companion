@@ -2631,7 +2631,8 @@ struct EditActivitySheet: View {
             : [("endurance", "activity_detail_training_option_endurance"),
                ("intervals", "activity_detail_training_option_intervals"),
                ("technique", "activity_detail_training_option_technique"),
-               ("sprints", "activity_detail_training_option_sprints")]
+               ("sprints", "activity_detail_training_option_sprints"),
+               ("race", "activity_detail_training_option_race")]
     }
 
     private static let sports: [SportArt] = [
