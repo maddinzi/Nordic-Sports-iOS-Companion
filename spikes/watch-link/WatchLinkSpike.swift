@@ -336,10 +336,19 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
     /// Counts the clock pings that answer settings snapshots (their seq, apart from Android's record pings; main thread).
     private var snapshotPings = 0
 
-    /// Every message to the watch goes out here, with this phone's clock as it is sent (PhoneClock.stamped).
-    private func send(_ message: [String: Any], to app: IQApp, what: String, done: ((IQSendMessageResult) -> Void)? = nil) {
+    /// Every message to the watch goes out here, with this phone's clock as it is sent (PhoneClock.stamped). The result
+    /// also goes to WatchContact, so the home screen's mark follows what the phone just tried: with [anyFailure] (the
+    /// athlete's settings messages) every failure counts, otherwise only "device not available".
+    private func send(_ message: [String: Any], to app: IQApp, what: String, anyFailure: Bool = false,
+                      done: ((IQSendMessageResult) -> Void)? = nil) {
+        let deviceId = app.device.map { Self.deviceId($0) }
         ConnectIQ.sharedInstance().sendMessage(PhoneClock.stamped(message), to: app, progress: { _, _ in }) { result in
             self.add("\(what) to \(self.label(app)): \(Self.name(of: result))")
+            // Raw values as in name(of:): 0 success, 3 device not available.
+            if let deviceId, result.rawValue == 0 || anyFailure || result.rawValue == 3 {
+                let delivered = result.rawValue == 0
+                Task { @MainActor in WatchContact.shared.sendResult(deviceId, delivered: delivered) }
+            }
             done?(result)
         }
     }
@@ -356,6 +365,7 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
               let app = apps.first(where: { Self.deviceId($0.device) == deviceId && $0.uuid.uuidString.lowercased() == appId.lowercased() })
         else {
             add("settings for an unknown watch or app (\(appId)) not sent")
+            Task { @MainActor in WatchContact.shared.sendResult(deviceId, delivered: false) }
             return false
         }
         // Garmin Connect can take a message and never report back (seen on Android, 2026-10-20):
@@ -365,11 +375,12 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
             guard answered.first() else { return }
             self.add("settings: no answer from Garmin Connect after 20 s")
             Task { @MainActor in
+                WatchContact.shared.sendResult(deviceId, delivered: false)
                 Companion.shared.core.watchMessageResult(requestId: requestId, sent: false, status: "NO_ANSWER")
                 Companion.shared.refreshWatchSettings()
             }
         }
-        send(message, to: app, what: "settings") { result in
+        send(message, to: app, what: "settings", anyFailure: true) { result in
             answered.mark()
             let sent = result.rawValue == 0
             let status = Self.name(of: result)
