@@ -401,12 +401,6 @@ struct EnhancedMetricsCard: View {
                 section(L10n.get("em_form_title"), badge: sourceName) {
                     tiles(view.form)
                     if view.balanceLeft > 0 { balance(Double(view.balanceLeft)) }
-                    // Every source's contact time next to the best one: nothing is hidden.
-                    if view.gctSources.count > 1 {
-                        Text(view.gctSources.map { "\(formSourceLabel($0.key) ?? $0.key) \($0.value) \($0.unit)" }
-                            .joined(separator: " · "))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
                 }
             }
             }
