@@ -718,10 +718,14 @@ struct EnhancedMetricsCard: View {
         }
     }
 
-    private var sourceName: String? {
-        switch view.formSource {
+    private var sourceName: String? { formSourceLabel(view.formSource) }
+
+    private func formSourceLabel(_ source: String) -> String? {
+        switch source {
         case "sensor": return L10n.get("em_src_sensor")
         case "wrist": return L10n.get("em_src_wrist")
+        case "wrist.cal": return L10n.get("em_src_wrist_cal")
+        case "phone": return L10n.get("em_src_phone")
         default: return nil
         }
     }
