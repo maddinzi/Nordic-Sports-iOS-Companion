@@ -731,6 +731,7 @@ struct EnhancedMetricsCard: View {
         case "sensor": return L10n.get("em_src_sensor")
         case "wrist": return L10n.get("em_src_wrist")
         case "wrist.cal": return L10n.get("em_src_wrist_cal")
+        case "phone": return L10n.get("em_src_phone")
         default: return nil
         }
     }
