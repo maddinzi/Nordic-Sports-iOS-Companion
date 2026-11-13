@@ -722,6 +722,7 @@ struct EnhancedMetricsCard: View {
         switch view.formSource {
         case "sensor": return L10n.get("em_src_sensor")
         case "wrist": return L10n.get("em_src_wrist")
+        case "wrist.cal": return L10n.get("em_src_wrist_cal")
         default: return nil
         }
     }
