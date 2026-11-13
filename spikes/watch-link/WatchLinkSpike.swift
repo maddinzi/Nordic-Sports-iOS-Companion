@@ -180,6 +180,7 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         Task { @MainActor in
             let changed = self.statuses[deviceUuid] != name
             self.statuses[deviceUuid] = name
+            WatchContact.shared.connection(deviceId, connected: status == .connected)
             // As Android: a watch that connects again keeps its name, and is asked to resend what
             // it still has queued (an activity sent while the link was down), at most once a minute.
             guard status == .connected, changed else { return }
@@ -210,7 +211,9 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         // Type and size only: the payload (coordinates, heart rate) stays out of the log.
         let source = label(app)
         let size = Self.describe(message)
+        let senderId = app.device.map { Self.deviceId($0) }
         Task { @MainActor in
+            if let senderId { WatchContact.shared.heard(senderId) }
             let state = UIApplication.shared.applicationState
             self.add("received \(type) from \(source) in \(Self.name(of: state)): \(size)")
             if state != .active {

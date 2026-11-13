@@ -4,13 +4,14 @@ import Foundation
 import SwiftUI
 import UIKit
 
-/// Settings > App: the switch, where the phone is carried and what it does (the Android Companion's texts).
-struct PhoneMotionSettingsSection: View {
+/// Watch settings, battery section below the Sensor Record switch: the switch, where the phone is carried and what it
+/// does (the Android Companion's texts). Rows only; the caller's section holds them.
+struct PhoneMotionSettingsRows: View {
     @State private var on = PhoneMotionCapture.isEnabled
     @State private var placement = PhoneMotionCapture.placement
 
     var body: some View {
-        Section {
+        Group {
             Toggle(L10n.get("phone_motion_switch"), isOn: Binding(
                 get: { on },
                 set: { on = $0; PhoneMotionCapture.setEnabled($0) }
@@ -26,8 +27,6 @@ struct PhoneMotionSettingsSection: View {
                 }
             }
             Text(L10n.get("phone_motion_body")).font(.footnote).foregroundStyle(.secondary)
-        } header: {
-            Text(L10n.get("phone_motion_title"))
         }
     }
 }
@@ -45,7 +44,7 @@ struct PhoneMotionSettingsSection: View {
 /// File (format 1, the same as Android's, so `src/phone_watch_align.py` and the Android overlay read it): a first line
 /// `# phoneRecord {json}`, then `tEpochNs,type,x,y,z` rows: `a` accelerometer in m/s² with Android's sign (iOS reports
 /// -1 g face up, Android +9.81, so x -9.80665), `g` gyroscope in rad/s. Saved in Documents/recording-boost (Files: On My
-/// iPhone > Nordic Sports). TestFlight builds only, behind a switch (Settings > App), off by default. It leaves the phone
+/// iPhone > Nordic Sports). TestFlight builds only, behind a switch (watch settings, battery section), off by default. It leaves the phone
 /// only when the athlete sends it with its Sensor Record in the feedback form (`FeedbackBoost.swift`, kind phone_motion).
 // PRIVACY-SYNC: phone motion (accelerometer and gyroscope, no position) recorded on the athlete's switch (TestFlight builds), saved on this phone, sent only with its Sensor Record in a feedback message. Notice: feedback paragraph, "Phone motion record". Changing this? Re-check the Companion's design/privacy-notice-sync.md.
 final class PhoneMotionCapture {

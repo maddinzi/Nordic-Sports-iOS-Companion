@@ -80,8 +80,13 @@ enum BoostText {
     }
 
     /// Technique and terrain codes are the coaches' codes; only "mixed" is translated.
+    /// Ski techniques keep the coaches' codes; mixed, run, walk and the terrain are plain words, translated.
     static func code(_ code: String) -> String {
-        code == "MIXED" ? L10n.get("recording_boost_label_mixed") : code
+        switch code {
+        case "MIXED": return L10n.get("recording_boost_label_mixed")
+        case "RUN", "WALK", "UP", "FLAT", "DOWN", "STEEP", "STEEP_DOWN": return stateName(code)
+        default: return code
+        }
     }
 
     /// The ground surface code in the athlete's language (the keys the Android strings use).
@@ -94,7 +99,7 @@ enum BoostText {
         if !d.technique.isEmpty { parts.append(code(d.technique)) }
         if !d.lead.isEmpty && leadTechniques.contains(d.technique) { parts.append(leadName(d.lead)) }
         if !d.surface.isEmpty { parts.append(surface(d.surface)) }
-        if !d.terrain.isEmpty { parts.append(d.terrain) }
+        if !d.terrain.isEmpty { parts.append(code(d.terrain)) }
         if d.poles == 1 { parts.append(L10n.get("recording_boost_label_poles_yes")) }
         if d.poles == 0 { parts.append(L10n.get("recording_boost_label_poles_no")) }
         if !d.competence.isEmpty { parts.append(competenceName(d.competence)) }
@@ -410,7 +415,7 @@ struct BoostDeclareView: View {
                             }
                             Text(L10n.get("recording_boost_label_terrain")).font(.caption).foregroundStyle(.secondary)
                             ForEach(options.terrains, id: \.self) { code in
-                                choice(code, on: d.terrain == code) {
+                                choice(BoostText.code(code), on: d.terrain == code) {
                                     var next = d
                                     next.terrain = d.terrain == code ? "" : code
                                     declarations[candidate.key] = next
