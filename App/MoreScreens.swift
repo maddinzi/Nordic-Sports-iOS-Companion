@@ -2189,11 +2189,11 @@ struct FeedbackScreen: View {
         var sendText = text
         var extra: [String: String] = [:]
         if boost {
-            // Like Android: the server wants 3 to 4000 characters, so the message says what is attached.
-            let note = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Only the athlete's note: the shared sendFeedback puts the "Sensor Record data" line on each part itself
+            // (FeedbackUploadParts.message), as on Android.
             sendApp = "watch"
             sendCategory = "other"
-            sendText = "Recording Boost data: \(attached.count) \(attached.count == 1 ? "file" : "files")" + (note.isEmpty ? "" : "\n" + note)
+            sendText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         if wording, let entry = wordingPicked {
             let composed = WordingFeedback.compose(
@@ -2213,6 +2213,17 @@ struct FeedbackScreen: View {
         sending = false
         if result.hasPrefix("tooLarge:") {
             tooLargeFile = String(result.dropFirst("tooLarge:".count))
+            return
+        }
+        // "partial:<records sent>:<tooMany|failed>": the first records arrived (in the order sent). They leave the
+        // selection, so Send again uploads only the rest instead of duplicating them on the server.
+        if result.hasPrefix("partial:") {
+            let parts = result.split(separator: ":")
+            let arrived = parts.count > 1 ? Int(parts[1]) ?? 0 : 0
+            let total = attached.count
+            attached.removeFirst(min(arrived, attached.count))
+            error = String(format: L10n.get("feedback_boost_partial"), arrived, total) + "\n"
+                + L10n.get(parts.count > 2 && parts[2] == "tooMany" ? "feedback_error_too_many" : "feedback_error_failed")
             return
         }
         switch result {

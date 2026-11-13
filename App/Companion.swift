@@ -1526,7 +1526,8 @@ final class Companion: NSObject, ObservableObject {
                         phoneContent: a.withPhone ? (a.candidate.phoneURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "") : "")
                 }
             )
-            if result == "sent", !attachments.isEmpty { refreshBoostReminders() }
+            // A partial upload marked its first records sent too, so the reminders change as well.
+            if result == "sent" || result.hasPrefix("partial:"), !attachments.isEmpty { refreshBoostReminders() }
             return result
         } catch {
             return "failed"
