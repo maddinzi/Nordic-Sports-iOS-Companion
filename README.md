@@ -1,38 +1,38 @@
 # Nordic Sports iOS Companion
 
 The iPhone version of the Nordic Sports Companion. It receives activities from the
-"Nordic Sports" Garmin Connect IQ watch app and forwards them to Strava and the TTB
-training diary, the same way the Android Companion (`../Nordic Sports Companion`) does.
+Nordic Sports Watch app and forwards them to Strava and the training diary, the same way
+the Android Companion (`../Nordic Sports Companion`) does.
 
 ## Status
 
 **Release plan (2026-10-20):** no version 1 for now. The watch app is a beta listing in the Connect IQ Store, the Android Companion a test version in Google Play and the iOS Companion a TestFlight build. All stay 0.9.x while they are stabilised with testers. See `Nordic Sports Watch/testing/release-gate.md`.
 
-Planning only. This folder holds the iOS app container, the design notes and the
-feasibility spikes. No Xcode project exists yet.
+The app is in TestFlight (marketing version 0.9.118; the build number says which
+Companion state it holds). Android parity is tracked row by row in
+[docs/feature-parity.md](docs/feature-parity.md); plan and history in
+[docs/ROADMAP.md](docs/ROADMAP.md).
 
-- Roadmap and logical steps: [docs/ROADMAP.md](docs/ROADMAP.md)
-- Feasibility spikes (throw-away code, one folder per spike): `spikes/`
+## Architecture
 
-## Guiding decision (proposed, not yet confirmed)
+One product, two platforms, one business-logic codebase:
 
-One product, two platforms, **one business-logic codebase**:
+- Platform-neutral logic (watch payload, diary write-back, HR-zone intensity, Strava
+  matching and titles, sync rules, database schema and migrations) lives in the
+  Companion repo's Kotlin Multiplatform `shared` module.
+- This repo holds the SwiftUI app (`App/`) and the platform adapters: watch link
+  (Connect IQ Mobile SDK, `spikes/watch-link/`), sign-in, file access, background work,
+  keychain, notifications. It consumes `shared` as an XCFramework built from Companion
+  `main`.
+- The Xcode project is generated from `project.yml` (XcodeGen); never edit it by hand.
 
-- The platform-neutral logic of the Android Companion (watch payload, TTB write-back,
-  HR-zone intensity, Strava matching and titles, sync rules, database schema) moves into
-  a **Kotlin Multiplatform `shared` module** in the Companion repo.
-- Android and iOS consume the same `shared` module. Only platform integration is written
-  twice: watch link (Connect IQ Mobile SDK), sign-in flows, file access, background work,
-  secure storage, notifications.
-- This project holds the iOS app and its platform adapters. It builds against the
-  `shared` framework produced by the Companion repo.
+## Building
 
-## Prerequisites (once work starts)
-
-- A Mac with Xcode (or a cloud Mac / macOS CI runner). iOS apps and the Kotlin/Native iOS
-  targets cannot be built on Windows. Shared logic can still be written and unit-tested on
-  Windows via the JVM tests.
-- An Apple Developer Program membership (TestFlight, App Store, Universal Links, Keychain
-  sharing).
-- Garmin Connect IQ Mobile SDK for iOS, and Garmin Connect Mobile installed on the test
-  iPhone.
+- No local Mac: builds run on GitHub Actions macOS runners and reach the iPhone through
+  TestFlight. Start and follow a build with `python -X utf8 tools/testflight.py
+  start | status | wait | errors`; push the Companion first, the workflow builds its
+  `main`. Secrets, expiry dates and the macOS-minute budget: [docs/testflight-ci.md](docs/testflight-ci.md).
+- Shared logic is tested on Windows through the Companion's JVM tests
+  (`:shared:testAndroidHostTest`); iOS-only Kotlin compiles with
+  `gradlew.bat :shared:compileKotlinIosArm64`.
+- Device test plan: `spikes/watch-link/README.md`.

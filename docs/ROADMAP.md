@@ -279,7 +279,7 @@ Diagnostics; Strava sign-in with ASWebAuthenticationSession and an https callbac
    editors (shared `WatchPlanEditor` turns the watch editor's choices into rows; SwiftUI
    only shows them). Remaining builds until parity: `docs/feature-parity.md`.
 4. Add activity by hand, delete with tombstone
-5. Place names, Recording Boost export, data export / deletion (the Trainingsplan
+5. Place names, Sensor Record export, data export / deletion (the Trainingsplan
    was removed from Android in 0.9.117; the diary backport is not ported, see step 2)
 6. Worklog transparency log, JSON export, app log, feedback / crash reports
 7. Localization: en, de, fr, it, rm, gsw from one shared source (generate iOS
