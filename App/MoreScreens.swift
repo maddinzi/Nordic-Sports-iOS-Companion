@@ -48,6 +48,10 @@ struct WatchSettingsScreen: View {
                     if !watch.routineSlots.isEmpty {
                         NavigationLink(L10n.get("watch_strength_routines")) { WatchPlansScreen(deviceId: watch.deviceId, routines: true) }
                     }
+                    // Skill level per sport right after the strength routines (a watch that reports them, 0.9.118+).
+                    if let skillLevel = watch.skillLevel {
+                        NavigationLink(skillLevel.title) { WatchSkillLevelScreen(deviceId: watch.deviceId) }
+                    }
                     if !watch.dataFieldGroups.isEmpty || !watch.intervalSlots.isEmpty || !watch.routineSlots.isEmpty {
                         NavigationLink { WatchShareScreen(deviceId: watch.deviceId) } label: {
                             Label(L10n.get("watch_share_title"), systemImage: "square.and.arrow.up")
@@ -84,17 +88,16 @@ struct WatchSettingsScreen: View {
                         Section {
                             ForEach(battery, id: \.key) { item in
                                 WatchSettingRow(deviceId: watch.deviceId, item: item, instantModeOn: instantOn)
+                                // The phone's own motion record runs alongside each watch Sensor Record, so its
+                                // switch stands right below that one (a phone setting, the same for every watch).
+                                if item.key == "RecordingBoostEnabled" && PhoneMotionCapture.isAvailable {
+                                    PhoneMotionSettingsRows()
+                                }
                             }
                         } header: {
                             Label(L10n.get("watch_settings_battery_note"), systemImage: "battery.50")
                                 .foregroundStyle(Color(red: 0xB2 / 255, green: 0x6A / 255, blue: 0x00 / 255))
                         }
-                    }
-                }
-                // Last on the screen; only a watch that reports per-sport skill levels (0.9.118+).
-                if let skillLevel = watch.skillLevel {
-                    Section {
-                        NavigationLink(skillLevel.title) { WatchSkillLevelScreen(deviceId: watch.deviceId) }
                     }
                 }
             }
@@ -1819,7 +1822,7 @@ struct BurstLabelSheet: View {
 
     private func choices(_ codes: [String], selected: Binding<String>) -> some View {
         ForEach(codes, id: \.self) { code in
-            row(code == "MIXED" ? L10n.get("recording_boost_label_mixed") : code, on: selected.wrappedValue == code) {
+            row(BoostText.code(code), on: selected.wrappedValue == code) {
                 selected.wrappedValue = selected.wrappedValue == code ? "" : code
             }
         }

@@ -333,6 +333,10 @@ struct ActivitiesScreen: View {
                     }
                     .accessibilityLabel(L10n.get("add_activity_title"))
                 }
+                // How recently a watch talked to the phone (Android: left of the settings button); tap for the watch page.
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink { SettingsWatchPage() } label: { WatchContactMark() }
+                }
                 // Android's chat icon next to settings: feedback one tap away, not only under Settings › Privacy.
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
@@ -1108,6 +1112,7 @@ struct ActivityDetailScreen: View {
 struct SettingsScreen: View {
     @EnvironmentObject var companion: Companion
     @ObservedObject var watch = WatchLinkSpike.shared
+    @ObservedObject private var contact = WatchContact.shared
     @State private var query = ""
 
     private var diaryTitle: String {
@@ -1172,8 +1177,11 @@ struct SettingsScreen: View {
                         NavigationLink {
                             SettingsWatchPage()
                         } label: {
+                            // The name and, live, connected or when the watch last talked to the phone.
                             LabeledContent(L10n.get("settings_tile_watch"),
-                                           value: watch.devices.first?.friendlyName ?? L10n.get("settings_value_none"))
+                                           value: [watch.devices.first?.friendlyName ?? L10n.get("settings_value_none"),
+                                                   contact.text(watch.devices.first.map { WatchLinkSpike.deviceId($0) })]
+                                               .compactMap { $0 }.joined(separator: " · "))
                                 .settingsIcon(.watch, connected: watch.devices.first != nil)
                         }
                         NavigationLink {
@@ -1342,10 +1350,6 @@ struct SettingsAppPage: View {
                     Text(L10n.get("settings_group_app"))
                 }
                 .onAppear { nicknameDraft = companion.nickname }
-                // The phone's own motion record with each Sensor Record (TestFlight builds only, off by default).
-                if PhoneMotionCapture.isAvailable {
-                    PhoneMotionSettingsSection()
-                }
                 Section {
                     Toggle(L10n.get("demo_switch"), isOn: Binding(
                         get: { companion.demoOn },
