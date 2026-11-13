@@ -820,8 +820,16 @@ struct LogScreen: View {
         }
     }
 
+    private var emptyText: String {
+        switch kind {
+        case .diary: return L10n.get("diary_work_log_empty")
+        case .app: return L10n.get("app_log_empty")
+        case .transfer: return L10n.get("data_sharing_log_empty")
+        }
+    }
+
     var body: some View {
-        LogList(lines: lines, loaded: loaded)
+        LogList(lines: lines, loaded: loaded, empty: emptyText)
             .homeTitle(title)
             .toolbar { ShareLogButton(kinds: shareKinds) }
             .task {
@@ -1853,7 +1861,7 @@ struct LoadFailedRow: View {
 private struct LogList: View {
     let lines: [LogLine]
     let loaded: Bool
-    var empty = "Nothing logged yet."
+    let empty: String
     var failure: String?
 
     var body: some View {
