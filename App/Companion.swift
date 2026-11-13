@@ -1201,6 +1201,18 @@ final class Companion: NSObject, ObservableObject {
         refreshWatchSettings()
     }
 
+    /// As [applyWatchImport], and each data field set also goes to the sports in [also] ("Also apply to").
+    func applyWatchImportAlso(deviceId: Int64, text: String, targets: [String], also: [[String]]) {
+        core.applyWatchImportAlso(deviceId: deviceId, text: text, targets: targets, also: also)
+        refreshWatchSettings()
+    }
+
+    /// "For all …" in the Migrations section: a programmed configuration into every sport's data fields.
+    func applyWatchDataFieldPreset(deviceId: Int64, presetId: String) {
+        core.applyWatchDataFieldPreset(deviceId: deviceId, presetId: presetId)
+        refreshWatchSettings()
+    }
+
     /// The editor for plan or routine slot [key] ("IntervalPlan1", "StrengthRoutine2").
     func openWatchPlan(deviceId: Int64, key: String) -> PlanEditView? {
         core.openWatchPlan(deviceId: deviceId, key: key)

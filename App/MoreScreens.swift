@@ -236,6 +236,7 @@ struct WatchSkillLevelScreen: View {
 struct WatchDataFieldsScreen: View {
     @EnvironmentObject var companion: Companion
     let deviceId: Int64
+    @State private var pickingPreset = false
 
     var body: some View {
         let watch = companion.watchSettings.first { $0.deviceId == deviceId }
@@ -282,8 +283,10 @@ struct WatchDataFieldsScreen: View {
                     Text(group.title)
                 }
             }
-            // Every sport's pace fields (lap pace too) to speed, or back, in one go.
-            if watch?.canPaceToSpeed == true || watch?.canSpeedToPace == true {
+            // Migrations (phone only): every sport's data fields at once. Pace fields (lap pace too) to speed or
+            // back, and "For all …" with a programmed configuration (shared WatchDataFieldPresets).
+            let presets = watch?.dataFieldPresets ?? []
+            if watch?.canPaceToSpeed == true || watch?.canSpeedToPace == true || !presets.isEmpty {
                 Section {
                     if watch?.canPaceToSpeed == true {
                         Button(L10n.get("watch_data_fields_to_speed")) { companion.switchWatchPaceSpeed(deviceId: deviceId, toSpeed: true) }
@@ -291,10 +294,23 @@ struct WatchDataFieldsScreen: View {
                     if watch?.canSpeedToPace == true {
                         Button(L10n.get("watch_data_fields_to_pace")) { companion.switchWatchPaceSpeed(deviceId: deviceId, toSpeed: false) }
                     }
+                    if !presets.isEmpty {
+                        Button(L10n.get("watch_migrations_for_all")) { pickingPreset = true }
+                    }
+                } header: {
+                    Text(L10n.get("watch_migrations_title"))
                 }
             }
         }
         .homeTitle(L10n.get("watch_data_fields_title"))
+        .confirmationDialog(L10n.get("watch_migrations_for_all_title"), isPresented: $pickingPreset, titleVisibility: .visible) {
+            ForEach(watch?.dataFieldPresets ?? [], id: \.id) { preset in
+                Button(preset.label) { companion.applyWatchDataFieldPreset(deviceId: deviceId, presetId: preset.id) }
+            }
+            Button(L10n.get("common_cancel"), role: .cancel) {}
+        } message: {
+            Text(L10n.get("watch_migrations_for_all_hint"))
+        }
     }
 }
 
@@ -352,6 +368,8 @@ struct WatchImportScreen: View {
     @State private var invalid = false
     @State private var sets: [ImportSetView]?
     @State private var targets: [String] = []
+    /// Per set, the other sports a data field set goes to as well ("Also apply to").
+    @State private var also: [Set<String>] = []
 
     var body: some View {
         Form {
@@ -371,16 +389,27 @@ struct WatchImportScreen: View {
                             }
                             .pickerStyle(.navigationLink)
                         }
+                        // A data field set can go to further sports too (e.g. a running set to Langlauf).
+                        let extra = set.alsoTargets.filter { $0.key != targets[i] }
+                        if !extra.isEmpty {
+                            Text(L10n.get("watch_import_also_apply")).font(.footnote).foregroundStyle(.secondary)
+                            ForEach(extra, id: \.key) { target in
+                                Toggle(target.label, isOn: Binding(
+                                    get: { also[i].contains(target.key) },
+                                    set: { on in if on { also[i].insert(target.key) } else { also[i].remove(target.key) } }
+                                ))
+                            }
+                        }
                     } header: {
                         Text(set.title)
                     }
                 }
                 Section {
                     Button(L10n.get("watch_import_apply")) {
-                        companion.applyWatchImport(deviceId: deviceId, text: text, targets: targets)
+                        companion.applyWatchImportAlso(deviceId: deviceId, text: text, targets: targets, also: also.map { Array($0) })
                         dismiss()
                     }
-                    .disabled(targets.allSatisfy { $0.isEmpty })
+                    .disabled(targets.allSatisfy { $0.isEmpty } && also.allSatisfy { $0.isEmpty })
                 }
             } else {
                 Section {
@@ -400,6 +429,7 @@ struct WatchImportScreen: View {
                     Button(L10n.get("watch_import_next")) {
                         if let found = companion.readWatchImport(deviceId: deviceId, text: text), !found.isEmpty {
                             targets = found.map(\.proposed)
+                            also = found.map { _ in [] }
                             sets = found
                         } else {
                             invalid = true
