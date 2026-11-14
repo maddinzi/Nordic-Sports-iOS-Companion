@@ -196,7 +196,7 @@ private struct SourceRow: View {
     private func trunkName(_ verdict: String) -> String {
         switch verdict {
         case "DP": return "DP"
-        case "V1": return "2:1A"
+        case "V1": return "2:1 asym"
         default: return L10n.get("trends_style_skating")
         }
     }
