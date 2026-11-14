@@ -122,6 +122,14 @@ struct SensorRecordView: View {
                         case .context: ContextPage(v: v, facts: facts)
                         }
                         Text(L10n.get("burst_caveat")).font(.caption2).foregroundStyle(.secondary)
+                        // What the phone symbol with a technique next to the chips means (Android `PhoneTrunkNote`).
+                        if full?.phone?.trunk != nil {
+                            HStack(alignment: .top, spacing: 6) {
+                                Image(systemName: "iphone").foregroundStyle(phoneColor)
+                                Text(L10n.get("burst_phone_trunk_info")).foregroundStyle(.secondary)
+                            }
+                            .font(.caption2)
+                        }
                     }
                     .padding(.horizontal, 16).padding(.vertical, 6)
                 }
@@ -174,7 +182,7 @@ private struct UploadDestination: ViewModifier {
 let phoneColor = Color(red: 0x1E / 255, green: 0x9E / 255, blue: 0x8A / 255)
 
 /// Which devices the charts show (Android `SourceRow`): the watch always, the phone with where it was carried. A tap on
-/// the phone hides or shows its curves; the line under it says how the two clocks were matched.
+/// the phone hides or shows its curves. One row, no sentence under it (the screen is short).
 private struct SourceRow: View {
     let phone: PhoneOverlay
     @Binding var shown: Bool
@@ -184,12 +192,12 @@ private struct SourceRow: View {
             ? L10n.get("phone_motion_placement_\(phone.placement)") : phone.placement
     }
 
-    /// The name for a `PhoneTrunkTechnique.Verdict` (by its Kotlin name: DP, V1, SKATING).
+    /// The short term for a `PhoneTrunkTechnique.Verdict` (by its Kotlin name: DP, V1, SKATING), as Android's row.
     private func trunkName(_ verdict: String) -> String {
         switch verdict {
-        case "DP": return L10n.get("technique_name_dp")
-        case "V1": return L10n.get("technique_name_v1")
-        default: return L10n.get("burst_phone_trunk_skating")
+        case "DP": return "DP"
+        case "V1": return "2:1A"
+        default: return L10n.get("trends_style_skating")
         }
     }
 
@@ -207,16 +215,17 @@ private struct SourceRow: View {
                         .background((shown ? phoneColor : Color.secondary).opacity(0.15), in: Capsule())
                 }
                 .buttonStyle(.plain)
-            }
-            if shown {
-                Text(phone.byMotion ? String(format: L10n.get("burst_phone_by_motion"), String(format: "%.2f", phone.r))
-                                    : L10n.get("burst_phone_by_clock"))
-                    .font(.caption2).foregroundStyle(.secondary)
-                // What the phone alone makes of the technique (Android `SourceRow`): skating records with the phone
-                // on the trunk only; double pole, V1, or no more than "skating". Experimental.
+                // What the phone alone makes of the technique (Android `SourceRow`): a phone symbol and a short
+                // term after the chips, for skating records with the phone on the trunk. One row and no sentence:
+                // the screen is short. `PhoneTrunkNote` at the bottom of the screen says what it means.
                 if let trunk = phone.trunk {
-                    Text(String(format: L10n.get("burst_phone_trunk"), trunkName(trunk.verdict.name)))
-                        .font(.caption2).foregroundStyle(.secondary)
+                    HStack(spacing: 4) {
+                        Image(systemName: "iphone").foregroundStyle(phoneColor)
+                        Text(trunkName(trunk.verdict.name)).fontWeight(.semibold).lineLimit(1)
+                    }
+                    .font(.subheadline)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(L10n.get("burst_source_phone")): \(trunkName(trunk.verdict.name))")
                 }
             }
         }
