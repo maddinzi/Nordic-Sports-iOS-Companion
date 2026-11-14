@@ -1522,6 +1522,17 @@ struct SettingsDiaryPage: View {
                             get: { companion.diarySettings.roundDurationUp },
                             set: { companion.setDiaryRoundDurationUp($0) }
                         ))
+                        if companion.diarySettings.roundDurationUp {
+                            Toggle(isOn: Binding(
+                                get: { companion.diarySettings.roundNearest },
+                                set: { companion.setDiaryRoundNearest($0) }
+                            )) {
+                                VStack(alignment: .leading) {
+                                    Text(L10n.get("status_ttb_round_nearest_switch"))
+                                    Text(L10n.get("status_ttb_round_nearest_body")).font(.footnote).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
                         Toggle(L10n.get("status_ttb_compact_switch"), isOn: Binding(
                             get: { companion.diarySettings.compactDiary },
                             set: { companion.setDiaryCompact($0) }
