@@ -169,6 +169,7 @@ func stateName(_ key: String) -> String {
     case "DIA": return L10n.get("technique_name_dia")
     case "KDP": return L10n.get("technique_name_kdp")
     case "KLAEBO": return L10n.get("technique_name_klaebo")
+    case "HB": return L10n.get("technique_name_hb")   // declared only (Sensor Records), not detected
     case "GLIDE": return L10n.get("strava_analysis_glide")
     case "OTHER": return L10n.get("strava_analysis_other")
     case "PAUSE": return L10n.get("strava_analysis_pause")
