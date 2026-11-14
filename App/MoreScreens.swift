@@ -48,6 +48,10 @@ struct WatchSettingsScreen: View {
                     if !watch.routineSlots.isEmpty {
                         NavigationLink(L10n.get("watch_strength_routines")) { WatchPlansScreen(deviceId: watch.deviceId, routines: true) }
                     }
+                    // The Sensor Record program (a watch that reports one, 0.9.126+; Android: a block on the watch page).
+                    if watch.sensorProgram != nil {
+                        NavigationLink(L10n.get("watch_sensor_program_title")) { WatchSensorProgramScreen(deviceId: watch.deviceId) }
+                    }
                     // Skill level per sport right after the strength routines (a watch that reports them, 0.9.118+).
                     if let skillLevel = watch.skillLevel {
                         NavigationLink(skillLevel.title) { WatchSkillLevelScreen(deviceId: watch.deviceId) }
@@ -228,6 +232,67 @@ struct WatchSkillLevelScreen: View {
             }
         }
         .homeTitle(skillLevel?.title ?? "")
+    }
+}
+
+/// The Sensor Record program (Android `SensorRecordProgramEditor`): the steps in order (swipe to delete, drag to
+/// move), techniques to append per style, then one send, so the watch gets one change, not one per tap.
+struct WatchSensorProgramScreen: View {
+    @EnvironmentObject var companion: Companion
+    let deviceId: Int64
+    @State private var draft: [String]? = nil
+
+    var body: some View {
+        let program = companion.watchSettings.first { $0.deviceId == deviceId }?.sensorProgram
+        Form {
+            if let program {
+                let steps = draft ?? program.steps
+                Section {
+                    Text(String(format: L10n.get("watch_sensor_program_intro"), Int(program.maxSteps)))
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                Section {
+                    if steps.isEmpty {
+                        Text(L10n.get("watch_sensor_program_empty")).foregroundStyle(.secondary)
+                    }
+                    ForEach(Array(steps.enumerated()), id: \.offset) { i, code in
+                        Text("\(i + 1). \(stateName(code))")
+                    }
+                    .onDelete { draft = removing(steps, at: $0) }
+                    .onMove { from, to in var next = steps; next.move(fromOffsets: from, toOffset: to); draft = next }
+                    if !program.note.isEmpty {
+                        Text(program.note).font(.footnote).foregroundStyle(program.pending ? Color.orange : Color.red)
+                    }
+                }
+                ForEach([("watch_sensor_program_skating", program.skating), ("watch_sensor_program_classic", program.classic)], id: \.0) { title, codes in
+                    Section(L10n.get(title)) {
+                        ForEach(codes, id: \.self) { code in
+                            Button {
+                                if steps.count < Int(program.maxSteps) { draft = steps + [code] }
+                            } label: {
+                                Label(stateName(code), systemImage: "plus.circle")
+                            }
+                            .disabled(steps.count >= Int(program.maxSteps))
+                        }
+                    }
+                }
+                Section {
+                    Button(L10n.get("watch_sensor_program_send")) {
+                        companion.changeWatchSensorRecordProgram(deviceId: deviceId, codes: steps)
+                        draft = nil
+                    }
+                    .disabled(steps == program.steps)
+                    Button(L10n.get("watch_sensor_program_clear"), role: .destructive) { draft = [] }
+                        .disabled(steps.isEmpty)
+                }
+            }
+        }
+        .toolbar { EditButton() }
+        .homeTitle(L10n.get("watch_sensor_program_title"))
+    }
+
+    private func removing(_ steps: [String], at offsets: IndexSet) -> [String] {
+        steps.enumerated().filter { !offsets.contains($0.offset) }.map { $0.element }
     }
 }
 
