@@ -1168,6 +1168,12 @@ final class Companion: NSObject, ObservableObject {
         refreshWatchSettings()
     }
 
+    /// Sends the Sensor Record program [codes] ("V2A", ...; empty clears it) to the watch.
+    func changeWatchSensorRecordProgram(deviceId: Int64, codes: [String]) {
+        core.changeWatchSensorRecordProgramCodes(deviceId: deviceId, codes: codes)
+        refreshWatchSettings()
+    }
+
     /// "All sports": [level] becomes the main skill level setting and every sport follows it again.
     func setWatchSkillLevelAll(deviceId: Int64, level: Int32) {
         core.setWatchSkillLevelAll(deviceId: deviceId, level: level)
