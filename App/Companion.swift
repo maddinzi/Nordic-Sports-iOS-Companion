@@ -33,7 +33,7 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var outdated = false
     @Published private(set) var diaryName = ""
     @Published private(set) var diaryIssue = ""
-    @Published private(set) var diarySettings = DiarySettings(autoUpdate: true, roundDurationUp: true, compactDiary: true)
+    @Published private(set) var diarySettings = DiarySettings(autoUpdate: true, roundDurationUp: true, compactDiary: true, roundNearest: false)
     @Published private(set) var diaryBusy = false
     @Published private(set) var diarySources: [DiarySourceView] = []
     /// The JSON and CSV destinations (the TTB diary is `diaryName` and friends).
@@ -948,6 +948,7 @@ final class Companion: NSObject, ObservableObject {
 
     func setDiaryAutoUpdate(_ on: Bool) { core.setDiaryAutoUpdate(enabled: on); refreshDiary() }
     func setDiaryRoundDurationUp(_ on: Bool) { core.setDiaryRoundDurationUp(enabled: on); refreshDiary() }
+    func setDiaryRoundNearest(_ on: Bool) { core.setDiaryRoundNearest(enabled: on); refreshDiary() }
     func setDiaryCompact(_ on: Bool) { core.setDiaryCompact(enabled: on); refreshDiary() }
 
     /// "Write to diary now": everything due from the last [days] days.

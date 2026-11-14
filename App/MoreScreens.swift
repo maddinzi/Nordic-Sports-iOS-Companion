@@ -2607,17 +2607,18 @@ struct EditActivitySheet: View {
     }
     private var hrInvalid: Bool { hrChanged && hrOverride == 0 }
 
-    /// The duration after the diary's rounding up to 5 minutes (when it rounds): the corrected one, else the measured one.
+    /// The duration after the diary's rounding to 5 minutes, up or to the nearest (when it rounds): the corrected one, else the measured one.
     private var roundedSeconds: Int32 {
         DiaryFields.shared.diaryDurationSec(durationSec: Int32(durationSeconds ?? measuredSeconds),
-                                            roundUp: companion.diarySettings.roundDurationUp)
+                                            roundUp: companion.diarySettings.roundDurationUp,
+                                            nearest: companion.diarySettings.roundNearest)
     }
     /// The minutes both splits add up to.
     private var totalMinutes: Int { Int(DiaryFields.shared.diaryMinutes(elapsedTimeSec: roundedSeconds)) }
 
     // Intensity split
     private var measuredSplit: [Int] {
-        DiaryFields.shared.distribute(shares: item.measuredIntensityShares, total: Int32(totalMinutes)).map { $0.intValue }
+        DiaryFields.shared.distributeIntensity(shares: item.measuredIntensityShares, total: Int32(totalMinutes)).map { $0.intValue }
     }
     private var shownIntensityTexts: [String] {
         if intensityEdited { return intensityTexts }
@@ -2688,7 +2689,9 @@ struct EditActivitySheet: View {
     private func spreadStoredSplits() {
         guard !splitsSpread else { return }
         splitsSpread = true
-        if !item.intensityMinutes.isEmpty { intensityTexts = spread(item.intensityMinutes) }
+        if !item.intensityMinutes.isEmpty {
+            intensityTexts = DiaryFields.shared.distributeIntensity(shares: item.intensityMinutes, total: Int32(totalMinutes)).map { String($0.intValue) }
+        }
         if storedDisciplineApplies { disciplineTexts = spread(item.disciplineMinutes) }
     }
 
