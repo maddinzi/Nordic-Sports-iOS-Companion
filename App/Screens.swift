@@ -194,6 +194,15 @@ struct ActivitiesScreen: View {
     /// The list's density (Android: the toggle in the status card); remembered across launches.
     @AppStorage("list_compact") private var compactList = false
 
+    private var densityButton: some View {
+        Button { compactList.toggle() } label: {
+            Image(systemName: compactList ? "rectangle.grid.1x2" : "list.bullet")
+                .frame(width: 36, height: 36)
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(L10n.get(compactList ? "list_density_full" : "list_density_compact"))
+    }
+
     @ViewBuilder private func activityRow(_ item: ActivityItem) -> some View {
         let open: (ActivityTarget) -> Void = { route = ActivityRoute(id: item.id, target: $0) }
         if compactList { CompactActivityRow(item: item, onOpen: open) } else { ActivityCard(item: item, stravaConnected: companion.stravaConnected, diaryConnected: companion.diaryReceives, onOpen: open) }
@@ -217,21 +226,17 @@ struct ActivitiesScreen: View {
                 } else {
                     let open = openItems
                     List {
-                        if let status = companion.syncStatus {
+                        if let status = companion.syncStatus, SyncStatusCard.reports(status, reviewing: !open.isEmpty) {
                             let review = open
                             Section {
                                 SyncStatusCard(status: status, toReview: review) { id in route = ActivityRoute(id: id, target: .diary) }
                                     .padding(.trailing, 40)
-                                    .overlay(alignment: .trailing) {
-                                        Button { compactList.toggle() } label: {
-                                            Image(systemName: compactList ? "rectangle.grid.1x2" : "list.bullet")
-                                                .frame(width: 36, height: 36)
-                                        }
-                                        .buttonStyle(.borderless)
-                                        .accessibilityLabel(L10n.get(compactList ? "list_density_full" : "list_density_compact"))
-                                    }
+                                    .overlay(alignment: .trailing) { densityButton }
                             }
                                 .listRowBackground(SyncStatusCard.tone(status, reviewing: !review.isEmpty).container)
+                        } else {
+                            // No top card (nothing connected and nothing wrong): the density button keeps a slim row.
+                            Section { HStack { Spacer(); densityButton } }
                         }
                         // A recording on this phone (running, or left unfinished by a closed app).
                         PhoneRecordingSection(phone: companion.phone) { recordLive = true }
@@ -1773,6 +1778,12 @@ struct SyncStatusCard: View {
     }
 
     private var nothingConnected: Bool { !status.stravaConnected && !status.diaryConnected }
+
+    /// False when the card would only say that nothing is connected: the home screen then shows no top card
+    /// (Android `nothingToReport`).
+    static func reports(_ status: SyncStatusView, reviewing: Bool) -> Bool {
+        status.total > 0 || reviewing || status.stravaConnected || status.diaryConnected
+    }
 
     /// One open category; [activityId] is the activity a tap opens (the first one it counts).
     private struct Line: Hashable {
