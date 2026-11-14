@@ -108,14 +108,17 @@ struct TrendsScreen: View {
         Trends.shared.strengthExercises(list: trainingCur, holds: StrengthCatalog.shared.HOLD_EXERCISES)
     }
 
-    /// The Training page's sessions: the period (and the one before, for compare) with every sport or "other" picked.
+    /// Strength or mobility picked (feedback #63): the Training page shows only that family.
+    private var trainingFamily: Bool { family == "STRENGTH" || family == "MOBILITY" }
+    /// The Training page's sessions: the period (and the one before, for compare) with every sport or "other" picked,
+    /// or only those of the training family picked.
     private var trainingCur: [TrendActivity] {
-        guard family == "ALL" || family == "OTHER" else { return [] }
-        return all.filter { Int($0.daysAgo) < periodDays }
+        guard family == "ALL" || family == "OTHER" || trainingFamily else { return [] }
+        return all.filter { Int($0.daysAgo) < periodDays && (!trainingFamily || $0.family == family) }
     }
     private var trainingPrev: [TrendActivity] {
-        guard family == "ALL" || family == "OTHER" else { return [] }
-        return all.filter { Int($0.daysAgo) >= periodDays && Int($0.daysAgo) < 2 * periodDays }
+        guard family == "ALL" || family == "OTHER" || trainingFamily else { return [] }
+        return all.filter { Int($0.daysAgo) >= periodDays && Int($0.daysAgo) < 2 * periodDays && (!trainingFamily || $0.family == family) }
     }
     private var trainingSum: TrendTrainingSummary { Trends.shared.trainingSummary(list: trainingCur, holds: StrengthCatalog.shared.HOLD_EXERCISES) }
     private var trainingShares: [TrendTrainingShare] { Trends.shared.trainingShares(list: trainingCur) }
@@ -198,7 +201,14 @@ struct TrendsScreen: View {
             family = request.family; style = request.style; tech = ""; picked = ""; bucket = -1
             companion.trendsRequest = nil
         }
-        .onChange(of: visible.map { $0.id }) { _, _ in registerPages(); page = min(page, max(themes.count - 1, 0)) }
+        .onChange(of: visible.map { $0.id }) { _, _ in
+            registerPages(); page = min(page, max(themes.count - 1, 0))
+            if trainingFamily, let i = themes.firstIndex(where: { $0.label == L10n.get("trends_theme_sessions") }) { page = i }
+        }
+        // Strength or mobility picked: straight to the Training page, the reason to pick them (Android: same).
+        .onChange(of: family) { _, _ in
+            if trainingFamily, let i = themes.firstIndex(where: { $0.label == L10n.get("trends_theme_sessions") }) { page = i }
+        }
         .fullScreenCover(isPresented: Binding(get: { expandedId != nil }, set: { if !$0 { expandedId = nil } })) {
             let id = expandedId ?? ""
             FullScreenChart(
@@ -280,7 +290,7 @@ struct TrendsScreen: View {
             Divider()
             let counts = Trends.shared.familyCounts(all: all, q: query)
             ChipFlow(spacing: 8) {
-                ForEach(includeOther ? ["ALL", "XC", "ROLLSKI", "RUNNING", "INLINE", "WALK", "OTHER"] : ["ALL", "XC", "ROLLSKI", "RUNNING", "INLINE", "WALK"], id: \.self) { f in
+                ForEach(includeOther ? ["ALL", "XC", "ROLLSKI", "RUNNING", "INLINE", "WALK", "STRENGTH", "MOBILITY", "OTHER"] : ["ALL", "XC", "ROLLSKI", "RUNNING", "INLINE", "WALK", "STRENGTH", "MOBILITY"], id: \.self) { f in
                     trendChip("\(familyName(f)) \(counts[f]?.intValue ?? 0)", on: family == f) {
                         family = f; style = "ALL"; tech = ""; picked = ""; bucket = -1
                     }
@@ -325,6 +335,8 @@ struct TrendsScreen: View {
         case "RUNNING": return L10n.get("trends_family_running")
         case "INLINE": return L10n.get("trends_family_inline")
         case "WALK": return L10n.get("phone_family_walk")
+        case "STRENGTH": return L10n.get("trends_family_strength")
+        case "MOBILITY": return L10n.get("trends_family_mobility")
         default: return L10n.get("trends_family_other")
         }
     }
@@ -536,6 +548,8 @@ func trendGroupName(_ group: String) -> String {
     case "RUNNING": name = L10n.get("trends_family_running")
     case "INLINE": name = L10n.get("trends_family_inline")
     case "WALK": name = L10n.get("phone_family_walk")
+    case "STRENGTH": name = L10n.get("trends_family_strength")
+    case "MOBILITY": name = L10n.get("trends_family_mobility")
     default: name = L10n.get("trends_family_other")
     }
     // Walking's styles name themselves ("Hike", not "Walk Hike"; Android alike).
