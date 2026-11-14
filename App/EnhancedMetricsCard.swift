@@ -1143,6 +1143,7 @@ struct EnhancedMetricsCard: View {
         case "DIA": return L10n.get("em_desc_dia")
         case "KDP": return L10n.get("em_desc_kdp")
         case "KLAEBO": return L10n.get("em_desc_klaebo")
+        case "HB": return L10n.get("em_desc_hb")
         case "GLIDE": return L10n.get("em_desc_glide")
         case "UP": return L10n.get("em_desc_up")
         case "FLAT": return L10n.get("em_desc_flat")
