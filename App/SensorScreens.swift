@@ -184,6 +184,15 @@ private struct SourceRow: View {
             ? L10n.get("phone_motion_placement_\(phone.placement)") : phone.placement
     }
 
+    /// The name for a `PhoneTrunkTechnique.Verdict` (by its Kotlin name: DP, V1, SKATING).
+    private func trunkName(_ verdict: String) -> String {
+        switch verdict {
+        case "DP": return L10n.get("technique_name_dp")
+        case "V1": return L10n.get("technique_name_v1")
+        default: return L10n.get("burst_phone_trunk_skating")
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
@@ -203,6 +212,12 @@ private struct SourceRow: View {
                 Text(phone.byMotion ? String(format: L10n.get("burst_phone_by_motion"), String(format: "%.2f", phone.r))
                                     : L10n.get("burst_phone_by_clock"))
                     .font(.caption2).foregroundStyle(.secondary)
+                // What the phone alone makes of the technique (Android `SourceRow`): skating records with the phone
+                // on the trunk only; double pole, V1, or no more than "skating". Experimental.
+                if let trunk = phone.trunk {
+                    Text(String(format: L10n.get("burst_phone_trunk"), trunkName(trunk.verdict.name)))
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
             }
         }
     }
