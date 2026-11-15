@@ -198,7 +198,7 @@ private struct SourceRow: View {
             ? L10n.get("phone_motion_placement_\(phone.placement)") : phone.placement
     }
 
-    var body: some View {
+    private var chips: some View {
         HStack(spacing: 8) {
             Label(L10n.get("burst_source_watch"), systemImage: "applewatch")
                 .font(.subheadline).padding(.horizontal, 10).padding(.vertical, 5)
@@ -211,12 +211,28 @@ private struct SourceRow: View {
                     .background((shown ? phoneColor : Color.secondary).opacity(0.15), in: Capsule())
             }
             .buttonStyle(.plain)
-            // What the phone alone makes of the technique (Android `SourceRow`): a phone symbol and a short
-            // term after the chips, for skating records with the phone on the trunk. One row and no sentence:
-            // the screen is short. `PhoneTrunkNote` at the bottom of the screen says what it means.
-            if let verdict {
-                PhoneTrunkVerdict(verdict: verdict)
+        }
+    }
+
+    var body: some View {
+        // What the phone alone makes of the technique (Android `SourceRow`): a phone symbol and a short
+        // term after the chips, for skating records with the phone on the trunk. One row and no sentence:
+        // the screen is short. `PhoneTrunkNote` at the bottom of the screen says what it means.
+        if let verdict {
+            // Where the chips leave too little room (narrow iPhone, large type), the verdict goes to a
+            // second line instead of being cut off.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    chips
+                    PhoneTrunkVerdict(verdict: verdict)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    chips
+                    PhoneTrunkVerdict(verdict: verdict)
+                }
             }
+        } else {
+            chips
         }
     }
 }
