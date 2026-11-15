@@ -231,7 +231,7 @@ private struct PhoneTrunkVerdict: View {
     private var name: String {
         switch verdict {
         case "DP": return "DP"
-        case "V1": return "2:1 asym"
+        case "V1": return stateShort("V1")
         default: return L10n.get("trends_style_skating")
         }
     }
