@@ -110,15 +110,15 @@ struct TrendsScreen: View {
 
     /// Strength or mobility picked (feedback #63): the Training page shows only that family.
     private var trainingFamily: Bool { family == "STRENGTH" || family == "MOBILITY" }
-    /// The Training page's sessions: the period (and the one before, for compare) with every sport or "other" picked,
-    /// or only those of the training family picked.
+    /// The Training page's sessions: the period (and the one before, for compare) with every sport picked, or only
+    /// those of the family picked ("other", strength, mobility), as every other figure on the screen (as Android).
     private var trainingCur: [TrendActivity] {
         guard family == "ALL" || family == "OTHER" || trainingFamily else { return [] }
-        return all.filter { Int($0.daysAgo) < periodDays && (!trainingFamily || $0.family == family) }
+        return all.filter { Int($0.daysAgo) < periodDays && (family == "ALL" || $0.family == family) }
     }
     private var trainingPrev: [TrendActivity] {
         guard family == "ALL" || family == "OTHER" || trainingFamily else { return [] }
-        return all.filter { Int($0.daysAgo) >= periodDays && Int($0.daysAgo) < 2 * periodDays && (!trainingFamily || $0.family == family) }
+        return all.filter { Int($0.daysAgo) >= periodDays && Int($0.daysAgo) < 2 * periodDays && (family == "ALL" || $0.family == family) }
     }
     private var trainingSum: TrendTrainingSummary { Trends.shared.trainingSummary(list: trainingCur, holds: StrengthCatalog.shared.HOLD_EXERCISES) }
     private var trainingShares: [TrendTrainingShare] { Trends.shared.trainingShares(list: trainingCur) }
@@ -203,9 +203,9 @@ struct TrendsScreen: View {
         }
         .onChange(of: visible.map { $0.id }) { _, _ in
             registerPages(); page = min(page, max(themes.count - 1, 0))
-            if trainingFamily, let i = themes.firstIndex(where: { $0.label == L10n.get("trends_theme_sessions") }) { page = i }
         }
-        // Strength or mobility picked: straight to the Training page, the reason to pick them (Android: same).
+        // Strength or mobility picked: straight to the Training page, the reason to pick them (Android: same). Only
+        // when the family changes: another period or new data must not pull the athlete off the page they read.
         .onChange(of: family) { _, _ in
             if trainingFamily, let i = themes.firstIndex(where: { $0.label == L10n.get("trends_theme_sessions") }) { page = i }
         }

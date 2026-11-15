@@ -101,7 +101,11 @@ struct SensorRecordView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         if let overlay = full?.phone {
-                            SourceRow(phone: overlay, shown: $showPhone)
+                            SourceRow(phone: overlay, verdict: full?.trunk?.verdict.name, shown: $showPhone)
+                        } else if let trunk = full?.trunk {
+                            // The phone's file is there but its clock could not be matched to the watch's: no
+                            // curves, yet the phone's own reading needs none of that (as Android).
+                            PhoneTrunkVerdict(verdict: trunk.verdict.name)
                         }
                         if let full {
                             CropBar(view: full, window: $window, phoneEnvelope: showPhone ? full.phone?.envelope.swiftArray : nil) {
@@ -123,7 +127,7 @@ struct SensorRecordView: View {
                         }
                         Text(L10n.get("burst_caveat")).font(.caption2).foregroundStyle(.secondary)
                         // What the phone symbol with a technique next to the chips means (Android `PhoneTrunkNote`).
-                        if full?.phone?.trunk != nil {
+                        if full?.trunk != nil {
                             HStack(alignment: .top, spacing: 6) {
                                 Image(systemName: "iphone").foregroundStyle(phoneColor)
                                 Text(L10n.get("burst_phone_trunk_info")).foregroundStyle(.secondary)
@@ -185,6 +189,8 @@ let phoneColor = Color(red: 0x1E / 255, green: 0x9E / 255, blue: 0x8A / 255)
 /// the phone hides or shows its curves. One row, no sentence under it (the screen is short).
 private struct SourceRow: View {
     let phone: PhoneOverlay
+    /// The Kotlin name of the phone's own verdict (`BurstView.trunk`), nil without one.
+    let verdict: String?
     @Binding var shown: Bool
 
     private var placement: String {
@@ -192,8 +198,37 @@ private struct SourceRow: View {
             ? L10n.get("phone_motion_placement_\(phone.placement)") : phone.placement
     }
 
-    /// The short term for a `PhoneTrunkTechnique.Verdict` (by its Kotlin name: DP, V1, SKATING), as Android's row.
-    private func trunkName(_ verdict: String) -> String {
+    var body: some View {
+        HStack(spacing: 8) {
+            Label(L10n.get("burst_source_watch"), systemImage: "applewatch")
+                .font(.subheadline).padding(.horizontal, 10).padding(.vertical, 5)
+                .background(Color.accentColor.opacity(0.15), in: Capsule())
+            Button { shown.toggle() } label: {
+                Label([L10n.get("burst_source_phone"), placement].filter { !$0.isEmpty }.joined(separator: " · "), systemImage: "iphone")
+                    .font(.subheadline).lineLimit(1)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .foregroundStyle(shown ? phoneColor : .secondary)
+                    .background((shown ? phoneColor : Color.secondary).opacity(0.15), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            // What the phone alone makes of the technique (Android `SourceRow`): a phone symbol and a short
+            // term after the chips, for skating records with the phone on the trunk. One row and no sentence:
+            // the screen is short. `PhoneTrunkNote` at the bottom of the screen says what it means.
+            if let verdict {
+                PhoneTrunkVerdict(verdict: verdict)
+            }
+        }
+    }
+}
+
+/// A phone symbol and the short term of what the phone alone reads (`PhoneTrunkTechnique`, Android
+/// `PhoneTrunkVerdict`).
+private struct PhoneTrunkVerdict: View {
+    /// A `PhoneTrunkTechnique.Verdict` by its Kotlin name: DP, V1, SKATING.
+    let verdict: String
+
+    /// The short term, as Android's row.
+    private var name: String {
         switch verdict {
         case "DP": return "DP"
         case "V1": return "2:1 asym"
@@ -202,33 +237,13 @@ private struct SourceRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 8) {
-                Label(L10n.get("burst_source_watch"), systemImage: "applewatch")
-                    .font(.subheadline).padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(Color.accentColor.opacity(0.15), in: Capsule())
-                Button { shown.toggle() } label: {
-                    Label([L10n.get("burst_source_phone"), placement].filter { !$0.isEmpty }.joined(separator: " · "), systemImage: "iphone")
-                        .font(.subheadline).lineLimit(1)
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .foregroundStyle(shown ? phoneColor : .secondary)
-                        .background((shown ? phoneColor : Color.secondary).opacity(0.15), in: Capsule())
-                }
-                .buttonStyle(.plain)
-                // What the phone alone makes of the technique (Android `SourceRow`): a phone symbol and a short
-                // term after the chips, for skating records with the phone on the trunk. One row and no sentence:
-                // the screen is short. `PhoneTrunkNote` at the bottom of the screen says what it means.
-                if let trunk = phone.trunk {
-                    HStack(spacing: 4) {
-                        Image(systemName: "iphone").foregroundStyle(phoneColor)
-                        Text(trunkName(trunk.verdict.name)).fontWeight(.semibold).lineLimit(1)
-                    }
-                    .font(.subheadline)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("\(L10n.get("burst_source_phone")): \(trunkName(trunk.verdict.name))")
-                }
-            }
+        HStack(spacing: 4) {
+            Image(systemName: "iphone").foregroundStyle(phoneColor)
+            Text(name).fontWeight(.semibold).lineLimit(1)
         }
+        .font(.subheadline)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(L10n.get("burst_source_phone")): \(name)")
     }
 }
 
