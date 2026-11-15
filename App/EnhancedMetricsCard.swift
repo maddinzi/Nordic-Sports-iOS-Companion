@@ -184,9 +184,14 @@ func stateName(_ key: String) -> String {
     }
 }
 
-/// The short code in the grid: GLIDE, OTHER and PAUSE in words, the rest as is.
+/// The short code in the grid: the skating terms as skied in Switzerland (1:1, 2:1 sym, 2:1 asym for V2, V2A, V1;
+/// Android `skatingShortTerm`, athlete's decision 2026-11-14), GLIDE, OTHER and PAUSE in words, the rest as is.
 func stateShort(_ key: String) -> String {
     switch key {
+    case "V2": return "1:1"
+    // A no-break space: a narrow column wraps the whole term, never "2:1" / "asym" on two lines.
+    case "V2A": return "2:1\u{00A0}sym"
+    case "V1": return "2:1\u{00A0}asym"
     case "GLIDE", "OTHER", "PAUSE", "UP", "FLAT", "DOWN", "STEEP", "STEEP_DOWN": return stateName(key)
     case "KLAEBO": return "Klæbo"   // a name, like the codes, never translated
     case "RUN", "WALK": return stateName(key)
