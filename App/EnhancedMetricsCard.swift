@@ -308,6 +308,7 @@ private func tileTexts(_ key: String) -> (name: String, desc: String, abbreviati
     case "fade": return (L10n.get("em_fade_name"), L10n.get("em_fade_desc"), nil)
     case "cad": return (L10n.get("em_cad_name"), L10n.get("em_cad_desc"), nil)
     case "sl": return (L10n.get("em_sl_name"), L10n.get("em_sl_desc"), nil)
+    case "swing": return (L10n.get("em_swing_name"), L10n.get("em_swing_desc"), nil)
     case "gct": return (L10n.get("em_gct_name"), L10n.get("em_gct_desc"), nil)
     case "1k": return (L10n.get("em_best_1k"), "", nil)
     case "5k": return (L10n.get("em_best_5k"), "", nil)
@@ -1157,7 +1158,7 @@ struct EnhancedMetricsCard: View {
     }
 
     private var explainKeys: [String] {
-        isRun ? ["eff", "fade", "cad", "sl", "gct", "vo", "vr"] : ["rate", "dps", "apid", "adc"]
+        isRun ? ["eff", "fade", "cad", "sl", "swing", "gct", "vo", "vr"] : ["rate", "dps", "apid", "adc"]
     }
 
     private var stateKeysForSheet: [String] {
