@@ -290,7 +290,7 @@ struct TrendsScreen: View {
             Divider()
             let counts = Trends.shared.familyCounts(all: all, q: query)
             ChipFlow(spacing: 8) {
-                ForEach(includeOther ? ["ALL", "XC", "ROLLSKI", "RUNNING", "INLINE", "WALK", "STRENGTH", "MOBILITY", "OTHER"] : ["ALL", "XC", "ROLLSKI", "RUNNING", "INLINE", "WALK", "STRENGTH", "MOBILITY"], id: \.self) { f in
+                ForEach(includeOther ? ["ALL", "XC", "ROLLSKI", "RUNNING", "INLINE", "WALK", "SWIM", "STRENGTH", "MOBILITY", "OTHER"] : ["ALL", "XC", "ROLLSKI", "RUNNING", "INLINE", "WALK", "SWIM", "STRENGTH", "MOBILITY"], id: \.self) { f in
                     trendChip("\(familyName(f)) \(counts[f]?.intValue ?? 0)", on: family == f) {
                         family = f; style = "ALL"; tech = ""; picked = ""; bucket = -1
                     }
@@ -335,6 +335,7 @@ struct TrendsScreen: View {
         case "RUNNING": return L10n.get("trends_family_running")
         case "INLINE": return L10n.get("trends_family_inline")
         case "WALK": return L10n.get("phone_family_walk")
+        case "SWIM": return L10n.get("watch_preset_swim")
         case "STRENGTH": return L10n.get("trends_family_strength")
         case "MOBILITY": return L10n.get("trends_family_mobility")
         default: return L10n.get("trends_family_other")
@@ -517,6 +518,7 @@ func styleKeys(_ family: String) -> [String] {
     case "XC", "ROLLSKI": return ["SKATING", "CLASSIC", "DOUBLE_POLE"]
     case "RUNNING": return ["ROAD", "TRAIL", "TRACK", "POLE"]
     case "WALK": return ["WALK", "HIKE", "NORDIC_WALK"]
+    case "SWIM": return ["POOL", "OPEN_WATER"]
     default: return []
     }
 }
@@ -533,6 +535,8 @@ func trendStyleName(_ style: String) -> String {
     case "WALK": return L10n.get("watch_preset_walk")
     case "HIKE": return L10n.get("watch_preset_hike")
     case "NORDIC_WALK": return L10n.get("watch_preset_nordicWalk")
+    case "POOL": return L10n.get("watch_training_type_pool")
+    case "OPEN_WATER": return L10n.get("watch_training_type_openWater")
     default: return ""
     }
 }
@@ -548,12 +552,14 @@ func trendGroupName(_ group: String) -> String {
     case "RUNNING": name = L10n.get("trends_family_running")
     case "INLINE": name = L10n.get("trends_family_inline")
     case "WALK": name = L10n.get("phone_family_walk")
+    case "SWIM": name = L10n.get("watch_preset_swim")
     case "STRENGTH": name = L10n.get("trends_family_strength")
     case "MOBILITY": name = L10n.get("trends_family_mobility")
     default: name = L10n.get("trends_family_other")
     }
-    // Walking's styles name themselves ("Hike", not "Walk Hike"; Android alike).
+    // Walking's styles name themselves ("Hike", not "Walk Hike"); swimming's are a place ("Swimming · Pool"). Android alike.
     if family == "WALK" && !style.isEmpty { return trendStyleName(style) }
+    if family == "SWIM" && !style.isEmpty { return "\(name) · \(trendStyleName(style))" }
     return style.isEmpty ? name : "\(name) \(trendStyleName(style))"
 }
 
@@ -578,11 +584,16 @@ func trendGroupColor(_ group: String) -> Color {
     case "WALK|HIKE": return rgb(0x6B4A2F)
     case "WALK|WALK": return rgb(0x9A6B45)
     case "WALK|NORDIC_WALK": return rgb(0xC9A27E)
+    // Swimming in teal: open water dark, pool middle, a swim that does not say light (Android alike).
+    case "SWIM|OPEN_WATER": return rgb(0x0B5E6B)
+    case "SWIM|POOL": return rgb(0x138D9C)
+    case "SWIM|": return rgb(0x5CB8C4)
     default:
         if group.hasPrefix("XC") { return rgb(0x2A6DBD) }
         if group.hasPrefix("ROLLSKI") { return rgb(0xE8892B) }
         if group.hasPrefix("RUNNING") { return rgb(0x2E8B57) }
         if group.hasPrefix("WALK") { return rgb(0x9A6B45) }
+        if group.hasPrefix("SWIM") { return rgb(0x138D9C) }
         return rgb(0x8D99A6)
     }
 }

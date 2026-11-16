@@ -676,10 +676,12 @@ struct TrendEfficiencyChart: View {
 
     private func points() -> [(TrendActivity, Double)] {
         let fade = data.view("eff") == 1 && fadeAvailable
-        return data.window.compactMap { a in
+        let all: [(TrendActivity, Double)] = data.window.compactMap { a in
             if fade { return a.fadePercent.map { (a, $0.doubleValue) } }
             return a.efficiency > 0 ? (a, a.efficiency) : nil
         }
+        // A swim's metres per beat are about a quarter of a run's: on a scale of their own, so only with Swimming picked (Android alike).
+        return all.contains { $0.0.family != "SWIM" } ? all.filter { $0.0.family != "SWIM" } : all
     }
 
     var body: some View {
