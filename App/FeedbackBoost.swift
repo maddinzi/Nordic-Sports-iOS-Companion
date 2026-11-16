@@ -52,6 +52,7 @@ enum BoostText {
         case "skiClassic": return "\(ski) › \(L10n.get("activity_detail_style_option_klassisch"))"
         case "skiDoublePole": return "\(ski) › \(L10n.get("activity_detail_style_option_doppelstock"))"
         case "running": return L10n.get("activity_detail_sport_option_running")
+        case "swim": return L10n.get("watch_preset_swim")
         default: return catalog
         }
     }
