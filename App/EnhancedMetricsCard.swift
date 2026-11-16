@@ -309,6 +309,10 @@ private func tileTexts(_ key: String) -> (name: String, desc: String, abbreviati
     case "cad": return (L10n.get("em_cad_name"), L10n.get("em_cad_desc"), nil)
     case "sl": return (L10n.get("em_sl_name"), L10n.get("em_sl_desc"), nil)
     case "gct": return (L10n.get("em_gct_name"), L10n.get("em_gct_desc"), nil)
+    case "1k": return (L10n.get("em_best_1k"), "", nil)
+    case "5k": return (L10n.get("em_best_5k"), "", nil)
+    case "10k": return (L10n.get("em_best_10k"), "", nil)
+    case "21k": return (L10n.get("em_best_21k"), "", nil)
     case "vo": return (L10n.get("em_vo_name"), L10n.get("em_vo_desc"), nil)
     case "vr": return (L10n.get("em_vr_name"), L10n.get("em_vr_desc"), nil)
     case "ascent": return (L10n.get("em_ascent_name"), L10n.get("em_ascent_desc"), nil)
@@ -330,7 +334,7 @@ enum EnhancedTheme: Hashable {
 extension EnhancedMetricsView {
     var isRunKind: Bool { kind == "run" }
     /// A run with terrain shares or tables has a Terrain theme; the climb totals go there, else to the overview.
-    var hasTerrainTheme: Bool { isRunKind && (!shares.isEmpty || !rows.isEmpty || !geoRows.isEmpty || !climbRows.isEmpty || !splits.isEmpty) }
+    var hasTerrainTheme: Bool { isRunKind && (!shares.isEmpty || !rows.isEmpty || !geoRows.isEmpty || !climbRows.isEmpty || !splits.isEmpty || kmSplits != nil) }
 
     /// The themes that have something to show, in the order of the pill row.
     var themes: [EnhancedTheme] {
@@ -481,6 +485,25 @@ struct EnhancedMetricsCard: View {
                     }
                     .padding(10)
                     .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
+            // Kilometre splits (every running preset but Track) and the quickest stretches of whole kilometres.
+            if let km = view.kmSplits {
+                section(L10n.get("em_km_splits_title")) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 8) {
+                        ForEach(Array(km.seconds.enumerated()), id: \.offset) { index, seconds in
+                            VStack(spacing: 2) {
+                                Text("\(index + 1)").font(.caption2).foregroundStyle(tone.subtitle)
+                                Text(String(format: "%d:%02d", seconds.intValue / 60, seconds.intValue % 60))
+                                    .font(.footnote.weight(Int32(index) == km.fastest ? .heavy : .regular))
+                            }
+                        }
+                    }
+                    .padding(10)
+                    .background(tone.tile, in: RoundedRectangle(cornerRadius: 12))
+                }
+                if !km.best.isEmpty {
+                    section(L10n.get("em_best_title"), hint: L10n.get("em_best_note")) { tiles(km.best) }
                 }
             }
             }
