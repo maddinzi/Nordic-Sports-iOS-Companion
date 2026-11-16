@@ -2703,7 +2703,11 @@ struct EditActivitySheet: View {
     // MARK: Pieces
 
     private var trainingOptions: [(String, String)] {
-        sport == .strength
+        // A watch swim stroke: the water (pool without GPS, open water with it), as on Android (PresetTrainingType).
+        if PresetTrainingType.shared.asksWater(preset: item.preset, art: sport) {
+            return PresetTrainingType.shared.WATER.map { ($0, "watch_training_type_\($0)") }
+        }
+        return sport == .strength
             ? [("hypertrophy", "activity_detail_training_option_hypertrophy"),
                ("speedStrength", "activity_detail_training_option_speed_strength"),
                ("strengthEndurance", "activity_detail_training_option_strength_endurance")]
