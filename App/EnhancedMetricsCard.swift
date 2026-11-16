@@ -180,6 +180,11 @@ func stateName(_ key: String) -> String {
     case "STEEP_DOWN": return L10n.get("em_steep_down")
     case "RUN": return L10n.get("em_run")
     case "WALK": return L10n.get("em_walk")
+    // Swim strokes, declared only (BurstLabelOptions.SWIM_STROKES), named as on the watch.
+    case "FREE": return L10n.get("technique_name_free")
+    case "BREAST": return L10n.get("technique_name_breast")
+    case "BACK": return L10n.get("technique_name_back")
+    case "FLY": return L10n.get("technique_name_fly")
     default: return key
     }
 }

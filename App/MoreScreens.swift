@@ -1873,8 +1873,11 @@ struct BurstLabelSheet: View {
                         Text(String(format: L10n.get("feedback_boost_watch_said"), BoostText.code(burst.watchTechnique), Int(burst.watchSeconds), Int(burst.recordSeconds)))
                     }
                 }
-                Section(L10n.get("recording_boost_label_terrain")) {
-                    choices(burst.terrainOptions, selected: $terrain)
+                // No gradient in the water (swim).
+                if !burst.terrainOptions.isEmpty {
+                    Section(L10n.get("recording_boost_label_terrain")) {
+                        choices(burst.terrainOptions, selected: $terrain)
+                    }
                 }
                 if !burst.surfaceOptions.isEmpty {
                     Section(L10n.get("recording_boost_label_surface")) {
