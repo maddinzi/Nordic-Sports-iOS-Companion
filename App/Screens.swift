@@ -1331,6 +1331,8 @@ struct SettingsAppPage: View {
                         Text(L10n.get("trends_tab_trends")).tag("TRENDS")
                     }
                 }
+                // The athlete's ranked sports: every sport list follows them.
+                MySportsSections()
                 Section {
                     Picker(L10n.get("theme_section_title"), selection: $themeChoice) {
                         Text(L10n.get("theme_option_system_default")).tag("")

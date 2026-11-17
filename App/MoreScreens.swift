@@ -2594,6 +2594,16 @@ struct AddActivitySheet: View {
     private var duration: Int { Int(otherMinutes) ?? minutes }
     private var catalog: PhoneRecordingCatalog { PhoneRecordingCatalog.shared }
     private var family: PhoneRecordingCatalog.Family { catalog.manualFamilyOf(preset: preset) ?? catalog.manualFamilies[0] }
+    @State private var showMoreSports = false
+    private var arrangedFamilies: ArrangedPhoneFamilies { companion.core.arrangedPhoneFamilies(manual: true) }
+    /// The other sports stay folded until asked for, unless the chosen family is one of them.
+    private var moreSportsHidden: Bool {
+        let more = arrangedFamilies.more
+        return !showMoreSports && !more.isEmpty && !more.contains { $0.key == family.key }
+    }
+    private var shownFamilies: [PhoneRecordingCatalog.Family] {
+        moreSportsHidden ? arrangedFamilies.mine : arrangedFamilies.mine + arrangedFamilies.more
+    }
     private var strengthPurposes: Bool { preset == catalog.STRENGTH }
     private var purpose: String { strengthPurposes ? strengthPurpose : endurancePurpose }
     private var purposes: [String] { strengthPurposes ? catalog.strengthPurposes : catalog.purposes }
@@ -2603,11 +2613,15 @@ struct AddActivitySheet: View {
             Form {
                 Section(L10n.get("add_activity_type_heading")) {
                     ChipFlow(spacing: 8) {
-                        ForEach(catalog.manualFamilies.indices, id: \.self) { i in
-                            let f = catalog.manualFamilies[i]
+                        // The athlete's sports first; the others behind "More sports" (My sports).
+                        ForEach(shownFamilies.indices, id: \.self) { i in
+                            let f = shownFamilies[i]
                             chip(L10n.get(f.labelKey), on: f.key == family.key) {
                                 if f.key != family.key { preset = f.styles[0].preset }
                             }
+                        }
+                        if moreSportsHidden {
+                            chip(L10n.get("my_sports_more"), on: false) { showMoreSports = true }
                         }
                     }
                 }
@@ -3147,7 +3161,8 @@ struct EditActivitySheet: View {
                             comment = Self.commentWithTitle(new, comment, replacing: old)
                         }
                     InfoPicker(label: L10n.get("activity_detail_sport_label"), info: L10n.get("activity_detail_sport_info"), selection: $sport) {
-                        ForEach(Self.sports, id: \.self) { Text(L10n.get($0.optionKey)).tag($0) }
+                        // In the order of "My sports"; "Other" stays last.
+                        ForEach(companion.core.sportArtOrder().filter { Self.sports.contains($0) }, id: \.self) { Text(L10n.get($0.optionKey)).tag($0) }
                     }
                     .onChange(of: sport) { _, _ in resetDisciplineForPair() }
                     // Garmin Connect and Strava hints share one line (Android: the same).

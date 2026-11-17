@@ -297,7 +297,7 @@ struct TrendsScreen: View {
             Divider()
             let counts = Trends.shared.familyCounts(all: all, q: query)
             ChipFlow(spacing: 8) {
-                ForEach(includeOther ? ["ALL", "XC", "ROLLSKI", "RUNNING", "INLINE", "WALK", "SWIM", "STRENGTH", "MOBILITY", "OTHER"] : ["ALL", "XC", "ROLLSKI", "RUNNING", "INLINE", "WALK", "SWIM", "STRENGTH", "MOBILITY"], id: \.self) { f in
+                ForEach(["ALL"] + companion.core.trendFamilyOrder() + (includeOther ? ["OTHER"] : []), id: \.self) { f in
                     trendChip("\(familyName(f)) \(counts[f]?.intValue ?? 0)", on: family == f) {
                         family = f; style = "ALL"; tech = ""; picked = ""; bucket = -1
                     }

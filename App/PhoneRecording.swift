@@ -265,6 +265,16 @@ struct PhoneRecordStartScreen: View {
 
     private var catalog: PhoneRecordingCatalog { PhoneRecordingCatalog.shared }
     private var family: PhoneRecordingCatalog.Family { catalog.familyOf(preset: preset) ?? catalog.families[0] }
+    @State private var showMoreSports = false
+    private var arrangedFamilies: ArrangedPhoneFamilies { companion.core.arrangedPhoneFamilies(manual: false) }
+    /// The other sports stay folded until asked for, unless the chosen family is one of them.
+    private var moreSportsHidden: Bool {
+        let more = arrangedFamilies.more
+        return !showMoreSports && !more.isEmpty && !more.contains { $0.key == family.key }
+    }
+    private var shownFamilies: [PhoneRecordingCatalog.Family] {
+        moreSportsHidden ? arrangedFamilies.mine : arrangedFamilies.mine + arrangedFamilies.more
+    }
     private var ready: Bool { (phone.accuracy ?? .infinity) <= Self.readyM }
     private var strengthPurposes: Bool { preset == PhoneRecordingCatalog.shared.STRENGTH }
     private var purpose: String { strengthPurposes ? strengthPurpose : endurancePurpose }
@@ -288,11 +298,15 @@ struct PhoneRecordStartScreen: View {
                 }
                 Section(L10n.get("phone_start_activity")) {
                     ChipFlow(spacing: 8) {
-                        ForEach(catalog.families.indices, id: \.self) { i in
-                            let f = catalog.families[i]
+                        // The athlete's sports first; the others behind "More sports" (My sports).
+                        ForEach(shownFamilies.indices, id: \.self) { i in
+                            let f = shownFamilies[i]
                             chip(L10n.get(f.labelKey), on: f.key == family.key) {
                                 if f.key != family.key { preset = f.styles[0].preset; resetAuto() }
                             }
+                        }
+                        if moreSportsHidden {
+                            chip(L10n.get("my_sports_more"), on: false) { showMoreSports = true }
                         }
                     }
                 }

@@ -74,6 +74,8 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var showAllDetails = true
     /// The tab the app opens on and a title tap returns to: "GO", "ACTIVITIES" or "TRENDS" (shared `StartScreen`).
     @Published private(set) var startScreen = "ACTIVITIES"
+    /// "My sports" (Companion design/my-sports.md): the athlete's sports in their order, then the others.
+    @Published private(set) var mySportRows: [MySportRowView] = []
     /// The alert shown now; further messages wait in `queuedMessages` (use `post`).
     /// The activity a tapped notification asks to show; the Activities tab opens it and clears this.
     @Published var openActivityId: String?
@@ -155,6 +157,7 @@ final class Companion: NSObject, ObservableObject {
         syncAutomatically = core.syncAutomatically()
         showAllDetails = core.showAllDetails()
         startScreen = core.startScreen()
+        mySportRows = core.mySportRows()
         // An unfinished recording on the phone an earlier run left: offered for save or discard.
         Task { await phone.attach(self) }
     }
@@ -1433,7 +1436,25 @@ final class Companion: NSObject, ObservableObject {
         startScreen = core.startScreen()
     }
 
-    /// GO's "Distance, last 7 days": metres per sport family, largest first.
+    // My sports: every change is saved by the core and sent to the watches.
+    var mySportsAreDefault: Bool { core.mySportsAreDefault() }
+
+    func moveMySport(from: Int, to: Int) {
+        core.moveMySport(from: Int32(from), to: Int32(to))
+        mySportRows = core.mySportRows()
+    }
+
+    func toggleMySport(_ key: String) {
+        core.toggleMySport(key: key)
+        mySportRows = core.mySportRows()
+    }
+
+    func resetMySports() {
+        core.resetMySports()
+        mySportRows = core.mySportRows()
+    }
+
+    /// GO's "Distance, last 7 days": metres per sport family, in the order of "My sports".
     func weekDistance() async -> [FamilyDistance] {
         let now = Int64(Date().timeIntervalSince1970)
         let offset = Int32(TimeZone.current.secondsFromGMT())
