@@ -1217,7 +1217,7 @@ final class Companion: NSObject, ObservableObject {
 
     /// "Copy from another sport": set [fromKey]'s data fields onto set [key] (shared `WatchDataFields.copyFrom`).
     func copyWatchDataFields(deviceId: Int64, key: String, fromKey: String) {
-        core.copyWatchDataFields(deviceId: deviceId, key: key, fromKey: fromKey)
+        core.takeWatchDataFieldsFrom(deviceId: deviceId, key: key, fromKey: fromKey)
         refreshWatchSettings()
     }
 
