@@ -80,7 +80,7 @@ extension EnvironmentValues {
 
 extension SettingsItem {
     /// Whether this block is shown: always with all details, else only at the simple level.
-    func shown(all: Bool) -> Bool { all || level == UiLevel.simple }
+    func shown(all: Bool) -> Bool { level.shownAt(current: all ? UiLevel.expert : UiLevel.simple) }
 }
 
 extension Companion {
@@ -115,10 +115,6 @@ struct BusyBanner: View {
             Label(String(format: L10n.get("busy_done_changes"), changes), systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
                 .padding(.vertical, 4)
-                .task {
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
-                    companion.busyResult = nil
-                }
         }
     }
 }

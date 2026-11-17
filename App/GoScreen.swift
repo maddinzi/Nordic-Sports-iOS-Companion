@@ -107,7 +107,8 @@ struct GoScreen: View {
 
     /// One line: problems orange, else activities to review yellow, else nothing (plan section 8b, point 6).
     @ViewBuilder private var statusLine: some View {
-        let problems = Int(companion.syncStatus?.total ?? 0)
+        // One per status line (Android `NeedsAttention.items`): 5 waiting for Strava are one problem, not five.
+        let problems = Int(companion.syncStatus?.problemLines ?? 0)
         let review = toReview
         if problems > 0 || review > 0 {
             let tone: CardTone = problems > 0 ? .orange : .yellow
