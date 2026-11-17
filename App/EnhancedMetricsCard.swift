@@ -422,6 +422,13 @@ struct EnhancedMetricsCard: View {
                 section(L10n.get("em_form_title"), badge: sourceName) {
                     tiles(view.form)
                     if view.balanceLeft > 0 { balance(Double(view.balanceLeft)) }
+                    // A calibrated contact time says what it rests on (Android `FormSection`).
+                    if view.gctCalibrationRuns > 0, view.gctCalibrationEpochDay >= 0 {
+                        let date = Date(timeIntervalSince1970: Double(view.gctCalibrationEpochDay) * 86_400)
+                            .formatted(Date.FormatStyle(date: .abbreviated, time: .omitted, timeZone: TimeZone(identifier: "UTC")!))
+                        Text(String(format: L10n.get("em_gct_calibrated_note"), Int(view.gctCalibrationRuns), date))
+                            .font(.caption).foregroundStyle(tone.subtitle)
+                    }
                 }
             }
             }
