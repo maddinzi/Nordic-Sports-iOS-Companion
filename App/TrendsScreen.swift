@@ -135,6 +135,11 @@ struct TrendsScreen: View {
             TrendChartDef(id: "pol", title: L10n.get("trends_c_pol"), show: cur.contains { $0.techniques.contains { $0.rate != nil } }),
             TrendChartDef(id: "slope", title: L10n.get("trends_c_slope"), show: cur.contains { ($0.techniques + $0.terrain).contains { $0.gradePct != nil } }),
             TrendChartDef(id: "eff", title: L10n.get("trends_c_eff"), show: window.filter { $0.efficiency > 0 }.count >= 3),
+            // Running form: Garmin's cadence and the step length from the distance, per run.
+            TrendChartDef(id: "form", title: L10n.get("trends_c_form"), show: window.filter { $0.runCadenceSpm > 0 }.count >= 3),
+            // Efficiency per terrain: shown once any of uphill, flat or downhill has three runs.
+            TrendChartDef(id: "terrainEff", title: L10n.get("trends_c_terrain_eff"),
+                          show: ["UP", "FLAT", "DOWN"].contains { Trends.shared.terrainEfficiency(list: window, key: $0).count >= 3 }),
             // RMSSD explained behind the (i), as on Android.
             TrendChartDef(id: "rec", title: L10n.get("trends_c_rec"), show: window.filter { $0.rmssd > 0 }.count >= 2,
                           info: ["\(L10n.get("em_rmssd_name")): \(L10n.get("em_rmssd_desc"))",
@@ -156,7 +161,7 @@ struct TrendsScreen: View {
             (L10n.get("trends_theme_volume"), ["load", "climb"]),
             (L10n.get("trends_theme_intensity"), ["int", "rec"]),
             (L10n.get("dash_tab_technique"), ["mix", "matrix"]),
-            (L10n.get("trends_theme_performance"), ["pol", "slope", "eff"]),
+            (L10n.get("trends_theme_performance"), ["pol", "slope", "eff", "form", "terrainEff"]),
             (L10n.get("trends_theme_sessions"), ["trainSum", "trainShare", "topEx", "intervals", "strength"]),
         ]
         return spec.map { (label, ids) in (label: label, charts: ids.compactMap { id in shown.first { $0.id == id } }) }
@@ -244,6 +249,8 @@ struct TrendsScreen: View {
         case "pol": TrendPolingChart(data: d, space: space)
         case "slope": TrendSlopeChart(data: d, space: space)
         case "eff": TrendEfficiencyChart(data: d, space: space)
+        case "form": TrendFormChart(data: d, space: space)
+        case "terrainEff": TrendTerrainEfficiencyChart(data: d, space: space)
         case "rec": TrendRecoveryChart(data: d, space: space)
         case "intervals": TrendIntervalSessionsChart(sessions: intervalSessions) { companion.openActivityId = $0 }
         case "trainSum": trainingTiles
@@ -327,20 +334,7 @@ struct TrendsScreen: View {
         .buttonStyle(.plain)
     }
 
-    private func familyName(_ f: String) -> String {
-        switch f {
-        case "ALL": return L10n.get("trends_family_all")
-        case "XC": return L10n.get("trends_family_xc")
-        case "ROLLSKI": return L10n.get("trends_family_rollski")
-        case "RUNNING": return L10n.get("trends_family_running")
-        case "INLINE": return L10n.get("trends_family_inline")
-        case "WALK": return L10n.get("phone_family_walk")
-        case "SWIM": return L10n.get("watch_preset_swim")
-        case "STRENGTH": return L10n.get("trends_family_strength")
-        case "MOBILITY": return L10n.get("trends_family_mobility")
-        default: return L10n.get("trends_family_other")
-        }
-    }
+    private func familyName(_ f: String) -> String { trendFamilyName(f) }
 
     // MARK: Key numbers
 

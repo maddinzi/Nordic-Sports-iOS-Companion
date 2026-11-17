@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// A tap on a screen's title goes back to the activity list (Android `Modifier.goHomeOnTap` / `LocalGoHome`).
+/// A tap on a screen's title goes back to the start screen (GO, Activities or Trends; Android `Modifier.goHomeOnTap` / `LocalGoHome`).
 /// `.homeTitle(text)` replaces `.navigationTitle(text)`: the title is shown inline as a plain button that asks the root
-/// view to start over on the Activities tab ([Companion.goHome]; the shared instance, so sheets need no environment object). Input forms (label, add, edit, feedback) keep a plain
+/// view to start over on the start screen's tab ([Companion.goHome]; the shared instance, so sheets need no environment object). Input forms (label, add, edit, feedback) keep a plain
 /// title, so a stray tap never throws away what was typed.
 private struct HomeTitle: ViewModifier {
     let title: String
@@ -25,6 +25,6 @@ private struct HomeTitle: ViewModifier {
 }
 
 extension View {
-    /// The screen's title; a tap on it goes back to the activity list.
+    /// The screen's title; a tap on it goes back to the start screen.
     func homeTitle(_ title: String) -> some View { modifier(HomeTitle(title: title)) }
 }

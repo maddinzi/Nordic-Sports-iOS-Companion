@@ -244,11 +244,11 @@ struct FeedbackBoostPickerSheet: View {
                 let files = await companion.feedbackBoostFiles()
                 let maxChars = Int(companion.core.feedbackBoostMaxChars)
                 // One folder listing; the files themselves are read only when the message is sent.
-                let phones = PhoneMotionCapture.storedAll()
+                let phones = SensorRecordFolders.phoneFiles()
                 stored = files.map { f in
                     var c = BoostCandidate(key: "burst:\(f.id)", view: f, content: "")
                     // The phone's motion record of this Sensor Record, found by the watch's record id in its file name.
-                    if let url = phones[PhoneMotionCapture.burstId(fileName: f.fileName)],
+                    if let url = phones[SensorRecordFolders.burstId(f.fileName)],
                        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size <= maxChars {
                         c.phoneURL = url
                     }

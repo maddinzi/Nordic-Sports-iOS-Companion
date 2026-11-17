@@ -22,6 +22,10 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var syncing = false
     /// The text of the busy overlay (BusyOverlayView) while a held action runs, nil otherwise (Android: MainActivity.busyText).
     @Published private(set) var busyText: String?
+    /// What the app is busy with now for the busy line (a `busy_<kind>` text of shared `BusyKind`), nil when idle.
+    @Published private(set) var busyKind: String?
+    /// The changes of the last sync the athlete saw run, shown for a moment as its plain result; nil when none.
+    @Published var busyResult: Int?
     /// What still waits in the last 7 days (shared `syncStatus`); drives the card on top of the list.
     @Published private(set) var syncStatus: SyncStatusView?
     @Published private(set) var syncLines: [String] = []
@@ -33,6 +37,8 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var outdated = false
     @Published private(set) var diaryName = ""
     @Published private(set) var diaryIssue = ""
+    /// The exact technical text behind a plain [diaryIssue] in simple mode ("Details"), else "".
+    @Published private(set) var diaryIssueDetail = ""
     @Published private(set) var diarySettings = DiarySettings(autoUpdate: true, roundDurationUp: true, compactDiary: true, roundNearest: false)
     @Published private(set) var diaryBusy = false
     @Published private(set) var diarySources: [DiarySourceView] = []
@@ -64,6 +70,10 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var reviewNewActivities = true
     @Published private(set) var reviewImportedActivities = false
     @Published private(set) var syncAutomatically = true
+    /// "Show all details" (Settings › App): false is simple mode (Companion repo, design/simple-and-expert-mode.md).
+    @Published private(set) var showAllDetails = true
+    /// The tab the app opens on and a title tap returns to: "GO", "ACTIVITIES" or "TRENDS" (shared `StartScreen`).
+    @Published private(set) var startScreen = "ACTIVITIES"
     /// The alert shown now; further messages wait in `queuedMessages` (use `post`).
     /// The activity a tapped notification asks to show; the Activities tab opens it and clears this.
     @Published var openActivityId: String?
@@ -143,6 +153,8 @@ final class Companion: NSObject, ObservableObject {
         reviewNewActivities = core.reviewNewActivities()
         reviewImportedActivities = core.reviewImportedActivities()
         syncAutomatically = core.syncAutomatically()
+        showAllDetails = core.showAllDetails()
+        startScreen = core.startScreen()
         // An unfinished recording on the phone an earlier run left: offered for save or discard.
         Task { await phone.attach(self) }
     }
@@ -161,7 +173,22 @@ final class Companion: NSObject, ObservableObject {
     /// A failed call's text, unless the call was only cancelled (pull to refresh, background expiry).
     private func report(_ error: Error) {
         guard !error.isCancellation else { return }
-        post(error.localizedDescription)
+        post(problemText(error))
+    }
+
+    /// A failure for the athlete (simple mode plan, section 6): simple mode the plain sentence of its kind, expert
+    /// mode the error's own message. Errors that are not Kotlin's keep the system's own text.
+    func problemText(_ error: Error) -> String {
+        if let kotlin = (error as NSError).kotlinException as? KotlinThrowable {
+            return core.problemText(error: kotlin)
+        }
+        return error.localizedDescription
+    }
+
+    /// Shows a run's plain result for a moment, only when something changed and the athlete is looking.
+    private func showResult(_ lines: [String]) {
+        let changes = lines.filter { $0.hasPrefix("+ ") || $0.hasPrefix("~ ") }.count
+        if changes > 0, UIApplication.shared.applicationState == .active { busyResult = changes }
     }
 
     private func showNextMessageSoon() {
@@ -237,6 +264,7 @@ final class Companion: NSObject, ObservableObject {
 
     // MARK: - Recording Boost
 
+    /// The flat folder of the Sensor Record files saved before the one-folder-per-record layout (`SensorRecordFolders`).
     static let boostFolder = "recording-boost"
 
     /// Android's WatchEventRepository.labelBurst: stores the label (the shared core marks the file
@@ -246,8 +274,8 @@ final class Companion: NSObject, ObservableObject {
         await exportBoostFiles()
     }
 
-    /// Android's RecordingBoostFileExporter: one CSV per burst in the Documents folder (visible in
-    /// Files under On My iPhone > Nordic Sports > recording-boost). The shared core stores and
+    /// Android's RecordingBoostFileExporter: one folder per Sensor Record in the Documents folder (Files › On My
+    /// iPhone › Nordic Sports › sensor-records, shared `SensorRecordFiles`), the watch's CSV in it. The shared core stores and
     /// links the bursts and lists those without a file (also after a late link to an activity,
     /// which rewrites the file with the activity id); this writes them and reports the outcome.
     private func exportBoostFiles() async {
@@ -255,22 +283,16 @@ final class Companion: NSObject, ObservableObject {
         exportingBoosts = true
         defer { exportingBoosts = false }
         guard let pending = try? await core.recordingBoostsToExport(), !pending.isEmpty else { return }
-        let stamp = DateFormatter()
-        stamp.locale = Locale(identifier: "en_US_POSIX")
-        stamp.dateFormat = "yyyyMMdd_HHmm"
         for burst in pending {
             do {
                 let csv = try await core.recordingBoostCsv(id: burst.id)
                 guard !csv.isEmpty, let data = csv.data(using: .utf8) else { throw CocoaError(.fileWriteUnknown) }
-                let folder = try FileManager.default
-                    .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-                    .appendingPathComponent(Self.boostFolder, isDirectory: true)
-                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                let name = "\(stamp.string(from: Date(timeIntervalSince1970: TimeInterval(burst.burstId))))_recording-boost-\(burst.burstId).csv"
+                let folder = try SensorRecordFolders.recordFolder(burst.burstId)
+                let name = SensorRecordFolders.watchFileName(burst.burstId)
                 try data.write(to: folder.appendingPathComponent(name), options: .atomic)
                 try await core.recordingBoostFileWritten(
                     id: burst.id, burstId: burst.burstId, fileName: name,
-                    location: "On My iPhone \u{203A} Nordic Sports \u{203A} \(Self.boostFolder)", sizeBytes: Int64(data.count)
+                    location: SensorRecordFolders.locationLabel + " \u{203A} " + folder.lastPathComponent, sizeBytes: Int64(data.count)
                 )
             } catch {
                 do {
@@ -298,6 +320,9 @@ final class Companion: NSObject, ObservableObject {
         lookingUpPlaces = true
         Task {
             defer { lookingUpPlaces = false }
+            let busyBefore = busyKind
+            busyKind = "busy_places"
+            defer { busyKind = busyBefore }
             guard let candidates = try? await core.placeNameCandidates(limit: 10), !candidates.isEmpty else { return }
             var stored = false
             for candidate in candidates where !askedPlaceIds.contains(candidate.id) {
@@ -337,6 +362,9 @@ final class Companion: NSObject, ObservableObject {
         fetchingWeather = true
         Task {
             defer { fetchingWeather = false }
+            let busyBefore = busyKind
+            busyKind = "busy_weather"
+            defer { busyKind = busyBefore }
             _ = try? await core.fetchDueWeather(limit: 10)
         }
     }
@@ -426,6 +454,9 @@ final class Companion: NSObject, ObservableObject {
     /// [arrivedAt] is the message's arrival on PhoneClock, [deviceId] the watch it came from: a Sensor Record keeps
     /// both with its chunks (meta `clock`), and every other message's clock sample goes into WatchClockLog.
     func receive(message dict: [String: Any], variant: String, arrivedAt: Int64, deviceId: Int64) async -> (startTime: Int64, burstId: Int64, tablesStartTime: Int64, tablesKind: String) {
+        let busyBefore = busyKind
+        busyKind = "busy_watch"
+        defer { busyKind = busyBefore }
         guard !outdated else { return (0, 0, 0, "") }
         guard JSONSerialization.isValidJSONObject(dict),
               let data = try? JSONSerialization.data(withJSONObject: dict),
@@ -628,11 +659,15 @@ final class Companion: NSObject, ObservableObject {
         guard !syncing, !outdated else { return .skipped }
         syncing = true
         defer { syncing = false }
+        let busyBefore = busyKind
+        busyKind = "busy_sync"
+        defer { busyKind = busyBefore }
         var outcome = SyncOutcome.ok(lines: 0)
         await withDiaryTime {
             do {
                 let report = try await core.syncNow()
                 syncLines = report.lines
+                showResult(report.lines)
                 lastSync = Date()
                 outcome = .ok(lines: report.lines.count)
             } catch {
@@ -640,7 +675,7 @@ final class Companion: NSObject, ObservableObject {
                     outcome = .cancelled
                 } else {
                     outcome = .failed(error.localizedDescription)
-                    post(error.localizedDescription)
+                    post(problemText(error))
                 }
             }
             refreshDiary()
@@ -654,10 +689,14 @@ final class Companion: NSObject, ObservableObject {
         guard !syncing else { return }
         syncing = true
         defer { syncing = false }
+        let busyBefore = busyKind
+        busyKind = "busy_backfill"
+        defer { busyKind = busyBefore }
         await withDiaryTime {
             do {
                 let report = try await core.backfill(days: days)
                 syncLines = report.lines
+                showResult(report.lines)
                 lastSync = Date()
             } catch {
                 report(error)
@@ -817,6 +856,7 @@ final class Companion: NSObject, ObservableObject {
     private func refreshDiary() {
         diaryName = core.diaryConnected() ? core.diaryWorkbookName() : ""
         diaryIssue = core.diaryIssue()
+        diaryIssueDetail = core.diaryIssueDetail()
         diarySettings = core.diarySettings()
         diarySources = core.diarySources()
     }
@@ -956,10 +996,14 @@ final class Companion: NSObject, ObservableObject {
         guard !syncing else { return }
         syncing = true
         defer { syncing = false }
+        let busyBefore = busyKind
+        busyKind = "busy_diary"
+        defer { busyKind = busyBefore }
         await withDiaryTime {
             do {
                 let report = try await core.writeDiary(days: days)
                 syncLines = report.lines
+                showResult(report.lines)
                 lastSync = Date()
             } catch {
                 report(error)
@@ -975,6 +1019,9 @@ final class Companion: NSObject, ObservableObject {
         guard !syncing else { return }
         syncing = true
         defer { syncing = false }
+        let busyBefore = busyKind
+        busyKind = "busy_diary"
+        defer { busyKind = busyBefore }
         await withDiaryTime {
             do {
                 let problem = try await core.pushToDiary(activityId: activityId)
@@ -1147,6 +1194,12 @@ final class Companion: NSObject, ObservableObject {
     /// Sets data field slot [index] of set [key] ("DataFields_rollski") to catalog field [field].
     func changeWatchDataField(deviceId: Int64, key: String, index: Int32, field: Int32) {
         core.changeWatchDataField(deviceId: deviceId, key: key, index: index, field: field)
+        refreshWatchSettings()
+    }
+
+    /// "Copy from another sport": set [fromKey]'s data fields onto set [key] (shared `WatchDataFields.copyFrom`).
+    func copyWatchDataFields(deviceId: Int64, key: String, fromKey: String) {
+        core.copyWatchDataFields(deviceId: deviceId, key: key, fromKey: fromKey)
         refreshWatchSettings()
     }
 
@@ -1341,6 +1394,34 @@ final class Companion: NSObject, ObservableObject {
         await refresh()
     }
 
+    /// Switches simple and expert mode; only what is shown changes, and the watch menus follow.
+    func setShowAllDetails(_ on: Bool) {
+        core.setShowAllDetails(on: on)
+        showAllDetails = core.showAllDetails()
+        // Problem texts are plain or exact by mode: read them again.
+        refreshDiary()
+        Task {
+            await refresh()
+            await refreshFolderDestinations()
+        }
+    }
+
+    /// Whether the settings block [item] is shown in the current mode (its level is declared in shared `SettingsItem`).
+    func shows(_ item: SettingsItem) -> Bool { core.shows(item: item) }
+
+    /// Takes effect at the next start (as on Android); a title tap goes there at once.
+    func setStartScreen(_ name: String) {
+        core.setStartScreen(name: name)
+        startScreen = core.startScreen()
+    }
+
+    /// GO's "Distance, last 7 days": metres per sport family, largest first.
+    func weekDistance() async -> [FamilyDistance] {
+        let now = Int64(Date().timeIntervalSince1970)
+        let offset = Int32(TimeZone.current.secondsFromGMT())
+        return (try? await core.weekDistance(nowEpochSec: now, utcOffsetSec: offset)) ?? []
+    }
+
     func setReviewNewActivities(_ on: Bool) {
         core.setReviewNewActivities(on: on)
         reviewNewActivities = core.reviewNewActivities()
@@ -1436,7 +1517,8 @@ final class Companion: NSObject, ObservableObject {
         let files = FileManager.default
         if let documents = files.urls(for: .documentDirectory, in: .userDomainMask).first {
             // As Android's PublicStorageWriter.deleteAllAppFiles: the folders this app writes in Documents.
-            for (folder, label) in [(FilesDiaryAccess.backupFolder, "diary backups"), (Self.boostFolder, "Recording Boost files")] {
+            for (folder, label) in [(FilesDiaryAccess.backupFolder, "diary backups"), (Self.boostFolder, "Recording Boost files"),
+                                    (SensorRecordFolders.folder, "Sensor Record files")] {
                 let url = documents.appendingPathComponent(folder, isDirectory: true)
                 guard files.fileExists(atPath: url.path) else { continue }
                 do { try files.removeItem(at: url) } catch { failed.append(label) }
@@ -1487,6 +1569,9 @@ final class Companion: NSObject, ObservableObject {
             FeedbackDetailLine(key: "phone", label: L10n.get("feedback_detail_phone"), value: device["phone"] ?? ""),
             FeedbackDetailLine(key: "ios", label: "iOS", value: device["ios"] ?? ""),
             FeedbackDetailLine(key: "language", label: L10n.get("feedback_detail_language"), value: language),
+            // What the athlete saw (simple mode plan, section 2).
+            FeedbackDetailLine(key: "ui", label: L10n.get("ui_show_all_details"),
+                               value: L10n.get(showAllDetails ? "settings_value_on" : "settings_value_off")),
         ]
         if !aboutWatch {
             if !latestWatch.isEmpty {
