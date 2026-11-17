@@ -4,11 +4,10 @@ import Foundation
 import SwiftUI
 import UIKit
 
-/// Watch settings, battery section below the Sensor Record switch: the switch, where the phone is carried and what it
-/// does (the Android Companion's texts). Rows only; the caller's section holds them.
+/// Watch settings, battery section below the Sensor Record switch: the switch and what it does (the Android
+/// Companion's texts). Rows only; the caller's section holds them. Where the phone is carried is `PhonePlacementRow`.
 struct PhoneMotionSettingsRows: View {
     @State private var on = PhoneMotionCapture.isEnabled
-    @State private var placement = PhoneMotionCapture.placement
 
     var body: some View {
         Group {
@@ -16,17 +15,28 @@ struct PhoneMotionSettingsRows: View {
                 get: { on },
                 set: { on = $0; PhoneMotionCapture.setEnabled($0) }
             ))
-            if on {
-                Picker(L10n.get("phone_motion_placement"), selection: Binding(
-                    get: { placement },
-                    set: { placement = $0; PhoneMotionCapture.placement = $0 }
-                )) {
-                    ForEach(PhoneMotionCapture.placements, id: \.self) { key in
-                        Text(L10n.get("phone_motion_placement_\(key)")).tag(key)
-                    }
-                }
-            }
             Text(L10n.get("phone_motion_body")).font(.footnote).foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// "Phone position": where the phone is usually carried during sport, right below the watch's wrist on the watch page
+/// (Android `PhonePlacementRow`). A phone setting of its own, always shown; the setup guide asks it once.
+struct PhonePlacementRow: View {
+    @State private var placement = PhoneMotionCapture.placement
+
+    var body: some View {
+        // A place stored by a test build stays listed, so the row never shows an empty value.
+        let keys = PhoneMotionCapture.offeredPlacements.contains(placement)
+            ? PhoneMotionCapture.offeredPlacements
+            : PhoneMotionCapture.offeredPlacements + [placement]
+        Picker(L10n.get("phone_motion_placement"), selection: Binding(
+            get: { placement },
+            set: { placement = $0; PhoneMotionCapture.placement = $0 }
+        )) {
+            ForEach(keys, id: \.self) { key in
+                Text(L10n.get("phone_motion_placement_\(key)")).tag(key)
+            }
         }
     }
 }
@@ -44,9 +54,9 @@ struct PhoneMotionSettingsRows: View {
 /// File (format 1, the same as Android's, so `src/phone_watch_align.py` and the Android overlay read it): a first line
 /// `# phoneRecord {json}`, then `tEpochNs,type,x,y,z` rows: `a` accelerometer in m/s² with Android's sign (iOS reports
 /// -1 g face up, Android +9.81, so x -9.80665), `g` gyroscope in rad/s. Saved in its Sensor Record's folder
-/// (`SensorRecordFolders`, Files: On My iPhone > Nordic Sports > sensor-records). TestFlight builds only, behind a switch (watch settings, battery section), off by default. It leaves the phone
+/// (`SensorRecordFolders`, Files: On My iPhone > Nordic Sports > sensor-records). Behind a switch (watch settings, battery section), off by default; in every build from Companion 0.9.128 (before: TestFlight builds only). It leaves the phone
 /// only when the athlete sends it with its Sensor Record in the feedback form (`FeedbackBoost.swift`, kind phone_motion).
-// PRIVACY-SYNC: phone motion (accelerometer and gyroscope, no position) recorded on the athlete's switch (TestFlight builds), saved on this phone, sent only with its Sensor Record in a feedback message. Notice: feedback paragraph, "Phone motion record". Changing this? Re-check the Companion's design/privacy-notice-sync.md.
+// PRIVACY-SYNC: phone motion (accelerometer and gyroscope, no position) recorded on the athlete's switch (every build from Companion 0.9.128), saved on this phone, sent only with its Sensor Record in a feedback message. Notice: feedback paragraph, "Phone motion record". Changing this? Re-check the Companion's design/privacy-notice-sync.md.
 final class PhoneMotionCapture {
     static let shared = PhoneMotionCapture()
 
@@ -57,10 +67,16 @@ final class PhoneMotionCapture {
     private static let samplingS = 0.01
     private static let g = 9.80665
 
-    /// TestFlight builds only (their receipt is the sandbox one); never in the App Store build.
-    static var isAvailable: Bool { Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt" }
+    /// A TestFlight build (its receipt is the sandbox one), not the App Store build.
+    static var isTestBuild: Bool { Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt" }
 
-    static var isEnabled: Bool { isAvailable && UserDefaults.standard.bool(forKey: keyOn) }
+    /// The places the settings offer: "hand" is a test position, so only test builds list it.
+    static var offeredPlacements: [String] { isTestBuild ? placements : placements.filter { $0 != "hand" } }
+
+    static var isEnabled: Bool { UserDefaults.standard.bool(forKey: keyOn) }
+
+    /// Whether the athlete ever chose a place (the setup guide asks once while not).
+    static var placementChosen: Bool { UserDefaults.standard.string(forKey: keyPlacement) != nil }
 
     static func setEnabled(_ on: Bool) {
         UserDefaults.standard.set(on, forKey: keyOn)

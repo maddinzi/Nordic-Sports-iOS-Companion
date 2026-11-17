@@ -238,6 +238,9 @@ struct WatchSettingsScreen: View {
                 )) {
                     ForEach(plain, id: \.key) { item in
                         WatchSettingRow(deviceId: watch.deviceId, item: item, instantModeOn: instantOn)
+                        // Where the athlete's devices sit: the phone's place right below the watch's wrist
+                        // (a phone setting, the same for every watch).
+                        if item.key == "WatchWrist" { PhonePlacementRow() }
                     }
                     // The settings that cost extra watch battery under a battery line (Android `BatteryFrame`).
                     if !battery.isEmpty {
@@ -248,7 +251,7 @@ struct WatchSettingsScreen: View {
                             WatchSettingRow(deviceId: watch.deviceId, item: item, instantModeOn: instantOn)
                             // The phone's own motion record runs alongside each watch Sensor Record, so its
                             // switch stands right below that one (a phone setting, the same for every watch).
-                            if item.key == "RecordingBoostEnabled" && PhoneMotionCapture.isAvailable {
+                            if item.key == "RecordingBoostEnabled" {
                                 Detail(SettingsItem.watchPhoneMotion) { PhoneMotionSettingsRows() }
                             }
                         }
@@ -1332,14 +1335,19 @@ struct OnboardingScreen: View {
     /// Pilot: invited testers only, so the others go on with "Not now"; otherwise the step stays until moved.
     private var serverRequired: Bool { serverStage != "pilot" }
 
-    /// Steps: 0 nickname, 1 demo, 10 tester access, 2 watch, 3 wrist, 4 skill level, 5 Strava, 6 diary, 7 review,
-    /// 8 "You're set" (Android `OnboardingGuideStep` order). The ones that show for this athlete, for "Step n of N"
-    /// without gaps.
+    /// Step 11 (Android `OnboardingGuideStep.PHONE_PLACEMENT`): where the phone is carried, asked while the athlete
+    /// never chose a place. Read once, so the step count does not change with the answer.
+    @State private var phonePlaceAsked = !PhoneMotionCapture.placementChosen
+
+    /// Steps: 0 nickname, 1 demo, 10 tester access, 2 watch, 3 wrist, 11 phone position, 4 skill level, 5 Strava,
+    /// 6 diary, 7 review, 8 "You're set" (Android `OnboardingGuideStep` order). The ones that show for this athlete,
+    /// for "Step n of N" without gaps.
     private var plan: [Int] {
         var p = [0, 1]
         if serverStepInPlan { p.append(10) }
         if !useDemo { p.append(2) }
         if wristUnsetWatch != nil { p.append(3) }
+        if phonePlaceAsked { p.append(11) }
         if skillUnsetWatch != nil { p.append(4) }
         p += [5, 6]
         if anythingConnected { p.append(7) }
@@ -1372,8 +1380,15 @@ struct OnboardingScreen: View {
         }
     }
 
-    /// The tester access (10) sits between the demo step and the watch.
-    private func next() { step = step == 10 ? 2 : step + 1 }
+    /// The tester access (10) sits between the demo step and the watch, the phone position (11) right after the wrist.
+    private func next() {
+        switch step {
+        case 10: step = 2
+        case 3: step = phonePlaceAsked ? 11 : 4
+        case 11: step = 4
+        default: step += 1
+        }
+    }
 
     private func chooseWrist(_ watch: WatchSettingsView, _ value: Int32) {
         companion.changeWatchSetting(deviceId: watch.deviceId, key: "WatchWrist", value: value)
@@ -1476,6 +1491,22 @@ struct OnboardingScreen: View {
                 wristQuestion(watch)
             } else {
                 Color.clear.frame(height: 1).onAppear { next() }
+            }
+        case 11:
+            // Where the phone is carried during sport, right after the wrist: the two say where the devices sit.
+            // "Watch hand" is a test position and not offered here; "Not now" keeps the preset (belt).
+            Text(L10n.get("onboarding_guide_phone_title")).font(.title2.bold())
+            Text(L10n.get("onboarding_guide_phone_body"))
+            VStack(spacing: 8) {
+                ForEach(["chest", "belt", "pocket", "backpack"], id: \.self) { key in
+                    Button {
+                        PhoneMotionCapture.placement = key
+                        next()
+                    } label: {
+                        Text(L10n.get("phone_motion_placement_\(key)")).frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                }
             }
         case 4:
             // The self-declared skill level, a step of its own after the wrist (asked inline below the
@@ -1589,7 +1620,7 @@ struct OnboardingScreen: View {
                 Spacer()
                 Button(L10n.get("common_continue")) { saveReview() }
                     .buttonStyle(.borderedProminent)
-            case 3, 4, 5:
+            case 3, 4, 5, 11:
                 Button(L10n.get("onboarding_guide_not_now")) { next() }
                 Spacer()
             case 6:
