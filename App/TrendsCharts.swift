@@ -867,3 +867,256 @@ struct TrendRecoveryChart: View {
         put(&ctx, "RMSSD ms", left, topPad - 12, size: fs, color: data.tone.title, anchor: .leading, bold: true)
     }
 }
+
+// MARK: - Running form and efficiency by terrain (Android `FormChart`, `TerrainEfficiencyChart`)
+
+/// "5:02" for a speed in m/s, "–" without one.
+private func trendPaceText(_ speedMps: Double) -> String {
+    if speedMps <= 0.3 { return "–" }
+    let sec = Int((1000 / speedMps).rounded())
+    return String(format: "%d:%02d", sec / 60, sec % 60)
+}
+
+/// One value per activity over the last two periods, a line per sport group and the dashed trend; a tap picks the
+/// activity (Android `ActivityTrendLine`).
+private struct TrendActivityLine: View {
+    let data: TrendsData
+    let space: ChartSpace
+    let points: [(TrendActivity, Double)]
+    let axisName: String
+    let decimals: Int
+    var needs = L10n.get("trends_needs_three_runs")
+    let pickedText: (TrendActivity, Double) -> String
+    private let left: CGFloat = 40, topPad: CGFloat = 22, bottom: CGFloat = 24, right: CGFloat = 10
+
+    private var days: Double { Double(max(data.periodDays * 2 - 1, 1)) }
+
+    var body: some View {
+        let frame = chartFrame(space)
+        VStack(alignment: .leading, spacing: 6) {
+            if points.count < 3 {
+                Text(needs).font(.footnote).foregroundStyle(data.tone.subtitle).padding(.vertical, 24)
+            } else {
+                GeometryReader { geo in
+                    Canvas { ctx, size in draw(&ctx, size) }
+                        .id("\(data.redrawKey)|\(space.scale)|\(axisName)")
+                        .contentShape(Rectangle())
+                        .onTapGesture { point in
+                            let plotW = geo.size.width - left - right
+                            func x(_ a: TrendActivity) -> CGFloat { left + CGFloat(1 - Double(a.daysAgo) / days) * plotW }
+                            let hit = points.min { abs(x($0.0) - point.x) < abs(x($1.0) - point.x) }
+                            if let hit, abs(x(hit.0) - point.x) < 30, data.picked != "a|\(hit.0.id)" {
+                                data.onPick("a|\(hit.0.id)")
+                            } else {
+                                data.onPick("")
+                            }
+                        }
+                }
+                .frame(maxWidth: .infinity, minHeight: frame.minHeight, maxHeight: frame.maxHeight)
+                if let hit = points.first(where: { "a|\($0.0.id)" == data.picked }) {
+                    caption(pickedText(hit.0, hit.1), data)
+                }
+            }
+        }
+    }
+
+    private func fit() -> (slope: Double, meanX: Double, meanY: Double)? {
+        guard points.count >= 3 else { return nil }
+        let n = Double(points.count)
+        let mx = points.reduce(0) { $0 + Double($1.0.daysAgo) } / n
+        let my = points.reduce(0) { $0 + $1.1 } / n
+        let sxx = points.reduce(0) { $0 + (Double($1.0.daysAgo) - mx) * (Double($1.0.daysAgo) - mx) }
+        guard sxx > 0 else { return nil }
+        return (points.reduce(0) { $0 + (Double($1.0.daysAgo) - mx) * ($1.1 - my) } / sxx, mx, my)
+    }
+
+    private func draw(_ ctx: inout GraphicsContext, _ size: CGSize) {
+        let fs = 10.5 * space.scale
+        let lo0 = points.map { $0.1 }.min() ?? 0, hi0 = points.map { $0.1 }.max() ?? 1
+        let pad = (hi0 - lo0) * 0.15 + (decimals == 0 ? 1 : 0.01)
+        let lo = lo0 - pad, hi = hi0 + pad
+        let plotW = size.width - left - right, plotH = size.height - topPad - bottom
+        func px(_ d: Double) -> CGFloat { left + CGFloat(1 - d / days) * plotW }
+        func py(_ v: Double) -> CGFloat { topPad + CGFloat(1 - (v - lo) / (hi - lo)) * plotH }
+        for k in 0...4 {
+            let v = lo + (hi - lo) * Double(k) / 4
+            var line = Path()
+            line.move(to: CGPoint(x: left, y: py(v))); line.addLine(to: CGPoint(x: size.width - right, y: py(v)))
+            ctx.stroke(line, with: .color(data.tone.subtitle.opacity(0.25)), lineWidth: 1)
+            put(&ctx, String(format: "%.\(decimals)f", v), left - 6, py(v), size: fs, color: data.tone.subtitle, anchor: .trailing)
+        }
+        for d in [days, (days / 2).rounded(), 0] {
+            put(&ctx, d == 0 ? "0" : "-\(Int(d))", px(d), size.height - bottom / 2, size: fs, color: data.tone.subtitle)
+        }
+        for (group, list) in Dictionary(grouping: points, by: { $0.0.group }) {
+            let color = trendGroupColor(group)
+            let sorted = list.sorted { $0.0.daysAgo > $1.0.daysAgo }
+            if sorted.count > 1 {
+                var path = Path()
+                for (i, p) in sorted.enumerated() {
+                    let pt = CGPoint(x: px(Double(p.0.daysAgo)), y: py(p.1))
+                    if i == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
+                }
+                ctx.stroke(path, with: .color(color.opacity(0.45)), lineWidth: 1.2)
+            }
+            for p in sorted {
+                let r: CGFloat = data.picked == "a|\(p.0.id)" ? 6 : 4
+                let c = CGPoint(x: px(Double(p.0.daysAgo)), y: py(p.1))
+                let rect = CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)
+                ctx.fill(Path(ellipseIn: rect), with: .color(color))
+                ctx.stroke(Path(ellipseIn: rect), with: .color(data.tone.container), lineWidth: 1.5)
+            }
+        }
+        // The trend only spans the days that have a run: no line drawn into days without data.
+        if let f = fit() {
+            let oldest = Double(points.map { $0.0.daysAgo }.max() ?? 0), newest = Double(points.map { $0.0.daysAgo }.min() ?? 0)
+            var trend = Path()
+            trend.move(to: CGPoint(x: px(oldest), y: py(f.meanY + f.slope * (oldest - f.meanX))))
+            trend.addLine(to: CGPoint(x: px(newest), y: py(f.meanY + f.slope * (newest - f.meanX))))
+            ctx.stroke(trend, with: .color(.primary), style: StrokeStyle(lineWidth: 1.6, dash: [8, 5]))
+        }
+        put(&ctx, axisName, left, topPad - 12, size: fs, color: data.tone.title, anchor: .leading, bold: true)
+    }
+}
+
+/// Cadence against pace, one dot per run; older runs paler (Android `CadencePaceDots`): a change of form shows apart
+/// from a change of pace.
+private struct TrendCadencePaceDots: View {
+    let data: TrendsData
+    let space: ChartSpace
+    let runs: [TrendActivity]
+    private let left: CGFloat = 40, topPad: CGFloat = 22, bottom: CGFloat = 36, right: CGFloat = 10
+
+    private var xRange: (lo: Double, hi: Double) {
+        let lo = runs.map(\.runSpeedMps).min() ?? 0, hi = runs.map(\.runSpeedMps).max() ?? 1
+        let pad = (hi - lo) * 0.12 + 0.05
+        return (lo - pad, hi + pad)
+    }
+
+    private var yRange: (lo: Double, hi: Double) {
+        let lo = Double(runs.map(\.runCadenceSpm).min() ?? 0), hi = Double(runs.map(\.runCadenceSpm).max() ?? 1)
+        let pad = (hi - lo) * 0.15 + 1
+        return (lo - pad, hi + pad)
+    }
+
+    private func at(_ a: TrendActivity, _ size: CGSize) -> CGPoint {
+        let x = xRange, y = yRange
+        let plotW = size.width - left - right, plotH = size.height - topPad - bottom
+        return CGPoint(x: left + CGFloat((a.runSpeedMps - x.lo) / (x.hi - x.lo)) * plotW,
+                       y: topPad + CGFloat(1 - (Double(a.runCadenceSpm) - y.lo) / (y.hi - y.lo)) * plotH)
+    }
+
+    var body: some View {
+        let frame = chartFrame(space)
+        VStack(alignment: .leading, spacing: 6) {
+            if runs.count < 3 {
+                Text(L10n.get("trends_needs_three_runs")).font(.footnote).foregroundStyle(data.tone.subtitle).padding(.vertical, 24)
+            } else {
+                GeometryReader { geo in
+                    Canvas { ctx, size in draw(&ctx, size) }
+                        .id("\(data.redrawKey)|\(space.scale)|dots")
+                        .contentShape(Rectangle())
+                        .onTapGesture { point in
+                            func dist(_ a: TrendActivity) -> CGFloat { let p = at(a, geo.size); return hypot(p.x - point.x, p.y - point.y) }
+                            let hit = runs.min { dist($0) < dist($1) }
+                            if let hit, dist(hit) < 30, data.picked != "a|\(hit.id)" { data.onPick("a|\(hit.id)") } else { data.onPick("") }
+                        }
+                }
+                .frame(maxWidth: .infinity, minHeight: frame.minHeight, maxHeight: frame.maxHeight)
+                if let a = runs.first(where: { "a|\($0.id)" == data.picked }) {
+                    caption("\(a.title) · \(trendPaceText(a.runSpeedMps)) /km · \(a.runCadenceSpm)/min · " + String(format: "%.2f m", a.runStepLengthM), data)
+                }
+            }
+        }
+    }
+
+    private func draw(_ ctx: inout GraphicsContext, _ size: CGSize) {
+        let fs = 10.5 * space.scale
+        let x = xRange, y = yRange
+        let plotW = size.width - left - right, plotH = size.height - topPad - bottom
+        func px(_ v: Double) -> CGFloat { left + CGFloat((v - x.lo) / (x.hi - x.lo)) * plotW }
+        func py(_ v: Double) -> CGFloat { topPad + CGFloat(1 - (v - y.lo) / (y.hi - y.lo)) * plotH }
+        for k in 0...4 {
+            let v = y.lo + (y.hi - y.lo) * Double(k) / 4
+            var line = Path()
+            line.move(to: CGPoint(x: left, y: py(v))); line.addLine(to: CGPoint(x: size.width - right, y: py(v)))
+            ctx.stroke(line, with: .color(data.tone.subtitle.opacity(0.25)), lineWidth: 1)
+            put(&ctx, "\(Int(v.rounded()))", left - 6, py(v), size: fs, color: data.tone.subtitle, anchor: .trailing)
+        }
+        for k in 0...3 {
+            let v = x.lo + (x.hi - x.lo) * Double(k) / 3
+            put(&ctx, trendPaceText(v), px(v), size.height - bottom + 10, size: fs, color: data.tone.subtitle)
+        }
+        put(&ctx, L10n.get("em_col_pace"), left + plotW / 2, size.height - 8, size: fs, color: data.tone.subtitle)
+        let days = Double(max(data.periodDays * 2 - 1, 1))
+        for a in runs.sorted(by: { $0.daysAgo > $1.daysAgo }) {
+            let selected = data.picked == "a|\(a.id)"
+            // One colour for every run, so that only the age sets how dark a dot is.
+            let strength = 1 - 0.7 * min(max(Double(a.daysAgo), 0), days) / days
+            let r: CGFloat = selected ? 7 : 5
+            let c = at(a, size)
+            let rect = CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)
+            ctx.fill(Path(ellipseIn: rect), with: .color(data.tone.title.opacity(selected ? 1 : strength)))
+            ctx.stroke(Path(ellipseIn: rect), with: .color(data.tone.container), lineWidth: 1.5)
+        }
+        put(&ctx, L10n.get("trends_form_axis_cadence"), left, topPad - 12, size: fs, color: data.tone.title, anchor: .leading, bold: true)
+    }
+}
+
+/// Running form over time: cadence and step length of each run's running part as trend lines, cadence against pace as
+/// dots, and arm swing once three runs carry it. Garmin's cadence and the distance: no estimate of ours.
+struct TrendFormChart: View {
+    let data: TrendsData
+    let space: ChartSpace
+
+    var body: some View {
+        let runs = data.window.filter { $0.runCadenceSpm > 0 }
+        let swing = data.window.filter { $0.runArmSwingDeg > 0 }.count >= 3
+        let options = [L10n.get("trends_v_cadence"), L10n.get("trends_v_step"), L10n.get("trends_v_cad_pace")]
+            + (swing ? [L10n.get("em_swing_name")] : [])
+        let view = min(data.view("form"), options.count - 1)
+        VStack(alignment: .leading, spacing: 6) {
+            TrendToggle(options: options, current: view, id: "form", data: data)
+            switch view {
+            case 1:
+                TrendActivityLine(data: data, space: space, points: runs.filter { $0.runStepLengthM > 0 }.map { ($0, $0.runStepLengthM) },
+                                  axisName: "m", decimals: 2) { a, v in "\(a.title) · \(trendPaceText(a.runSpeedMps)) /km · " + String(format: "%.2f m", v) }
+            case 2:
+                TrendCadencePaceDots(data: data, space: space, runs: runs.filter { $0.runSpeedMps > 0 })
+            case 3:
+                TrendActivityLine(data: data, space: space, points: runs.filter { $0.runArmSwingDeg > 0 }.map { ($0, Double($0.runArmSwingDeg)) },
+                                  axisName: L10n.get("em_swing_name") + " (°)", decimals: 0) { a, v in "\(a.title) · \(trendPaceText(a.runSpeedMps)) /km · \(Int(v.rounded()))°" }
+            default:
+                TrendActivityLine(data: data, space: space, points: runs.map { ($0, Double($0.runCadenceSpm)) },
+                                  axisName: L10n.get("trends_form_axis_cadence"), decimals: 0) { a, v in "\(a.title) · \(trendPaceText(a.runSpeedMps)) /km · \(Int(v.rounded()))/min" }
+            }
+            caption(L10n.get(view == 2 ? "trends_form_pace_note" : view == 3 ? "trends_form_swing_note" : "trends_form_note"), data)
+        }
+    }
+}
+
+/// Efficiency on one terrain over time (shared `Trends.terrainEfficiency`): uphill, flat or downhill, one dot per run.
+/// Shows whether climbing got cheaper apart from the flat, which the whole-run efficiency mixes.
+struct TrendTerrainEfficiencyChart: View {
+    let data: TrendsData
+    let space: ChartSpace
+    private static let keys = ["UP", "FLAT", "DOWN"]
+
+    var body: some View {
+        let view = min(max(data.view("terrain"), 0), 2)
+        let key = Self.keys[view]
+        let points = Trends.shared.terrainEfficiency(list: data.window, key: key).compactMap { pair -> (TrendActivity, Double)? in
+            guard let a = pair.first, let v = pair.second else { return nil }
+            return (a, v.doubleValue)
+        }
+        VStack(alignment: .leading, spacing: 6) {
+            TrendToggle(options: [L10n.get("em_up"), L10n.get("em_flat"), L10n.get("em_down")], current: view, id: "terrain", data: data)
+            TrendActivityLine(data: data, space: space, points: points, axisName: L10n.get("trends_eff_axis"), decimals: 2,
+                              needs: L10n.get("trends_needs_three_terrain")) { a, v in
+                let t = a.terrain.first { $0.key == key }
+                return "\(a.title) · \(trendPaceText(t?.speedMps?.doubleValue ?? 0)) /km · \(t?.hr?.intValue ?? 0) bpm · " + String(format: "%.2f", v)
+            }
+            caption(L10n.get("trends_terrain_eff_note"), data)
+        }
+    }
+}

@@ -264,6 +264,7 @@ final class Companion: NSObject, ObservableObject {
 
     // MARK: - Recording Boost
 
+    /// The flat folder of the Sensor Record files saved before the one-folder-per-record layout (`SensorRecordFolders`).
     static let boostFolder = "recording-boost"
 
     /// Android's WatchEventRepository.labelBurst: stores the label (the shared core marks the file
@@ -273,8 +274,8 @@ final class Companion: NSObject, ObservableObject {
         await exportBoostFiles()
     }
 
-    /// Android's RecordingBoostFileExporter: one CSV per burst in the Documents folder (visible in
-    /// Files under On My iPhone > Nordic Sports > recording-boost). The shared core stores and
+    /// Android's RecordingBoostFileExporter: one folder per Sensor Record in the Documents folder (Files › On My
+    /// iPhone › Nordic Sports › sensor-records, shared `SensorRecordFiles`), the watch's CSV in it. The shared core stores and
     /// links the bursts and lists those without a file (also after a late link to an activity,
     /// which rewrites the file with the activity id); this writes them and reports the outcome.
     private func exportBoostFiles() async {
@@ -282,22 +283,16 @@ final class Companion: NSObject, ObservableObject {
         exportingBoosts = true
         defer { exportingBoosts = false }
         guard let pending = try? await core.recordingBoostsToExport(), !pending.isEmpty else { return }
-        let stamp = DateFormatter()
-        stamp.locale = Locale(identifier: "en_US_POSIX")
-        stamp.dateFormat = "yyyyMMdd_HHmm"
         for burst in pending {
             do {
                 let csv = try await core.recordingBoostCsv(id: burst.id)
                 guard !csv.isEmpty, let data = csv.data(using: .utf8) else { throw CocoaError(.fileWriteUnknown) }
-                let folder = try FileManager.default
-                    .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-                    .appendingPathComponent(Self.boostFolder, isDirectory: true)
-                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                let name = "\(stamp.string(from: Date(timeIntervalSince1970: TimeInterval(burst.burstId))))_recording-boost-\(burst.burstId).csv"
+                let folder = try SensorRecordFolders.recordFolder(burst.burstId)
+                let name = SensorRecordFolders.watchFileName(burst.burstId)
                 try data.write(to: folder.appendingPathComponent(name), options: .atomic)
                 try await core.recordingBoostFileWritten(
                     id: burst.id, burstId: burst.burstId, fileName: name,
-                    location: "On My iPhone \u{203A} Nordic Sports \u{203A} \(Self.boostFolder)", sizeBytes: Int64(data.count)
+                    location: SensorRecordFolders.locationLabel + " \u{203A} " + folder.lastPathComponent, sizeBytes: Int64(data.count)
                 )
             } catch {
                 do {
@@ -1202,6 +1197,12 @@ final class Companion: NSObject, ObservableObject {
         refreshWatchSettings()
     }
 
+    /// "Copy from another sport": set [fromKey]'s data fields onto set [key] (shared `WatchDataFields.copyFrom`).
+    func copyWatchDataFields(deviceId: Int64, key: String, fromKey: String) {
+        core.copyWatchDataFields(deviceId: deviceId, key: key, fromKey: fromKey)
+        refreshWatchSettings()
+    }
+
     /// Sets the per-sport auto lap or auto pause [key] ("AutoLap_running") to [value] (-1: as the main setting).
     func changeWatchSportAuto(deviceId: Int64, key: String, value: Int32) {
         core.changeWatchSportAuto(deviceId: deviceId, key: key, value: value)
@@ -1516,7 +1517,8 @@ final class Companion: NSObject, ObservableObject {
         let files = FileManager.default
         if let documents = files.urls(for: .documentDirectory, in: .userDomainMask).first {
             // As Android's PublicStorageWriter.deleteAllAppFiles: the folders this app writes in Documents.
-            for (folder, label) in [(FilesDiaryAccess.backupFolder, "diary backups"), (Self.boostFolder, "Recording Boost files")] {
+            for (folder, label) in [(FilesDiaryAccess.backupFolder, "diary backups"), (Self.boostFolder, "Recording Boost files"),
+                                    (SensorRecordFolders.folder, "Sensor Record files")] {
                 let url = documents.appendingPathComponent(folder, isDirectory: true)
                 guard files.fileExists(atPath: url.path) else { continue }
                 do { try files.removeItem(at: url) } catch { failed.append(label) }

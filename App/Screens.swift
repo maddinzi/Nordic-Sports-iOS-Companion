@@ -489,11 +489,10 @@ struct ActivityBoostsSheet: View {
     @Environment(\.dismiss) private var dismiss
     let boosts: [RecordingBoostView]
 
-    /// The CSV in the app's Documents folder (`Companion.exportBoostFiles`), nil while it is not there.
+    /// The CSV in the app's Documents folder (`Companion.exportBoostFiles`; its record folder or, saved before, the flat
+    /// folder), nil while it is not there.
     private static func fileURL(_ burst: RecordingBoostView) -> URL? {
-        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
-        let url = docs.appendingPathComponent(Companion.boostFolder, isDirectory: true).appendingPathComponent(burst.fileName)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        SensorRecordFolders.existing(fileName: burst.fileName)
     }
 
     var body: some View {
@@ -1164,6 +1163,10 @@ struct SettingsScreen: View {
             Page(id: "diary", title: diaryTitle,
                  words: ["ios_diary_auto", "status_ttb_round_switch", "status_ttb_compact_switch", "ios_diary_write_7", "connect_diary_title"].map(L10n.get),
                  destination: AnyView(SettingsDiaryPage())),
+            Page(id: "add", title: L10n.get("settings_add_connection"),
+                 words: ["Strava", "JSON", "CSV"] + ["settings_add_connection_body", "settings_add_connection_diary", "settings_add_connection_diary_long",
+                                                    "settings_add_connection_strava_help"].map(L10n.get),
+                 destination: AnyView(AddConnectionScreen())),
             Page(id: "sync", title: L10n.get("sync_mode_section_title"),
                  words: ["sync_mode_option_automated", "sync_mode_option_manual", "ios_last_sync"].map(L10n.get),
                  destination: AnyView(SettingsSyncPage())),
@@ -1179,6 +1182,10 @@ struct SettingsScreen: View {
             Page(id: "about", title: L10n.get("status_about_button"),
                  words: [], destination: AnyView(AboutScreen())),
         ]
+    }
+
+    private var showStravaRow: Bool {
+        companion.stravaConnected || !companion.stravaConfigured || !(companion.syncStatus?.stravaIssue.isEmpty ?? true)
     }
 
     private var hits: [Page] {
@@ -1211,12 +1218,16 @@ struct SettingsScreen: View {
                                                .compactMap { $0 }.joined(separator: " · "))
                                 .settingsIcon(.watch, connected: watch.devices.first != nil)
                         }
-                        NavigationLink {
-                            SettingsStravaPage()
-                        } label: {
-                            LabeledContent(String(format: L10n.get("settings_tile_repository_named"), "Strava"),
-                                           value: L10n.get(companion.stravaConnected ? "settings_value_connected" : "settings_value_not_connected"))
-                                .settingsIcon(.strava, connected: companion.stravaConnected)
+                        // Strava only while connected or with a problem (Android `buildSettingsPages(showStrava)`);
+                        // otherwise "Add connection" offers it. A build without Strava keys keeps the row to say so.
+                        if showStravaRow {
+                            NavigationLink {
+                                SettingsStravaPage()
+                            } label: {
+                                LabeledContent(String(format: L10n.get("settings_tile_repository_named"), "Strava"),
+                                               value: L10n.get(companion.stravaConnected ? "settings_value_connected" : "settings_value_not_connected"))
+                                    .settingsIcon(.strava, connected: companion.stravaConnected)
+                            }
                         }
                         NavigationLink {
                             SettingsDiaryPage()
@@ -1236,7 +1247,7 @@ struct SettingsScreen: View {
                                 .settingsIcon(.files, connected: destination.enabled && destination.issue.isEmpty)
                             }
                         }
-                        NavigationLink(L10n.get("settings_add_connection")) { DiaryLocationsScreen() }
+                        NavigationLink(L10n.get("settings_add_connection")) { AddConnectionScreen() }
                     }
                     Section(L10n.get("settings_group_general")) {
                         Detail(SettingsItem.syncMode) {

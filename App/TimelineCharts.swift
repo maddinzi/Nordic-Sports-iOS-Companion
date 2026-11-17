@@ -37,7 +37,8 @@ struct TimelineSection: View {
             }
             if view.runBlocks.count >= 2 {
                 ChartFrame(title: L10n.get("tl_run_title"), tone: tone) { space in
-                    RunBlocks(blocks: view.runBlocks, block: block, space: space)
+                    RunBlocks(blocks: view.runBlocks, blockSec: Int(view.runBlockSec), paceMetres: Int(view.runPaceMetres),
+                              block: block, space: space)
                 }
             }
         }
@@ -126,21 +127,27 @@ private struct StackedBlocks: View {
     }
 }
 
-/// Heart rate and pace of each ten-minute block of a run: two rows of columns, one tap reads both.
+/// Heart rate and pace of each block of a run (ten minutes) or a swim (five minutes, pace per 100 m): two rows of
+/// columns, one tap reads both. A pool swim has no distance yet, so it shows heart rate alone.
 private struct RunBlocks: View {
     let blocks: [EmRunBlock]
+    /// Seconds per block (600 on a run, 300 on a swim) and the metres the pace is read over (1000 or 100).
+    let blockSec: Int
+    let paceMetres: Int
     @Binding var block: Int?
     let space: ChartSpace
     private let tone = CardTone.blue
-    private let blockSec = 600
+    private var paceUnit: String { paceMetres == 100 ? "/100 m" : "/km" }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(L10n.get("activity_detail_avg_hr_label")).font(.caption).foregroundStyle(tone.subtitle)
             columns(blocks.map { $0.hr > 0 ? Double($0.hr) : nil }, color: .red)
-            Text(L10n.get("dash_fig_pace")).font(.caption).foregroundStyle(tone.subtitle)
-            // A faster block is taller: the column shows speed, the label reads as pace.
-            columns(blocks.map { $0.paceSecPerKm > 0 ? 1000.0 / Double($0.paceSecPerKm) : nil }, color: .runBlue)
+            if blocks.contains(where: { $0.paceSecPerKm > 0 }) {
+                Text(L10n.get("dash_fig_pace")).font(.caption).foregroundStyle(tone.subtitle)
+                // A faster block is taller: the column shows speed, the label reads as pace.
+                columns(blocks.map { $0.paceSecPerKm > 0 ? Double(paceMetres) / Double($0.paceSecPerKm) : nil }, color: .runBlue)
+            }
             Text(caption).font(.caption).foregroundStyle(tone.subtitle)
         }
     }
@@ -150,7 +157,7 @@ private struct RunBlocks: View {
         let b = blocks[i]
         var parts = ["\(clock(i * blockSec))–\(clock(i * blockSec + Int(b.seconds)))"]
         if b.hr > 0 { parts.append("\(Int(b.hr.rounded())) bpm") }
-        if b.paceSecPerKm > 0 { parts.append(ActivityFigures.shared.paceText(secPerKm: b.paceSecPerKm) + " /km") }
+        if b.paceSecPerKm > 0 { parts.append(ActivityFigures.shared.paceText(secPerKm: b.paceSecPerKm) + " " + paceUnit) }
         return parts.joined(separator: " · ")
     }
 
