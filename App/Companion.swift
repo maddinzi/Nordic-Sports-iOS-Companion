@@ -560,6 +560,11 @@ final class Companion: NSObject, ObservableObject {
         return millis > 0 ? Date(timeIntervalSince1970: TimeInterval(millis) / 1000) : nil
     }
 
+    /// "Sources and calibration" of the watch page; nil when the stored runs could not be read.
+    func sourcesOverview() async -> SourcesOverviewView? {
+        try? await core.sourcesOverview()
+    }
+
     /// off, pilot or optional; nil when the server could not be asked.
     func serverMoveStage() async -> String? {
         guard let stage = try? await core.serverMoveStage(), !stage.isEmpty else { return nil }

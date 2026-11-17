@@ -91,13 +91,22 @@ struct WatchSettingsScreen: View {
                           content: AnyView(NavigationLink(title) { WatchSensorProgramScreen(deviceId: id) }))]
         case .capture:
             // The watch reports a strap check only when a strap is paired with it (on the GPS wait screen).
-            guard let hr = watch.hrStrap else { return [] }
-            return [Block(id: "hr", item: .watchHrStrap, words: [hr.title], content: AnyView(Group {
-                Text(hr.title).font(.subheadline.weight(.semibold))
-                Text(hr.status).foregroundStyle(hr.notFound ? Color.red : Color.primary)
-                Text(hr.checked).font(.footnote).foregroundStyle(.secondary)
-                ForEach(hr.lines, id: \.label) { line in LabeledContent(line.label, value: line.value) }
-            }))]
+            var blocks: [Block] = []
+            if let hr = watch.hrStrap {
+                blocks.append(Block(id: "hr", item: .watchHrStrap, words: [hr.title], content: AnyView(Group {
+                    Text(hr.title).font(.subheadline.weight(.semibold))
+                    Text(hr.status).foregroundStyle(hr.notFound ? Color.red : Color.primary)
+                    Text(hr.checked).font(.footnote).foregroundStyle(.secondary)
+                    ForEach(hr.lines, id: \.label) { line in LabeledContent(line.label, value: line.value) }
+                })))
+            }
+            // What the app learned where two sources measured the same, and whether that data arrives. Enhanced
+            // Metrics only, so not for the small watches (they have no Sensor Record setting either).
+            if watch.groups.contains(where: { $0.items.contains { $0.key == "RecordingBoostEnabled" } }) {
+                blocks.append(Block(id: "sources", item: .watchSources, words: [L10n.get("sources_title")],
+                                    content: AnyView(SourcesOverviewRows())))
+            }
+            return blocks
         case .intervals:
             guard !watch.intervalSlots.isEmpty else { return [] }
             let title = L10n.get("watch_interval_menu")
