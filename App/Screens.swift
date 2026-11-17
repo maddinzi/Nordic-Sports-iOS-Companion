@@ -82,7 +82,13 @@ struct RootView: View {
         .onAppear {
             if !startApplied {
                 startApplied = true
-                tab = startTab
+                if companion.openActivityId != nil {
+                    tab = 0
+                } else if companion.trendsRequest != nil {
+                    tab = 2
+                } else {
+                    tab = startTab
+                }
             }
         }
         .onChange(of: companion.trendsRequest) { _, request in
@@ -1251,8 +1257,11 @@ struct SettingsScreen: View {
                     }
                     Section(L10n.get("settings_group_general")) {
                         Detail(SettingsItem.syncMode) {
-                            NavigationLink { SettingsSyncPage() } label: { Text(L10n.get("sync_mode_section_title")).settingsIcon(.sync) }
+                            NavigationLink {
+                                SettingsSyncPage().environment(\.detailsRevealed, false)
+                            } label: { Text(L10n.get("sync_mode_section_title")).settingsIcon(.sync) }
                         }
+                        .environment(\.detailsRevealed, overviewRevealed)
                         NavigationLink { SettingsAppPage() } label: { Text(L10n.get("settings_group_app")).settingsIcon(.app) }
                         NavigationLink { SettingsPrivacyPage() } label: { Text(L10n.get("settings_page_privacy")).settingsIcon(.privacy) }
                         NavigationLink { SettingsLogsPage() } label: { Text(L10n.get("status_data_logs_heading")).settingsIcon(.logs) }
@@ -1267,7 +1276,6 @@ struct SettingsScreen: View {
                     }
                 }
             }
-            .environment(\.detailsRevealed, overviewRevealed)
             .searchable(text: $query, prompt: L10n.get("settings_search_hint"))
             .navigationTitle(L10n.get("status_title"))
         }

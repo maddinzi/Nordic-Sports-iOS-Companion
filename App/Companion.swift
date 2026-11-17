@@ -185,10 +185,35 @@ final class Companion: NSObject, ObservableObject {
         return error.localizedDescription
     }
 
-    /// Shows a run's plain result for a moment, only when something changed and the athlete is looking.
+    /// Shows a run's plain result for 3 s, only when something changed and the athlete is looking. Cleared here, not by
+    /// the banner, so a result no banner showed does not turn up later; a newer result gets its own 3 s.
     private func showResult(_ lines: [String]) {
         let changes = lines.filter { $0.hasPrefix("+ ") || $0.hasPrefix("~ ") }.count
-        if changes > 0, UIApplication.shared.applicationState == .active { busyResult = changes }
+        guard changes > 0, UIApplication.shared.applicationState == .active else { return }
+        busyResult = changes
+        let token = UUID()
+        busyResultToken = token
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            if busyResultToken == token { busyResult = nil }
+        }
+    }
+
+    /// The tasks working right now (one entry each, newest last); the busy line names the newest.
+    private var busyTasks: [(token: UUID, kind: String)] = []
+    private var busyResultToken: UUID?
+
+    /// Marks a task of [kind] (a `busy_<kind>` text) as running; pass the token to `endBusy` when it ends.
+    func beginBusy(_ kind: String) -> UUID {
+        let token = UUID()
+        busyTasks.append((token, kind))
+        busyKind = kind
+        return token
+    }
+
+    func endBusy(_ token: UUID) {
+        busyTasks.removeAll { $0.token == token }
+        busyKind = busyTasks.last?.kind
     }
 
     private func showNextMessageSoon() {
@@ -320,9 +345,8 @@ final class Companion: NSObject, ObservableObject {
         lookingUpPlaces = true
         Task {
             defer { lookingUpPlaces = false }
-            let busyBefore = busyKind
-            busyKind = "busy_places"
-            defer { busyKind = busyBefore }
+            let busyToken = beginBusy("busy_places")
+            defer { endBusy(busyToken) }
             guard let candidates = try? await core.placeNameCandidates(limit: 10), !candidates.isEmpty else { return }
             var stored = false
             for candidate in candidates where !askedPlaceIds.contains(candidate.id) {
@@ -362,9 +386,8 @@ final class Companion: NSObject, ObservableObject {
         fetchingWeather = true
         Task {
             defer { fetchingWeather = false }
-            let busyBefore = busyKind
-            busyKind = "busy_weather"
-            defer { busyKind = busyBefore }
+            let busyToken = beginBusy("busy_weather")
+            defer { endBusy(busyToken) }
             _ = try? await core.fetchDueWeather(limit: 10)
         }
     }
@@ -454,9 +477,8 @@ final class Companion: NSObject, ObservableObject {
     /// [arrivedAt] is the message's arrival on PhoneClock, [deviceId] the watch it came from: a Sensor Record keeps
     /// both with its chunks (meta `clock`), and every other message's clock sample goes into WatchClockLog.
     func receive(message dict: [String: Any], variant: String, arrivedAt: Int64, deviceId: Int64) async -> (startTime: Int64, burstId: Int64, tablesStartTime: Int64, tablesKind: String) {
-        let busyBefore = busyKind
-        busyKind = "busy_watch"
-        defer { busyKind = busyBefore }
+        let busyToken = beginBusy("busy_watch")
+        defer { endBusy(busyToken) }
         guard !outdated else { return (0, 0, 0, "") }
         guard JSONSerialization.isValidJSONObject(dict),
               let data = try? JSONSerialization.data(withJSONObject: dict),
@@ -659,9 +681,8 @@ final class Companion: NSObject, ObservableObject {
         guard !syncing, !outdated else { return .skipped }
         syncing = true
         defer { syncing = false }
-        let busyBefore = busyKind
-        busyKind = "busy_sync"
-        defer { busyKind = busyBefore }
+        let busyToken = beginBusy("busy_sync")
+        defer { endBusy(busyToken) }
         var outcome = SyncOutcome.ok(lines: 0)
         await withDiaryTime {
             do {
@@ -689,9 +710,8 @@ final class Companion: NSObject, ObservableObject {
         guard !syncing else { return }
         syncing = true
         defer { syncing = false }
-        let busyBefore = busyKind
-        busyKind = "busy_backfill"
-        defer { busyKind = busyBefore }
+        let busyToken = beginBusy("busy_backfill")
+        defer { endBusy(busyToken) }
         await withDiaryTime {
             do {
                 let report = try await core.backfill(days: days)
@@ -996,9 +1016,8 @@ final class Companion: NSObject, ObservableObject {
         guard !syncing else { return }
         syncing = true
         defer { syncing = false }
-        let busyBefore = busyKind
-        busyKind = "busy_diary"
-        defer { busyKind = busyBefore }
+        let busyToken = beginBusy("busy_diary")
+        defer { endBusy(busyToken) }
         await withDiaryTime {
             do {
                 let report = try await core.writeDiary(days: days)
@@ -1019,9 +1038,8 @@ final class Companion: NSObject, ObservableObject {
         guard !syncing else { return }
         syncing = true
         defer { syncing = false }
-        let busyBefore = busyKind
-        busyKind = "busy_diary"
-        defer { busyKind = busyBefore }
+        let busyToken = beginBusy("busy_diary")
+        defer { endBusy(busyToken) }
         await withDiaryTime {
             do {
                 let problem = try await core.pushToDiary(activityId: activityId)

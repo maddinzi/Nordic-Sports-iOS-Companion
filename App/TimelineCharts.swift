@@ -143,10 +143,10 @@ private struct RunBlocks: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(L10n.get("activity_detail_avg_hr_label")).font(.caption).foregroundStyle(tone.subtitle)
             columns(blocks.map { $0.hr > 0 ? Double($0.hr) : nil }, color: .red)
-            if blocks.contains(where: { $0.paceSecPerKm > 0 }) {
+            if blocks.contains(where: { $0.paceSec > 0 }) {
                 Text(L10n.get("dash_fig_pace")).font(.caption).foregroundStyle(tone.subtitle)
                 // A faster block is taller: the column shows speed, the label reads as pace.
-                columns(blocks.map { $0.paceSecPerKm > 0 ? Double(paceMetres) / Double($0.paceSecPerKm) : nil }, color: .runBlue)
+                columns(blocks.map { $0.paceSec > 0 ? Double(paceMetres) / Double($0.paceSec) : nil }, color: .runBlue)
             }
             Text(caption).font(.caption).foregroundStyle(tone.subtitle)
         }
@@ -157,7 +157,7 @@ private struct RunBlocks: View {
         let b = blocks[i]
         var parts = ["\(clock(i * blockSec))–\(clock(i * blockSec + Int(b.seconds)))"]
         if b.hr > 0 { parts.append("\(Int(b.hr.rounded())) bpm") }
-        if b.paceSecPerKm > 0 { parts.append(ActivityFigures.shared.paceText(secPerKm: b.paceSecPerKm) + " " + paceUnit) }
+        if b.paceSec > 0 { parts.append(ActivityFigures.shared.paceText(secPerKm: b.paceSec) + " " + paceUnit) }
         return parts.joined(separator: " · ")
     }
 

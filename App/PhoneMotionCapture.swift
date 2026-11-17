@@ -76,7 +76,6 @@ final class PhoneMotionCapture {
     /// folder; nil when there is none.
     static func storedURL(burstId: Int64) -> URL? {
         guard burstId > 0 else { return nil }
-        if let url = SensorRecordFolders.existing(fileName: SensorRecordFolders.phoneFileName(burstId)) { return url }
         return SensorRecordFolders.phoneFiles()[burstId]
     }
 
