@@ -10,8 +10,121 @@ import UniformTypeIdentifiers
 
 struct WatchSettingsScreen: View {
     @EnvironmentObject var companion: Companion
-    /// Watch settings that cost extra watch battery (Sensor Records, Instant Mode): their own section.
+    /// Watch settings that cost extra watch battery (Sensor Records, Instant Mode): under a battery line of their own.
     static let batteryKeys: Set<String> = ["RecordingBoostEnabled", "InstantMode"]
+    /// The Sensor Record settings get a card of their own (Android `topicOf`).
+    static let sensorRecordKeys: Set<String> = ["RecordingBoostEnabled", "SensorRecordDeclare"]
+    /// "Show details" (simple mode, Companion design/simple-and-expert-mode.md): expert rows and blocks until the page is left.
+    @State private var revealed = false
+    @Environment(\.detailsRevealed) private var outerRevealed
+    /// Search over every setting of the watch (Android: the field on top of the watch page).
+    @State private var query = ""
+    /// The topic cards opened by hand ("<deviceId>:<topic>"); all start closed, a search opens every hit.
+    @State private var open: Set<String> = []
+
+    /// The topics of the page, each one collapsible card, in page order (Android `WatchTopic`).
+    enum Topic: String, CaseIterable {
+        case general = "GENERAL", pages = "PAGES", recording = "RECORDING", sensorRecord = "SENSOR_RECORD"
+        case equipment = "EQUIPMENT", capture = "CAPTURE", intervals = "INTERVALS", strength = "STRENGTH"
+
+        var title: String {
+            switch self {
+            case .general: return L10n.get("watch_group_general")
+            case .pages: return L10n.get("watch_group_pages")
+            case .recording: return L10n.get("watch_group_recording")
+            case .sensorRecord: return L10n.get("watch_topic_sensor_record")
+            case .equipment: return L10n.get("watch_group_equipment")
+            case .capture: return L10n.get("watch_group_capture")
+            case .intervals: return L10n.get("watch_interval_menu")
+            case .strength: return L10n.get("watch_topic_strength")
+            }
+        }
+    }
+
+    /// A part of a topic card beyond the plain settings: its level entry, the words the search looks at, how many
+    /// of its changes wait for the watch, and what it shows.
+    private struct Block: Identifiable {
+        let id: String
+        let item: SettingsItem
+        let words: [String]
+        var waiting = 0
+        let content: AnyView
+    }
+
+    private var q: String { query.trimmingCharacters(in: .whitespaces) }
+    private var searching: Bool { !q.isEmpty }
+    private func hit(_ text: String) -> Bool { text.localizedCaseInsensitiveContains(q) }
+    private var detailsOpen: Bool { companion.showAllDetails || revealed || outerRevealed }
+
+    /// Expert rows show in expert mode, on a revealed page, or for a search hit (a search finds every level). Values are never touched.
+    private func shown(_ item: WatchSettingItem) -> Bool { searching || !item.expert || detailsOpen }
+    private func shown(_ item: SettingsItem) -> Bool { searching || detailsOpen || companion.shows(item) }
+
+    private func topic(of item: WatchSettingItem, in group: WatchSettingGroupView) -> Topic {
+        if Self.sensorRecordKeys.contains(item.key) { return .sensorRecord }
+        return Topic(rawValue: group.key) ?? .general
+    }
+
+    private func blocks(_ watch: WatchSettingsView, _ topic: Topic) -> [Block] {
+        let id = watch.deviceId
+        switch topic {
+        case .general:
+            guard let skill = watch.skillLevel else { return [] }
+            return [Block(id: "skill", item: .watchSkillLevelBySport, words: [skill.title],
+                          content: AnyView(NavigationLink(skill.title) { WatchSkillLevelScreen(deviceId: id) }))]
+        case .pages:
+            guard !watch.dataFieldGroups.isEmpty else { return [] }
+            let title = L10n.get("watch_data_fields_title")
+            let words = [title] + watch.dataFieldGroups.map(\.title)
+                + watch.dataFieldGroups.flatMap { $0.screens.flatMap { $0.slots.map(\.fieldName) } }
+            return [Block(id: "fields", item: .watchDataFields, words: words,
+                          waiting: watch.dataFieldGroups.filter(\.pending).count,
+                          content: AnyView(NavigationLink(title) { WatchDataFieldsScreen(deviceId: id) }))]
+        case .recording:
+            guard let auto = watch.sportAuto else { return [] }
+            return [Block(id: "auto", item: .watchSportAuto, words: [auto.title],
+                          content: AnyView(NavigationLink(auto.title) { WatchSportAutoScreen(deviceId: id) }))]
+        case .sensorRecord:
+            guard watch.sensorProgram != nil else { return [] }
+            let title = L10n.get("watch_sensor_program_title")
+            return [Block(id: "program", item: .watchSensorProgram, words: [title],
+                          content: AnyView(NavigationLink(title) { WatchSensorProgramScreen(deviceId: id) }))]
+        case .capture:
+            // The watch reports a strap check only when a strap is paired with it (on the GPS wait screen).
+            guard let hr = watch.hrStrap else { return [] }
+            return [Block(id: "hr", item: .watchHrStrap, words: [hr.title], content: AnyView(Group {
+                Text(hr.title).font(.subheadline.weight(.semibold))
+                Text(hr.status).foregroundStyle(hr.notFound ? Color.red : Color.primary)
+                Text(hr.checked).font(.footnote).foregroundStyle(.secondary)
+                ForEach(hr.lines, id: \.label) { line in LabeledContent(line.label, value: line.value) }
+            }))]
+        case .intervals:
+            guard !watch.intervalSlots.isEmpty else { return [] }
+            let title = L10n.get("watch_interval_menu")
+            return [Block(id: "intervals", item: .watchIntervals, words: [title],
+                          content: AnyView(NavigationLink(title) { WatchPlansScreen(deviceId: id, routines: false) }))]
+        case .strength:
+            guard !watch.routineSlots.isEmpty else { return [] }
+            let title = L10n.get("watch_strength_routines")
+            return [Block(id: "routines", item: .watchStrengthRoutines, words: [title, L10n.get("watch_topic_strength")],
+                          content: AnyView(NavigationLink(title) { WatchPlansScreen(deviceId: id, routines: true) }))]
+        case .equipment:
+            return []
+        }
+    }
+
+    private func shareable(_ watch: WatchSettingsView) -> Bool {
+        !watch.dataFieldGroups.isEmpty || !watch.intervalSlots.isEmpty || !watch.routineSlots.isEmpty
+    }
+
+    /// The expert settings and blocks this watch leaves out now, and how many of those settings differ from the default.
+    private func hidden(_ watch: WatchSettingsView) -> (count: Int, changed: Int) {
+        if detailsOpen { return (0, 0) }
+        let settings = watch.groups.flatMap { $0.items }.filter { $0.expert }
+        var items = Topic.allCases.flatMap { blocks(watch, $0) }.map(\.item)
+        if shareable(watch) { items.append(SettingsItem.watchSettingsShare) }
+        return (settings.count + companion.hiddenCount(items), settings.filter { $0.changed }.count)
+    }
 
     var body: some View {
         Form {
@@ -20,94 +133,137 @@ struct WatchSettingsScreen: View {
                 Text(L10n.get("watch_settings_none")).foregroundStyle(.secondary)
             }
             ForEach(companion.watchSettings, id: \.deviceId) { watch in
+                watchSections(watch)
+            }
+            if searching && !companion.watchSettings.isEmpty && !companion.watchSettings.contains(where: { anyHit($0) }) {
+                Text(L10n.get("settings_search_no_results")).foregroundStyle(.secondary)
+            }
+            // One "Show details" for the page (plan section 5), naming hidden settings that differ from the default.
+            let left = companion.watchSettings.map { hidden($0) }
+            let count = left.reduce(0) { $0 + $1.count }
+            if !searching && !companion.showAllDetails && (revealed || count > 0) {
                 Section {
-                    Text(String(format: L10n.get("watch_settings_as_of"), Format.dateOrTimeToday(watch.reportedAtEpochSec)))
+                    ShowDetailsButton(revealed: $revealed, hidden: count, changed: left.reduce(0) { $0 + $1.changed })
+                }
+            }
+        }
+        .searchable(text: $query, prompt: L10n.get("settings_search_hint"))
+        .environment(\.detailsRevealed, revealed || outerRevealed || searching)
+        .homeTitle(L10n.get("settings_tile_watch"))
+        .onAppear { companion.refreshWatchSettings() }
+    }
+
+    /// The settings of [topic] this watch shows now: by level, and while searching by title or label.
+    private func rows(_ watch: WatchSettingsView, _ topic: Topic) -> [WatchSettingItem] {
+        let titleHit = !searching || hit(topic.title)
+        return watch.groups.flatMap { group in
+            group.items.filter { self.topic(of: $0, in: group) == topic && shown($0) && (titleHit || hit($0.label)) }
+        }
+    }
+
+    private func shownBlocks(_ watch: WatchSettingsView, _ topic: Topic) -> [Block] {
+        let titleHit = !searching || hit(topic.title)
+        return blocks(watch, topic).filter { shown($0.item) && (titleHit || $0.words.contains(where: hit)) }
+    }
+
+    private func showsShare(_ watch: WatchSettingsView) -> Bool {
+        shareable(watch) && (searching ? hit(L10n.get("watch_share_title")) : shown(SettingsItem.watchSettingsShare))
+    }
+
+    private func anyHit(_ watch: WatchSettingsView) -> Bool {
+        Topic.allCases.contains { !rows(watch, $0).isEmpty || !shownBlocks(watch, $0).isEmpty } || showsShare(watch)
+    }
+
+    private func waiting(_ watch: WatchSettingsView, _ topic: Topic) -> Int {
+        let settings = watch.groups.flatMap { group in group.items.filter { self.topic(of: $0, in: group) == topic && $0.pending } }
+        return settings.count + blocks(watch, topic).reduce(0) { $0 + $1.waiting }
+    }
+
+    @ViewBuilder
+    private func watchSections(_ watch: WatchSettingsView) -> some View {
+        Section {
+            Detail(SettingsItem.watchSyncDetails) {
+                Text(String(format: L10n.get("watch_settings_as_of"), Format.dateOrTimeToday(watch.reportedAtEpochSec)))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            // Waiting changes and the stuck-link hint are problems: never hidden.
+            if watch.pendingCount > 0 {
+                Text(L10n.plural("watch_settings_waiting", Int(watch.pendingCount)))
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                // Changes wait and the watch has been silent for hours: the link is probably stuck.
+                if Date().timeIntervalSince1970 - TimeInterval(watch.reportedAtEpochSec) > 3600 {
+                    Text(L10n.get("watch_settings_stale_hint"))
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    if watch.pendingCount > 0 {
-                        Text(L10n.plural("watch_settings_waiting", Int(watch.pendingCount)))
-                            .font(.footnote)
-                            .foregroundStyle(.orange)
-                        // Changes wait and the watch has been silent for hours: the link is probably stuck.
-                        if Date().timeIntervalSince1970 - TimeInterval(watch.reportedAtEpochSec) > 3600 {
-                            Text(L10n.get("watch_settings_stale_hint"))
-                                .font(.footnote)
-                                .foregroundStyle(.red)
-                        }
-                    }
-                    Button(L10n.get("watch_settings_refresh")) { companion.askWatchAgain(deviceId: watch.deviceId) }
-                    if let sync = watch.sync {
-                        WatchSyncRow(sync: sync)
-                    }
-                    if !watch.dataFieldGroups.isEmpty {
-                        NavigationLink(L10n.get("watch_data_fields_title")) { WatchDataFieldsScreen(deviceId: watch.deviceId) }
-                    }
-                    if !watch.intervalSlots.isEmpty {
-                        NavigationLink(L10n.get("watch_interval_menu")) { WatchPlansScreen(deviceId: watch.deviceId, routines: false) }
-                    }
-                    if !watch.routineSlots.isEmpty {
-                        NavigationLink(L10n.get("watch_strength_routines")) { WatchPlansScreen(deviceId: watch.deviceId, routines: true) }
-                    }
-                    // The Sensor Record program (a watch that reports one, 0.9.126+; Android: a block on the watch page).
-                    if watch.sensorProgram != nil {
-                        NavigationLink(L10n.get("watch_sensor_program_title")) { WatchSensorProgramScreen(deviceId: watch.deviceId) }
-                    }
-                    // Skill level per sport right after the strength routines (a watch that reports them, 0.9.118+).
-                    if let skillLevel = watch.skillLevel {
-                        NavigationLink(skillLevel.title) { WatchSkillLevelScreen(deviceId: watch.deviceId) }
-                    }
-                    if !watch.dataFieldGroups.isEmpty || !watch.intervalSlots.isEmpty || !watch.routineSlots.isEmpty {
-                        NavigationLink { WatchShareScreen(deviceId: watch.deviceId) } label: {
-                            Label(L10n.get("watch_share_title"), systemImage: "square.and.arrow.up")
-                        }
-                    }
-                } header: {
-                    Text(watch.watchName)
+                        .foregroundStyle(.red)
                 }
-                if let hr = watch.hrStrap {
-                    Section(hr.title) {
-                        Text(hr.status).foregroundStyle(hr.notFound ? Color.red : Color.primary)
-                        Text(hr.checked).font(.footnote).foregroundStyle(.secondary)
-                        ForEach(hr.lines, id: \.label) { line in
-                            LabeledContent(line.label, value: line.value)
-                        }
-                    }
+            }
+            Detail(SettingsItem.watchRefresh) {
+                Button(L10n.get("watch_settings_refresh")) { companion.askWatchAgain(deviceId: watch.deviceId) }
+            }
+            if let sync = watch.sync {
+                WatchSyncRow(sync: sync)
+            }
+        } header: {
+            Text(watch.watchName)
+        }
+        ForEach(Topic.allCases, id: \.self) { topic in
+            topicCard(watch, topic)
+        }
+        if showsShare(watch) {
+            Section {
+                NavigationLink { WatchShareScreen(deviceId: watch.deviceId) } label: {
+                    Label(L10n.get("watch_share_title"), systemImage: "square.and.arrow.up")
                 }
-                ForEach(watch.groups, id: \.title) { group in
-                    let instantOn = watch.groups.flatMap { $0.items }.contains { $0.key == "InstantMode" && $0.value != 0 }
-                    let battery = group.items.filter { Self.batteryKeys.contains($0.key) }
-                    Section(group.title) {
-                        ForEach(group.items.filter { !Self.batteryKeys.contains($0.key) }, id: \.key) { item in
-                            WatchSettingRow(deviceId: watch.deviceId, item: item, instantModeOn: instantOn)
-                        }
-                        // Auto lap and auto pause per sport end the Recording group, next to the main settings
-                        // (only a watch that reports per-sport values, 0.9.117+).
-                        if group.title == L10n.get("watch_group_recording"), let auto = watch.sportAuto {
-                            NavigationLink(auto.title) { WatchSportAutoScreen(deviceId: watch.deviceId) }
-                        }
+            }
+        }
+    }
+
+    /// One topic as a collapsible card (Android `SettingsTopicCard`): title and waiting changes, open while searching.
+    @ViewBuilder
+    private func topicCard(_ watch: WatchSettingsView, _ topic: Topic) -> some View {
+        let settings = rows(watch, topic)
+        let parts = shownBlocks(watch, topic)
+        if !settings.isEmpty || !parts.isEmpty {
+            let cardId = "\(watch.deviceId):\(topic.rawValue)"
+            let waiting = waiting(watch, topic)
+            let instantOn = watch.groups.flatMap { $0.items }.contains { $0.key == "InstantMode" && $0.value != 0 }
+            let plain = settings.filter { !Self.batteryKeys.contains($0.key) }
+            let battery = settings.filter { Self.batteryKeys.contains($0.key) }
+            Section {
+                DisclosureGroup(isExpanded: Binding(
+                    get: { searching || open.contains(cardId) },
+                    set: { on in if on { open.insert(cardId) } else { open.remove(cardId) } }
+                )) {
+                    ForEach(plain, id: \.key) { item in
+                        WatchSettingRow(deviceId: watch.deviceId, item: item, instantModeOn: instantOn)
                     }
-                    // The settings that cost extra watch battery in a section of their own, right after their
-                    // group, under a battery heading (Android `BatteryFrame`).
+                    // The settings that cost extra watch battery under a battery line (Android `BatteryFrame`).
                     if !battery.isEmpty {
-                        Section {
-                            ForEach(battery, id: \.key) { item in
-                                WatchSettingRow(deviceId: watch.deviceId, item: item, instantModeOn: instantOn)
-                                // The phone's own motion record runs alongside each watch Sensor Record, so its
-                                // switch stands right below that one (a phone setting, the same for every watch).
-                                if item.key == "RecordingBoostEnabled" && PhoneMotionCapture.isAvailable {
-                                    PhoneMotionSettingsRows()
-                                }
+                        Label(L10n.get("watch_settings_battery_note"), systemImage: "battery.50")
+                            .font(.footnote)
+                            .foregroundStyle(Color(red: 0xB2 / 255, green: 0x6A / 255, blue: 0x00 / 255))
+                        ForEach(battery, id: \.key) { item in
+                            WatchSettingRow(deviceId: watch.deviceId, item: item, instantModeOn: instantOn)
+                            // The phone's own motion record runs alongside each watch Sensor Record, so its
+                            // switch stands right below that one (a phone setting, the same for every watch).
+                            if item.key == "RecordingBoostEnabled" && PhoneMotionCapture.isAvailable {
+                                Detail(SettingsItem.watchPhoneMotion) { PhoneMotionSettingsRows() }
                             }
-                        } header: {
-                            Label(L10n.get("watch_settings_battery_note"), systemImage: "battery.50")
-                                .foregroundStyle(Color(red: 0xB2 / 255, green: 0x6A / 255, blue: 0x00 / 255))
+                        }
+                    }
+                    ForEach(parts) { $0.content }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(topic.title).font(.headline)
+                        if waiting > 0 {
+                            Text(L10n.plural("watch_settings_waiting_short", waiting)).font(.footnote).foregroundStyle(.orange)
                         }
                     }
                 }
             }
         }
-        .homeTitle(L10n.get("settings_tile_watch"))
-        .onAppear { companion.refreshWatchSettings() }
     }
 }
 
@@ -302,13 +458,61 @@ struct WatchDataFieldsScreen: View {
     @EnvironmentObject var companion: Companion
     let deviceId: Int64
     @State private var pickingPreset = false
+    /// Per data field set, the page shown on the small watch (Android `chosenScreen`).
+    @State private var chosenScreen: [String: Int] = [:]
+    /// The field tapped on the small watch; its choice opens as a sheet.
+    @State private var editing: EditingSlot?
+
+    private struct EditingSlot: Identifiable {
+        let key: String
+        let slot: DataFieldSlotView
+        let position: Int
+        var id: String { "\(key)#\(slot.index)" }
+    }
 
     var body: some View {
         let watch = companion.watchSettings.first { $0.deviceId == deviceId }
         Form {
             ForEach(watch?.dataFieldGroups ?? [], id: \.key) { group in
+                // A watch may report fewer screens than were chosen (the list follows the watch).
+                let screenIndex = min(chosenScreen[group.key] ?? 0, max(group.screens.count - 1, 0))
                 Section {
-                    ForEach(Array(group.screens.enumerated()), id: \.offset) { _, screen in
+                    if !group.copySources.isEmpty {
+                        Menu(L10n.get("watch_data_fields_copy_from")) {
+                            ForEach(group.copySources, id: \.key) { source in
+                                Button(source.label) {
+                                    companion.copyWatchDataFields(deviceId: deviceId, key: group.key, fromKey: source.key)
+                                }
+                            }
+                        }
+                    }
+                    if group.screens.indices.contains(screenIndex) {
+                        let screen = group.screens[screenIndex]
+                        VStack(spacing: 8) {
+                            WatchPagePreview(
+                                slots: screen.slots,
+                                selected: editing?.key == group.key ? editing?.position : nil,
+                                accessibilityName: [group.title, screen.title].filter { !$0.isEmpty }.joined(separator: ", ")
+                            ) { position in
+                                editing = EditingSlot(key: group.key, slot: screen.slots[position], position: position)
+                            }
+                            Text(L10n.get("watch_data_fields_preview_hint")).font(.footnote).foregroundStyle(.secondary)
+                            if group.screens.count > 1 {
+                                Picker("", selection: Binding(
+                                    get: { screenIndex },
+                                    set: { chosenScreen[group.key] = $0 }
+                                )) {
+                                    ForEach(Array(group.screens.enumerated()), id: \.offset) { i, s in
+                                        Text("\(i + 1)").tag(i).accessibilityLabel(Text(s.title))
+                                    }
+                                }
+                                .pickerStyle(.segmented)
+                                .labelsHidden()
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    ForEach(Array(group.screens.enumerated()).filter { $0.offset == screenIndex }, id: \.offset) { _, screen in
                         if !screen.title.isEmpty {
                             Text(screen.title).font(.footnote).foregroundStyle(.secondary)
                         }
@@ -368,6 +572,30 @@ struct WatchDataFieldsScreen: View {
             }
         }
         .homeTitle(L10n.get("watch_data_fields_title"))
+        .sheet(item: $editing) { edit in
+            let group = (companion.watchSettings.first { $0.deviceId == deviceId }?.dataFieldGroups ?? []).first { $0.key == edit.key }
+            NavigationStack {
+                List(group?.options ?? [], id: \.value) { option in
+                    Button {
+                        companion.changeWatchDataField(deviceId: deviceId, key: edit.key, index: edit.slot.index, field: option.value)
+                        editing = nil
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(option.label).foregroundStyle(.primary)
+                                if !option.hint.isEmpty { Text(option.hint).font(.footnote).foregroundStyle(.secondary) }
+                            }
+                            Spacer()
+                            if option.value == edit.slot.field { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
+                        }
+                    }
+                }
+                .navigationTitle(edit.slot.label)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L10n.get("common_cancel")) { editing = nil } } }
+            }
+            .presentationDetents([.medium, .large])
+        }
         .confirmationDialog(L10n.get("watch_migrations_for_all_title"), isPresented: $pickingPreset, titleVisibility: .visible) {
             ForEach(watch?.dataFieldPresets ?? [], id: \.id) { preset in
                 Button(preset.label) { companion.applyWatchDataFieldPreset(deviceId: deviceId, presetId: preset.id) }
@@ -1738,7 +1966,7 @@ struct RecordingBoostScreen: View {
         List {
             Section {
                 Text(String(format: L10n.get("recording_boost_list_default_folder"),
-                            "On My iPhone \u{203A} Nordic Sports \u{203A} \(Companion.boostFolder)"))
+                            SensorRecordFolders.locationLabel))
                     .font(.system(.footnote, design: .monospaced))
             }
             if let failure { LoadFailedRow(reason: failure) }
@@ -2143,7 +2371,7 @@ struct FeedbackScreen: View {
                         }
                     }
                 }
-                if boost {
+                if boost && companion.shows(SettingsItem.feedbackSensorRecords) {
                     FeedbackBoostSection(attached: $attached, tooLargeFile: tooLargeFile,
                                          showPicker: $showBoostPicker, editing: $editingBoost)
                 }
@@ -2800,10 +3028,17 @@ struct EditActivitySheet: View {
     private func minutesBox(_ label: String, text: Binding<String>, invalid: Bool, frame: Color? = nil, range: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            // A narrow inner padding, so five zone boxes in one row still show "100" (Android `MinutesBox`).
             TextField("0", text: text)
                 .keyboardType(.numberPad)
-                .textFieldStyle(.roundedBorder)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(invalid ? Color.red : (frame ?? Color.clear), lineWidth: invalid || frame == nil ? 1 : 1.5))
+                .multilineTextAlignment(.center)
+                .monospacedDigit()
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
+                .padding(.horizontal, 3)
+                .padding(.vertical, 6)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color(.systemBackground)))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(invalid ? Color.red : (frame ?? Color(.separator)), lineWidth: invalid || frame == nil ? 1 : 1.5))
             // A zone's range from the athlete's own limits (watch 0.9.123+), as on Android.
             if let range { Text(range).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1) }
         }
@@ -3217,24 +3452,6 @@ struct DiaryLocationsScreen: View {
         Form {
             Section {
                 Text(L10n.get("connect_diary_intro")).font(.footnote).foregroundStyle(.secondary)
-            }
-            Section {
-                NavigationLink {
-                    AddFolderDestinationScreen(format: "JSON_PER_ACTIVITY")
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(L10n.get("settings_add_connection_json"))
-                        Text(L10n.get("settings_add_connection_json_help")).font(.footnote).foregroundStyle(.secondary)
-                    }
-                }
-                NavigationLink {
-                    AddFolderDestinationScreen(format: "CSV_MONTHLY")
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(L10n.get("settings_add_connection_csv"))
-                        Text(L10n.get("settings_add_connection_csv_help")).font(.footnote).foregroundStyle(.secondary)
-                    }
-                }
             }
             ForEach(companion.diarySources, id: \.key) { source in
                 Section(source.name) { rows(source) }

@@ -35,6 +35,9 @@ struct ActivityScreen: View {
         metricsTab = target == .technique ? .technique : .data
     }
 
+    /// Sensor Records are a detail (shared `SettingsItem.SENSOR_RECORDS`): simple mode has no Sensor mode.
+    private var shownBursts: [RecordingBoostView] { companion.shows(SettingsItem.sensorRecords) ? bursts : [] }
+
     /// The row as the list has it now.
     private var current: ActivityItem { companion.activities.first { $0.id == item.id } ?? item }
 
@@ -72,13 +75,13 @@ struct ActivityScreen: View {
         VStack(spacing: 0) {
             topCard
             // Level 2 of the navigation: the mode, always in reach above the content.
-            if item.hasWatchMetrics || !bursts.isEmpty {
+            if item.hasWatchMetrics || !shownBursts.isEmpty {
                 Picker("", selection: $mode) {
                     Label(L10n.get("card_lane_entry"), systemImage: "square.and.pencil").tag(ActivityMode.entry)
                     if item.hasWatchMetrics {
                         Label(L10n.get("card_lane_metrics"), systemImage: "chart.bar.fill").tag(ActivityMode.metrics)
                     }
-                    if !bursts.isEmpty {
+                    if !shownBursts.isEmpty {
                         Label(L10n.get("card_lane_sensor"), systemImage: "waveform.path.ecg").tag(ActivityMode.sensor)
                     }
                 }
@@ -98,8 +101,11 @@ struct ActivityScreen: View {
                         .accessibilityHidden(mode != .metrics)
                 }
                 // Built only when opened: each record computes its charts.
-                if mode == .sensor && !bursts.isEmpty {
-                    SensorModeView(bursts: bursts)
+                if mode == .sensor && !shownBursts.isEmpty {
+                    SensorModeView(bursts: shownBursts)
+                } else if mode == .sensor && !bursts.isEmpty {
+                    // Opened on Sensor (a notification) in simple mode: the Entry instead.
+                    Color.clear.onAppear { mode = .entry }
                 }
             }
         }

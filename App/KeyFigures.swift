@@ -23,7 +23,39 @@ struct KeyFiguresStrip: View {
         return String(format: "%+d %%", value)
     }
 
+    /// Swim (Android `KeyFigures`): metres and pace per 100 m, the maximum heart rate instead of the ascent (there is
+    /// none in the water); distance and pace lead to the Timeline with the five-minute blocks.
+    private var swimFigures: [Fig] {
+        let figs = ActivityFigures.shared
+        var out: [Fig] = [
+            Fig(value: Format.duration(item.elapsedSec), unit: "", label: L10n.get("activity_detail_moving_time_label"),
+                theme: .enhanced(.timeline), delta: percent(Double(item.elapsedSec), Double(typical?.seconds ?? 0))),
+        ]
+        if item.distanceM >= 1 {
+            let metres = NumberFormatter.localizedString(from: NSNumber(value: Int(Double(item.distanceM).rounded())), number: .decimal)
+            out.append(Fig(value: metres, unit: "m", label: L10n.get("activity_detail_distance_label"),
+                           theme: .enhanced(.timeline), delta: percent(Double(item.distanceM), Double(typical?.distanceM ?? 0))))
+        }
+        if let pace = figs.paceSecPer100m(speedMps: item.avgSpeedMps)?.int32Value {
+            out.append(Fig(value: figs.paceText(secPerKm: pace), unit: "/100 m", label: L10n.get("dash_fig_pace"),
+                           theme: .enhanced(.timeline), delta: percent(Double(item.avgSpeedMps), typical?.speedMps ?? 0)))
+        }
+        if item.avgHeartRate > 0 {
+            let usual = Int(typical?.avgHr ?? 0)
+            out.append(Fig(value: "\(item.avgHeartRate)", unit: "bpm", label: L10n.get("activity_detail_avg_hr_label"),
+                           theme: .enhanced(.heartRate), delta: typical != nil && usual > 0 ? String(format: "%+d bpm", Int(item.avgHeartRate) - usual) : nil))
+        }
+        if item.maxHeartRate > 0 {
+            out.append(Fig(value: "\(item.maxHeartRate)", unit: "bpm", label: L10n.get("activity_detail_max_hr_label"), theme: .enhanced(.heartRate)))
+        }
+        if item.calories > 0 {
+            out.append(Fig(value: "\(item.calories)", unit: "kcal", label: L10n.get("activity_detail_calories_label"), theme: .allData))
+        }
+        return out
+    }
+
     private var figures: [Fig] {
+        if item.sportArt == SportArt.swimming { return swimFigures }
         let figs = ActivityFigures.shared
         var out: [Fig] = [
             Fig(value: Format.duration(item.elapsedSec), unit: "", label: L10n.get("activity_detail_moving_time_label"),

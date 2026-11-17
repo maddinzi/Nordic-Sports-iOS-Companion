@@ -43,8 +43,8 @@ struct PhoneMotionSettingsRows: View {
 ///
 /// File (format 1, the same as Android's, so `src/phone_watch_align.py` and the Android overlay read it): a first line
 /// `# phoneRecord {json}`, then `tEpochNs,type,x,y,z` rows: `a` accelerometer in m/s² with Android's sign (iOS reports
-/// -1 g face up, Android +9.81, so x -9.80665), `g` gyroscope in rad/s. Saved in Documents/recording-boost (Files: On My
-/// iPhone > Nordic Sports). TestFlight builds only, behind a switch (watch settings, battery section), off by default. It leaves the phone
+/// -1 g face up, Android +9.81, so x -9.80665), `g` gyroscope in rad/s. Saved in its Sensor Record's folder
+/// (`SensorRecordFolders`, Files: On My iPhone > Nordic Sports > sensor-records). TestFlight builds only, behind a switch (watch settings, battery section), off by default. It leaves the phone
 /// only when the athlete sends it with its Sensor Record in the feedback form (`FeedbackBoost.swift`, kind phone_motion).
 // PRIVACY-SYNC: phone motion (accelerometer and gyroscope, no position) recorded on the athlete's switch (TestFlight builds), saved on this phone, sent only with its Sensor Record in a feedback message. Notice: feedback paragraph, "Phone motion record". Changing this? Re-check the Companion's design/privacy-notice-sync.md.
 final class PhoneMotionCapture {
@@ -52,8 +52,6 @@ final class PhoneMotionCapture {
 
     static let placements = ["chest", "belt", "pocket", "backpack", "hand"]
     static let maxCaptureS = 90.0
-    /// Next to the Sensor Record files (`Companion.boostFolder`, main-actor isolated, so named here again).
-    private static let folder = "recording-boost"
     private static let keyOn = "phoneMotion.on"
     private static let keyPlacement = "phoneMotion.placement"
     private static let samplingS = 0.01
@@ -74,38 +72,22 @@ final class PhoneMotionCapture {
         set { UserDefaults.standard.set(newValue, forKey: keyPlacement) }
     }
 
-    /// The phone motion record of Sensor Record [burstId] (watch id) in Documents/recording-boost, nil when there is none.
+    /// The phone motion record of Sensor Record [burstId] (watch id), in its record folder or (saved before) the flat
+    /// folder; nil when there is none.
     static func storedURL(burstId: Int64) -> URL? {
-        guard burstId > 0, let dir = try? FileManager.default
-            .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
-            .appendingPathComponent(Self.folder, isDirectory: true),
-            let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return nil }
-        return names.first { $0.hasSuffix("-\(burstId)-phone.csv") }.map { dir.appendingPathComponent($0) }
+        guard burstId > 0 else { return nil }
+        return SensorRecordFolders.phoneFiles()[burstId]
     }
 
-    /// Every phone motion record in Documents/recording-boost by its Sensor Record's id, from one folder listing.
-    static func storedAll() -> [Int64: URL] {
-        guard let dir = try? FileManager.default
-            .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
-            .appendingPathComponent(Self.folder, isDirectory: true),
-            let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return [:] }
-        var out: [Int64: URL] = [:]
-        for name in names where name.hasSuffix("-phone.csv") {
-            let id = burstId(fileName: name)
-            if id > 0 { out[id] = dir.appendingPathComponent(name) }
-        }
-        return out
-    }
+    /// Every phone motion record by its Sensor Record's id (both layouts).
+    static func storedAll() -> [Int64: URL] { SensorRecordFolders.phoneFiles() }
 
     static func storedText(burstId: Int64) -> String? {
         storedURL(burstId: burstId).flatMap { try? String(contentsOf: $0, encoding: .utf8) }
     }
 
-    /// The watch's record id in a Sensor Record file name ("…_recording-boost-1794516072.csv"), 0 when there is none.
-    static func burstId(fileName: String) -> Int64 {
-        guard let range = fileName.range(of: #"recording-boost-(\d+)"#, options: .regularExpression) else { return 0 }
-        return Int64(fileName[range].dropFirst("recording-boost-".count)) ?? 0
-    }
+    /// The watch's record id in a Sensor Record file name (either layout), 0 when there is none.
+    static func burstId(fileName: String) -> Int64 { SensorRecordFolders.burstId(fileName) }
 
     private let motion = CMMotionManager()
     private let queue: OperationQueue = {
@@ -291,15 +273,9 @@ final class PhoneMotionCapture {
         ]
         guard let json = try? JSONSerialization.data(withJSONObject: head), let headText = String(data: json, encoding: .utf8) else { return }
         let text = "# phoneRecord \(headText)\ntEpochNs,type,x,y,z\n\(s.rows)"
-        let stamp = DateFormatter()
-        stamp.locale = Locale(identifier: "en_US_POSIX")
-        stamp.dateFormat = "yyyyMMdd_HHmm"
-        let name = "\(stamp.string(from: Date(timeIntervalSince1970: TimeInterval(id))))_recording-boost-\(id)-phone.csv"
+        let name = SensorRecordFolders.phoneFileName(id)
         do {
-            let folder = try FileManager.default
-                .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-                .appendingPathComponent(Self.folder, isDirectory: true)
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let folder = try SensorRecordFolders.recordFolder(id)
             try Data(text.utf8).write(to: folder.appendingPathComponent(name), options: .atomic)
             let seconds = (ended - s.headsUpMs) / 1000
             WatchLinkSpike.shared.add("phone motion: saved \(name): \(s.count) rows, \(seconds) s, stopped by \(reason), started in \(s.appState)")
