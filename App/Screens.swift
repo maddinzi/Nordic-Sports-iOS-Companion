@@ -13,7 +13,18 @@ struct RootView: View {
     /// Stage `nudge`: the reminder to move to the server, at most once in 20 hours.
     @AppStorage("serverNudgeShownAt") private var serverNudgeShownAt = 0.0
     @State private var showServerNudge = false
+    /// 3 GO, 0 Activities, 2 Trends, 1 Settings; the start screen setting picks the first one once per start.
     @State private var tab = 0
+    @State private var startApplied = false
+
+    /// The tab of the start screen (Settings › App › Start screen; Companion design/simple-and-expert-mode.md, 8b).
+    private var startTab: Int {
+        switch companion.startScreen {
+        case "GO": return 3
+        case "TRENDS": return 2
+        default: return 0
+        }
+    }
 
     var body: some View {
         if companion.outdated {
@@ -25,6 +36,11 @@ struct RootView: View {
 
     private var mainTabs: some View {
         TabView(selection: $tab) {
+            // "Nordic Sports GO" (Android: the bottom bar's first place, section 8c); Settings stays a tab on iOS.
+            GoScreen(onShowList: { tab = 0 }, onShowTrends: { tab = 2 }, onShowSettings: { tab = 1 })
+                .id(companion.goHomeRequest)
+                .tabItem { Label(L10n.get("home_tab_go"), systemImage: "house") }
+                .tag(3)
             // A new go-home request rebuilds the stack: every pushed screen, sheet and cover on it closes.
             ActivitiesScreen()
                 .id(companion.goHomeRequest)
@@ -57,10 +73,16 @@ struct RootView: View {
             }
             .environmentObject(companion)
         }
-        // A tap on a screen's title: the activity list, also from the other tabs and the Sensor Record sheet.
+        // A tap on a screen's title: the start screen, also from the other tabs and the Sensor Record sheet.
         .onChange(of: companion.goHomeRequest) { _, _ in
             companion.openSensorRecordId = nil
-            tab = 0
+            tab = startTab
+        }
+        .onAppear {
+            if !startApplied {
+                startApplied = true
+                tab = startTab
+            }
         }
         .onChange(of: companion.trendsRequest) { _, request in
             if request != nil { tab = 2 }
@@ -1119,6 +1141,7 @@ struct SettingsScreen: View {
     @ObservedObject var watch = WatchLinkSpike.shared
     @ObservedObject private var contact = WatchContact.shared
     @State private var query = ""
+    @State private var overviewRevealed = false
 
     private var diaryTitle: String {
         String(format: L10n.get("settings_tile_diary_named"), L10n.get("settings_diary_short_name"))
@@ -1147,7 +1170,7 @@ struct SettingsScreen: View {
                  words: ["sync_mode_option_automated", "sync_mode_option_manual", "ios_last_sync"].map(L10n.get),
                  destination: AnyView(SettingsSyncPage())),
             Page(id: "app", title: L10n.get("settings_group_app"),
-                 words: ["nickname_label", "settings_review_new_activities", "status_place_names_switch", "language_section_title", "theme_section_title"].map(L10n.get),
+                 words: ["ui_show_all_details", "start_screen_title", "nickname_label", "settings_review_new_activities", "status_place_names_switch", "language_section_title", "theme_section_title"].map(L10n.get),
                  destination: AnyView(SettingsAppPage())),
             Page(id: "privacy", title: L10n.get("settings_page_privacy"),
                  words: ["status_download_my_data", "status_delete_my_data", "feedback_title"].map(L10n.get),
@@ -1174,8 +1197,9 @@ struct SettingsScreen: View {
                     if hits.isEmpty {
                         Text(L10n.get("settings_search_no_results")).foregroundStyle(.secondary)
                     }
+                    // A search finds every level (simple mode plan, section 5): the page opens with its details shown.
                     ForEach(hits) { page in
-                        NavigationLink(page.title) { page.destination }
+                        NavigationLink(page.title) { page.destination.environment(\.detailsRevealed, true) }
                     }
                 } else {
                     Section(L10n.get("status_connections_heading")) {
@@ -1217,7 +1241,9 @@ struct SettingsScreen: View {
                         NavigationLink(L10n.get("settings_add_connection")) { DiaryLocationsScreen() }
                     }
                     Section(L10n.get("settings_group_general")) {
-                        NavigationLink { SettingsSyncPage() } label: { Text(L10n.get("sync_mode_section_title")).settingsIcon(.sync) }
+                        Detail(SettingsItem.syncMode) {
+                            NavigationLink { SettingsSyncPage() } label: { Text(L10n.get("sync_mode_section_title")).settingsIcon(.sync) }
+                        }
                         NavigationLink { SettingsAppPage() } label: { Text(L10n.get("settings_group_app")).settingsIcon(.app) }
                         NavigationLink { SettingsPrivacyPage() } label: { Text(L10n.get("settings_page_privacy")).settingsIcon(.privacy) }
                         NavigationLink { SettingsLogsPage() } label: { Text(L10n.get("status_data_logs_heading")).settingsIcon(.logs) }
@@ -1226,8 +1252,13 @@ struct SettingsScreen: View {
                         NavigationLink(L10n.get("status_about_button")) { AboutScreen() }
                         LabeledContent(L10n.get("ios_version"), value: Format.appVersion)
                     }
+                    let hidden = companion.hiddenCount([SettingsItem.syncMode])
+                    if !companion.showAllDetails && (overviewRevealed || hidden > 0) {
+                        Section { ShowDetailsButton(revealed: $overviewRevealed, hidden: hidden) }
+                    }
                 }
             }
+            .environment(\.detailsRevealed, overviewRevealed)
             .searchable(text: $query, prompt: L10n.get("settings_search_hint"))
             .navigationTitle(L10n.get("status_title"))
         }
@@ -1263,6 +1294,26 @@ struct SettingsAppPage: View {
 
     var body: some View {
         Form {
+                // Simple or expert mode: always shown, the way back to all details.
+                Section {
+                    Toggle(L10n.get("ui_show_all_details"), isOn: Binding(
+                        get: { companion.showAllDetails },
+                        set: { companion.setShowAllDetails($0) }
+                    ))
+                } footer: {
+                    Text(L10n.get("ui_show_all_details_body"))
+                }
+                // Where the app opens; takes effect at the next start.
+                Section {
+                    Picker(L10n.get("start_screen_title"), selection: Binding(
+                        get: { companion.startScreen },
+                        set: { companion.setStartScreen($0) }
+                    )) {
+                        Text(L10n.get("start_screen_go")).tag("GO")
+                        Text(L10n.get("trends_tab_activities")).tag("ACTIVITIES")
+                        Text(L10n.get("trends_tab_trends")).tag("TRENDS")
+                    }
+                }
                 Section {
                     Picker(L10n.get("theme_section_title"), selection: $themeChoice) {
                         Text(L10n.get("theme_option_system_default")).tag("")
@@ -1421,6 +1472,9 @@ struct SettingsSyncPage: View {
 struct SettingsStravaPage: View {
     @EnvironmentObject var companion: Companion
     @State private var confirmingStravaDisconnect = false
+    /// "Show details" on this page (simple mode); a search hit arrives revealed.
+    @State private var revealed = false
+    @Environment(\.detailsRevealed) private var outerRevealed
 
     var body: some View {
         Form {
@@ -1436,8 +1490,10 @@ struct SettingsStravaPage: View {
                         }
                         Button(L10n.get("status_backfill_sync_now")) { Task { await companion.sync() } }
                             .disabled(companion.syncing)
-                        Button(L10n.get("ios_pull_strava_7")) { Task { await companion.backfill(days: 7) } }
-                            .disabled(companion.syncing)
+                        Detail(SettingsItem.stravaBackfill) {
+                            Button(L10n.get("ios_pull_strava_7")) { Task { await companion.backfill(days: 7) } }
+                                .disabled(companion.syncing)
+                        }
                         Button(L10n.get("ios_disconnect_strava"), role: .destructive) { confirmingStravaDisconnect = true }
                             .confirmationDialog(
                                 String(format: L10n.get("status_disconnect_confirm_title"), "Strava"),
@@ -1468,11 +1524,13 @@ struct SettingsStravaPage: View {
                             set: { companion.setStravaUpdateMyActivities($0) }
                         ))
                         Text(L10n.get("status_strava_update_my_activities_description")).font(.footnote).foregroundStyle(.secondary)
-                        Toggle(L10n.get("status_strava_include_other_devices"), isOn: Binding(
-                            get: { companion.stravaIncludeOtherDevices },
-                            set: { companion.setStravaIncludeOtherDevices($0) }
-                        ))
-                        Text(L10n.get("status_strava_include_other_devices_description")).font(.footnote).foregroundStyle(.secondary)
+                        Detail(SettingsItem.stravaIncludeOtherDevices) {
+                            Toggle(L10n.get("status_strava_include_other_devices"), isOn: Binding(
+                                get: { companion.stravaIncludeOtherDevices },
+                                set: { companion.setStravaIncludeOtherDevices($0) }
+                            ))
+                            Text(L10n.get("status_strava_include_other_devices_description")).font(.footnote).foregroundStyle(.secondary)
+                        }
                         // PRIVACY-SYNC: the default of "Upload to Strava" for recordings on the phone (shared StravaSettingsStore).
                         Toggle(L10n.get("status_strava_upload_phone"), isOn: Binding(
                             get: { companion.stravaUploadPhoneRecordings },
@@ -1482,8 +1540,13 @@ struct SettingsStravaPage: View {
                     } footer: {
                         Text(L10n.get("status_strava_body"))
                     }
+                    let hidden = companion.hiddenCount([SettingsItem.stravaBackfill, SettingsItem.stravaIncludeOtherDevices])
+                    if !companion.showAllDetails && (revealed || hidden > 0) {
+                        Section { ShowDetailsButton(revealed: $revealed, hidden: hidden) }
+                    }
                 }
         }
+        .environment(\.detailsRevealed, revealed || outerRevealed)
         .homeTitle("Strava")
         .disabled(companion.stravaBusy != nil)
         .overlay {
@@ -1503,6 +1566,9 @@ struct SettingsStravaPage: View {
 
 struct SettingsDiaryPage: View {
     @EnvironmentObject var companion: Companion
+    /// "Show details" on this page (simple mode); a search hit arrives revealed.
+    @State private var revealed = false
+    @Environment(\.detailsRevealed) private var outerRevealed
 
     var body: some View {
         Form {
@@ -1519,6 +1585,7 @@ struct SettingsDiaryPage: View {
                             Text(L10n.get("status_diary_issue_title")).foregroundStyle(.red)
                             Text(companion.diaryIssue).font(.footnote).foregroundStyle(.secondary)
                         }
+                        Detail(SettingsItem.destinationOptions) {
                         Toggle(L10n.get("ios_diary_auto"), isOn: Binding(
                             get: { companion.diarySettings.autoUpdate },
                             set: { companion.setDiaryAutoUpdate($0) }
@@ -1542,6 +1609,7 @@ struct SettingsDiaryPage: View {
                             get: { companion.diarySettings.compactDiary },
                             set: { companion.setDiaryCompact($0) }
                         ))
+                        }
                         Button(L10n.get("ios_diary_write_7")) { Task { await companion.writeDiary(days: 7) } }
                             .disabled(companion.syncing)
                     } else {
@@ -1554,17 +1622,28 @@ struct SettingsDiaryPage: View {
                     }
                 }
                 .disabled(companion.diaryBusy)
+                if companion.diaryConnected {
+                    let hidden = companion.hiddenCount([SettingsItem.destinationOptions])
+                    if !companion.showAllDetails && (revealed || hidden > 0) {
+                        Section { ShowDetailsButton(revealed: $revealed, hidden: hidden) }
+                    }
+                }
         }
+        .environment(\.detailsRevealed, revealed || outerRevealed)
         .homeTitle(L10n.get("status_diary_label"))
     }
 }
 
 struct SettingsLogsPage: View {
     @EnvironmentObject var companion: Companion
+    /// "Show details" on this page (simple mode); a search hit arrives revealed.
+    @State private var revealed = false
+    @Environment(\.detailsRevealed) private var outerRevealed
 
     var body: some View {
         Form {
                 Section(L10n.get("status_data_logs_heading")) {
+                    Detail(SettingsItem.dataLogs) {
                     NavigationLink(L10n.get("status_view_diary_log")) {
                         LogScreen(title: L10n.get("diary_work_log_title"), kind: .diary)
                     }
@@ -1577,12 +1656,18 @@ struct SettingsLogsPage: View {
                     NavigationLink(L10n.get("status_view_strava_api_usage")) { StravaApiUsageScreen() }
                     NavigationLink(L10n.get("status_view_recording_boosts")) { RecordingBoostScreen() }
                     NavigationLink(L10n.get("ios_developer_log")) { DeveloperLogScreen() }
+                    }
                     ShareLink(item: LogFile(companion: companion, kinds: [.activityHistory, .watchTransfers, .stravaApi, .diary, .app]),
                               preview: SharePreview(L10n.get("log_share_all"))) {
                         Label(L10n.get("log_share_all"), systemImage: "square.and.arrow.up")
                     }
                 }
+                let hidden = companion.hiddenCount([SettingsItem.dataLogs])
+                if !companion.showAllDetails && (revealed || hidden > 0) {
+                    Section { ShowDetailsButton(revealed: $revealed, hidden: hidden) }
+                }
         }
+        .environment(\.detailsRevealed, revealed || outerRevealed)
         .homeTitle(L10n.get("status_data_logs_heading"))
     }
 }

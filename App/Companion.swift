@@ -64,6 +64,10 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var reviewNewActivities = true
     @Published private(set) var reviewImportedActivities = false
     @Published private(set) var syncAutomatically = true
+    /// "Show all details" (Settings › App): false is simple mode (Companion repo, design/simple-and-expert-mode.md).
+    @Published private(set) var showAllDetails = true
+    /// The tab the app opens on and a title tap returns to: "GO", "ACTIVITIES" or "TRENDS" (shared `StartScreen`).
+    @Published private(set) var startScreen = "ACTIVITIES"
     /// The alert shown now; further messages wait in `queuedMessages` (use `post`).
     /// The activity a tapped notification asks to show; the Activities tab opens it and clears this.
     @Published var openActivityId: String?
@@ -143,6 +147,8 @@ final class Companion: NSObject, ObservableObject {
         reviewNewActivities = core.reviewNewActivities()
         reviewImportedActivities = core.reviewImportedActivities()
         syncAutomatically = core.syncAutomatically()
+        showAllDetails = core.showAllDetails()
+        startScreen = core.startScreen()
         // An unfinished recording on the phone an earlier run left: offered for save or discard.
         Task { await phone.attach(self) }
     }
@@ -1339,6 +1345,28 @@ final class Companion: NSObject, ObservableObject {
         do { try await core.removeDemoData() } catch { report(error) }
         refreshWatchSettings()
         await refresh()
+    }
+
+    /// Switches simple and expert mode; only what is shown changes, and the watch menus follow.
+    func setShowAllDetails(_ on: Bool) {
+        core.setShowAllDetails(on: on)
+        showAllDetails = core.showAllDetails()
+    }
+
+    /// Whether the settings block [item] is shown in the current mode (its level is declared in shared `SettingsItem`).
+    func shows(_ item: SettingsItem) -> Bool { core.shows(item: item) }
+
+    /// Takes effect at the next start (as on Android); a title tap goes there at once.
+    func setStartScreen(_ name: String) {
+        core.setStartScreen(name: name)
+        startScreen = core.startScreen()
+    }
+
+    /// GO's "Distance, last 7 days": metres per sport family, largest first.
+    func weekDistance() async -> [FamilyDistance] {
+        let now = Int64(Date().timeIntervalSince1970)
+        let offset = Int32(TimeZone.current.secondsFromGMT())
+        return (try? await core.weekDistance(nowEpochSec: now, utcOffsetSec: offset)) ?? []
     }
 
     func setReviewNewActivities(_ on: Bool) {

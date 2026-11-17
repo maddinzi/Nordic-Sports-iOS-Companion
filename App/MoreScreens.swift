@@ -12,6 +12,28 @@ struct WatchSettingsScreen: View {
     @EnvironmentObject var companion: Companion
     /// Watch settings that cost extra watch battery (Sensor Records, Instant Mode): their own section.
     static let batteryKeys: Set<String> = ["RecordingBoostEnabled", "InstantMode"]
+    /// "Show details" (simple mode, Companion design/simple-and-expert-mode.md): expert rows and blocks until the page is left.
+    @State private var revealed = false
+    @Environment(\.detailsRevealed) private var outerRevealed
+
+    /// Expert rows show in expert mode, on a revealed page, or for a search hit. Values are never touched.
+    private func shown(_ item: WatchSettingItem) -> Bool {
+        !item.expert || companion.showAllDetails || revealed || outerRevealed
+    }
+
+    /// The expert settings and blocks this watch leaves out now, and how many of those settings differ from the default.
+    private func hidden(_ watch: WatchSettingsView) -> (count: Int, changed: Int) {
+        if companion.showAllDetails || revealed || outerRevealed { return (0, 0) }
+        let settings = watch.groups.flatMap { $0.items }.filter { $0.expert }
+        var blocks: [SettingsItem] = []
+        if watch.sensorProgram != nil { blocks.append(SettingsItem.watchSensorProgram) }
+        if watch.hrStrap != nil { blocks.append(SettingsItem.watchHrStrap) }
+        if watch.sportAuto != nil { blocks.append(SettingsItem.watchSportAuto) }
+        if !watch.dataFieldGroups.isEmpty || !watch.intervalSlots.isEmpty || !watch.routineSlots.isEmpty {
+            blocks.append(SettingsItem.watchSettingsShare)
+        }
+        return (settings.count + companion.hiddenCount(blocks), settings.filter { $0.changed }.count)
+    }
 
     var body: some View {
         Form {
@@ -21,9 +43,12 @@ struct WatchSettingsScreen: View {
             }
             ForEach(companion.watchSettings, id: \.deviceId) { watch in
                 Section {
-                    Text(String(format: L10n.get("watch_settings_as_of"), Format.dateOrTimeToday(watch.reportedAtEpochSec)))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    Detail(SettingsItem.watchSyncDetails) {
+                        Text(String(format: L10n.get("watch_settings_as_of"), Format.dateOrTimeToday(watch.reportedAtEpochSec)))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    // Waiting changes and the stuck-link hint are problems: never hidden.
                     if watch.pendingCount > 0 {
                         Text(L10n.plural("watch_settings_waiting", Int(watch.pendingCount)))
                             .font(.footnote)
@@ -35,7 +60,9 @@ struct WatchSettingsScreen: View {
                                 .foregroundStyle(.red)
                         }
                     }
-                    Button(L10n.get("watch_settings_refresh")) { companion.askWatchAgain(deviceId: watch.deviceId) }
+                    Detail(SettingsItem.watchRefresh) {
+                        Button(L10n.get("watch_settings_refresh")) { companion.askWatchAgain(deviceId: watch.deviceId) }
+                    }
                     if let sync = watch.sync {
                         WatchSyncRow(sync: sync)
                     }
@@ -50,40 +77,51 @@ struct WatchSettingsScreen: View {
                     }
                     // The Sensor Record program (a watch that reports one, 0.9.126+; Android: a block on the watch page).
                     if watch.sensorProgram != nil {
-                        NavigationLink(L10n.get("watch_sensor_program_title")) { WatchSensorProgramScreen(deviceId: watch.deviceId) }
+                        Detail(SettingsItem.watchSensorProgram) {
+                            NavigationLink(L10n.get("watch_sensor_program_title")) { WatchSensorProgramScreen(deviceId: watch.deviceId) }
+                        }
                     }
                     // Skill level per sport right after the strength routines (a watch that reports them, 0.9.118+).
                     if let skillLevel = watch.skillLevel {
                         NavigationLink(skillLevel.title) { WatchSkillLevelScreen(deviceId: watch.deviceId) }
                     }
                     if !watch.dataFieldGroups.isEmpty || !watch.intervalSlots.isEmpty || !watch.routineSlots.isEmpty {
-                        NavigationLink { WatchShareScreen(deviceId: watch.deviceId) } label: {
-                            Label(L10n.get("watch_share_title"), systemImage: "square.and.arrow.up")
+                        Detail(SettingsItem.watchSettingsShare) {
+                            NavigationLink { WatchShareScreen(deviceId: watch.deviceId) } label: {
+                                Label(L10n.get("watch_share_title"), systemImage: "square.and.arrow.up")
+                            }
                         }
                     }
                 } header: {
                     Text(watch.watchName)
                 }
                 if let hr = watch.hrStrap {
-                    Section(hr.title) {
-                        Text(hr.status).foregroundStyle(hr.notFound ? Color.red : Color.primary)
-                        Text(hr.checked).font(.footnote).foregroundStyle(.secondary)
-                        ForEach(hr.lines, id: \.label) { line in
-                            LabeledContent(line.label, value: line.value)
+                    Detail(SettingsItem.watchHrStrap) {
+                        Section(hr.title) {
+                            Text(hr.status).foregroundStyle(hr.notFound ? Color.red : Color.primary)
+                            Text(hr.checked).font(.footnote).foregroundStyle(.secondary)
+                            ForEach(hr.lines, id: \.label) { line in
+                                LabeledContent(line.label, value: line.value)
+                            }
                         }
                     }
                 }
                 ForEach(watch.groups, id: \.title) { group in
                     let instantOn = watch.groups.flatMap { $0.items }.contains { $0.key == "InstantMode" && $0.value != 0 }
-                    let battery = group.items.filter { Self.batteryKeys.contains($0.key) }
-                    Section(group.title) {
-                        ForEach(group.items.filter { !Self.batteryKeys.contains($0.key) }, id: \.key) { item in
-                            WatchSettingRow(deviceId: watch.deviceId, item: item, instantModeOn: instantOn)
-                        }
-                        // Auto lap and auto pause per sport end the Recording group, next to the main settings
-                        // (only a watch that reports per-sport values, 0.9.117+).
-                        if group.title == L10n.get("watch_group_recording"), let auto = watch.sportAuto {
-                            NavigationLink(auto.title) { WatchSportAutoScreen(deviceId: watch.deviceId) }
+                    let rows = group.items.filter { !Self.batteryKeys.contains($0.key) && shown($0) }
+                    let battery = group.items.filter { Self.batteryKeys.contains($0.key) && shown($0) }
+                    let sportAuto = group.title == L10n.get("watch_group_recording") ? watch.sportAuto : nil
+                    let autoShown = sportAuto != nil && (companion.showAllDetails || revealed || outerRevealed || companion.shows(SettingsItem.watchSportAuto))
+                    if !rows.isEmpty || autoShown {
+                        Section(group.title) {
+                            ForEach(rows, id: \.key) { item in
+                                WatchSettingRow(deviceId: watch.deviceId, item: item, instantModeOn: instantOn)
+                            }
+                            // Auto lap and auto pause per sport end the Recording group, next to the main settings
+                            // (only a watch that reports per-sport values, 0.9.117+).
+                            if autoShown, let auto = sportAuto {
+                                NavigationLink(auto.title) { WatchSportAutoScreen(deviceId: watch.deviceId) }
+                            }
                         }
                     }
                     // The settings that cost extra watch battery in a section of their own, right after their
@@ -95,7 +133,7 @@ struct WatchSettingsScreen: View {
                                 // The phone's own motion record runs alongside each watch Sensor Record, so its
                                 // switch stands right below that one (a phone setting, the same for every watch).
                                 if item.key == "RecordingBoostEnabled" && PhoneMotionCapture.isAvailable {
-                                    PhoneMotionSettingsRows()
+                                    Detail(SettingsItem.watchPhoneMotion) { PhoneMotionSettingsRows() }
                                 }
                             }
                         } header: {
@@ -105,7 +143,16 @@ struct WatchSettingsScreen: View {
                     }
                 }
             }
+            // One "Show details" for the page (plan section 5), naming hidden settings that differ from the default.
+            let left = companion.watchSettings.map { hidden($0) }
+            let count = left.reduce(0) { $0 + $1.count }
+            if !companion.showAllDetails && (revealed || count > 0) {
+                Section {
+                    ShowDetailsButton(revealed: $revealed, hidden: count, changed: left.reduce(0) { $0 + $1.changed })
+                }
+            }
         }
+        .environment(\.detailsRevealed, revealed || outerRevealed)
         .homeTitle(L10n.get("settings_tile_watch"))
         .onAppear { companion.refreshWatchSettings() }
     }

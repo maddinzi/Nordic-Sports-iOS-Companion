@@ -327,20 +327,7 @@ struct TrendsScreen: View {
         .buttonStyle(.plain)
     }
 
-    private func familyName(_ f: String) -> String {
-        switch f {
-        case "ALL": return L10n.get("trends_family_all")
-        case "XC": return L10n.get("trends_family_xc")
-        case "ROLLSKI": return L10n.get("trends_family_rollski")
-        case "RUNNING": return L10n.get("trends_family_running")
-        case "INLINE": return L10n.get("trends_family_inline")
-        case "WALK": return L10n.get("phone_family_walk")
-        case "SWIM": return L10n.get("watch_preset_swim")
-        case "STRENGTH": return L10n.get("trends_family_strength")
-        case "MOBILITY": return L10n.get("trends_family_mobility")
-        default: return L10n.get("trends_family_other")
-        }
-    }
+    private func familyName(_ f: String) -> String { trendFamilyName(f) }
 
     // MARK: Key numbers
 
