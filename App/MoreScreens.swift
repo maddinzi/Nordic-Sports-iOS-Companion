@@ -2190,7 +2190,7 @@ struct FeedbackScreen: View {
                         }
                     }
                 }
-                if boost {
+                if boost && companion.shown(SettingsItem.feedbackSensorRecords) {
                     FeedbackBoostSection(attached: $attached, tooLargeFile: tooLargeFile,
                                          showPicker: $showBoostPicker, editing: $editingBoost)
                 }

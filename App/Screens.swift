@@ -54,6 +54,7 @@ struct RootView: View {
                 .tabItem { Label(L10n.get("status_title"), systemImage: "gearshape") }
                 .tag(1)
         }
+        .environment(\.showAllDetails, companion.showAllDetails)
         // A tapped notification shows its activity on the first tab.
         .onChange(of: companion.openActivityId) { _, id in
             if id != nil { tab = 0 }
@@ -235,6 +236,7 @@ struct ActivitiesScreen: View {
             Group {
                 if companion.activities.isEmpty && companion.liveActivities.isEmpty && companion.crashReports.isEmpty {
                     VStack(spacing: 0) {
+                    BusyBanner().padding(.horizontal)
                     if companion.showSetupTip { SetupTips().padding() }
                     ContentUnavailableView {
                         Label(companion.nickname.isEmpty
@@ -248,6 +250,9 @@ struct ActivitiesScreen: View {
                 } else {
                     let open = openItems
                     List {
+                        if companion.busyKind != nil || companion.busyResult != nil {
+                            Section { BusyBanner() }
+                        }
                         if let status = companion.syncStatus, SyncStatusCard.reports(status, reviewing: !open.isEmpty) {
                             let review = open
                             Section {
@@ -272,7 +277,7 @@ struct ActivitiesScreen: View {
                                 if let report = companion.crashReports.first {
                                     WatchCrashCard(report: report)
                                 }
-                                if let reminder = companion.boostReminders.first {
+                                if let reminder = companion.boostReminders.first, companion.shown(SettingsItem.sensorRecords) {
                                     BoostReminderCard(reminder: reminder, more: companion.boostReminders.count - 1)
                                 }
                             }
@@ -351,19 +356,8 @@ struct ActivitiesScreen: View {
                     .environmentObject(companion)
             }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        // A recording runs already: back to it.
-                        if companion.phone.view != nil { recordLive = true } else { choosing = true }
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .accessibilityLabel(L10n.get("add_activity_title"))
-                }
-                // How recently a watch talked to the phone (Android: left of the settings button); tap for the watch page.
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink { SettingsWatchPage() } label: { WatchContactMark() }
-                }
+                // No "+" and no watch contact mark (Companion design/simple-and-expert-mode.md, section 8c): GO's Record
+                // tile starts or adds an activity; WatchContactMark stays in code.
                 // Android's chat icon next to settings: feedback one tap away, not only under Settings › Privacy.
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
@@ -409,6 +403,8 @@ struct WatchLiveCard: View {
     private static let liveRed = Color(red: 0xE5 / 255, green: 0x39 / 255, blue: 0x35 / 255)
     /// Recordings whose screen opened by itself already (once per recording and app run, as on Android).
     private static var autoOpened = Set<Int64>()
+    /// Sensor Record lines are a detail (shared `SettingsItem.SENSOR_RECORDS`).
+    private var shownBursts: [BurstRef] { companion.shown(SettingsItem.sensorRecords) ? bursts : [] }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -433,7 +429,7 @@ struct WatchLiveCard: View {
                     Text(String(format: "%.4f, %.4f", live.lat, live.lon)).font(.footnote).foregroundStyle(.secondary)
                 }
                 // One line per Sensor Record: a tap opens its charts directly, back returns to this card.
-                ForEach(bursts, id: \.id) { burst in
+                ForEach(shownBursts, id: \.id) { burst in
                     let time = Date(timeIntervalSince1970: TimeInterval(burst.burstId)).formatted(date: .omitted, time: .shortened)
                     Button { onOpenBurst(burst.id) } label: {
                         Label(String(format: L10n.get("burst_live_item"), time), systemImage: "chart.xyaxis.line")
@@ -1065,7 +1061,9 @@ struct ActivityDetailScreen: View {
                 Section { LabeledContent(L10n.get("activity_detail_device_label"), value: item.watch) }
             }
             Section {
-                NavigationLink(L10n.get("activity_change_log_title")) { ActivityLogScreen(activityId: item.id) }
+                Detail(SettingsItem.activityLogLink) {
+                    NavigationLink(L10n.get("activity_change_log_title")) { ActivityLogScreen(activityId: item.id) }
+                }
                 Button(L10n.get("activity_detail_delete_confirm_button"), role: .destructive) { confirmingDelete = true }
                     .disabled(companion.syncing)
             }
@@ -1584,6 +1582,7 @@ struct SettingsDiaryPage: View {
                         if !companion.diaryIssue.isEmpty {
                             Text(L10n.get("status_diary_issue_title")).foregroundStyle(.red)
                             Text(companion.diaryIssue).font(.footnote).foregroundStyle(.secondary)
+                            ProblemDetails(text: companion.diaryIssueDetail)
                         }
                         Detail(SettingsItem.destinationOptions) {
                         Toggle(L10n.get("ios_diary_auto"), isOn: Binding(
@@ -1964,6 +1963,7 @@ struct SyncStatusCard: View {
                         Label(line.text, systemImage: "exclamationmark.circle").font(.subheadline).foregroundStyle(.orange)
                     }
                 }
+                ProblemDetails(text: [status.stravaIssueDetail, status.diaryIssueDetail].filter { !$0.isEmpty }.joined(separator: "\n"))
                 // The activities to declare share this card (Android: the review line in the problem box).
                 if !toReview.isEmpty {
                     HStack {

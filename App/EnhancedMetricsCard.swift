@@ -386,6 +386,9 @@ struct EnhancedMetricsCard: View {
     @Environment(\.chartRegistry) private var outerRegistry
 
     private var isRun: Bool { view.kind == "run" }
+    @Environment(\.showAllDetails) private var showAll
+    /// Running efficiency and heart-rate variability (shared `SettingsItem.METRICS_HR_DETAIL`).
+    private var hrDetail: Bool { SettingsItem.metricsHrDetail.shown(all: showAll) }
 
     var body: some View {
         Group {
@@ -405,7 +408,7 @@ struct EnhancedMetricsCard: View {
 
     @ViewBuilder private var sections: some View {
             if shows(isRun ? .heartRate : .technique) {
-            if !view.headline.isEmpty {
+            if !view.headline.isEmpty && (!isRun || hrDetail) {
                 section(L10n.get(isRun ? "em_run_eff_title" : "em_poling_title")) {
                     tiles(view.headline)
                     if !isRun, let id = openChart, let chart = view.charts.first(where: { $0.id == id }) {
@@ -414,7 +417,7 @@ struct EnhancedMetricsCard: View {
                 }
             }
             }
-            if shows(.form) {
+            if shows(.form) && SettingsItem.metricsForm.shown(all: showAll) {
             if isRun, !view.form.isEmpty || view.balanceLeft > 0 {
                 section(L10n.get("em_form_title"), badge: sourceName) {
                     tiles(view.form)
@@ -520,9 +523,9 @@ struct EnhancedMetricsCard: View {
             }
             }
             if shows(.heartRate) {
-            if !view.hrv.isEmpty || hasHrZones {
-                section(L10n.get("em_hrv_title"), badge: view.hrv.isEmpty ? nil : hrvSourceName) {
-                    if !view.hrv.isEmpty {
+            if (!view.hrv.isEmpty && hrDetail) || hasHrZones {
+                section(L10n.get("em_hrv_title"), badge: view.hrv.isEmpty || !hrDetail ? nil : hrvSourceName) {
+                    if !view.hrv.isEmpty && hrDetail {
                         tiles(view.hrv)
                         Text(L10n.get("em_hrv_note")).font(.caption).foregroundStyle(tone.subtitle)
                     }

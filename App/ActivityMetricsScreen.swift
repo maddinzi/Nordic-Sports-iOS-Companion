@@ -38,7 +38,17 @@ struct ActivityMetricsScreen: View {
     private var themes: [MetricsTheme] {
         var out: [MetricsTheme] = []
         if hasLegacyLines { out.append(.legacy) }
-        if let metrics = current.enhancedMetrics { out += metrics.themes.map { MetricsTheme.enhanced($0) } }
+        if let metrics = current.enhancedMetrics {
+            // Simple mode: no Form page; the heart rate page only with zones (efficiency and HRV are details).
+            let zones = metrics.hrZones.contains { Double(truncating: $0) > 0 } || !metrics.zoneGroups.isEmpty
+            out += metrics.themes.filter { theme in
+                switch theme {
+                case .form: return companion.shown(SettingsItem.metricsForm)
+                case .heartRate: return zones || companion.shown(SettingsItem.metricsHrDetail)
+                default: return true
+                }
+            }.map { MetricsTheme.enhanced($0) }
+        }
         // A stored track gives the Timeline theme its map and time chart, also without blocks (Android `dashboardPages(hasTrack)`).
         if track?.series != nil && !out.contains(.enhanced(.timeline)) { out.append(.track) }
         // The guided pages (Android: SETS, STEPS, LAPS), from the watch's tables or a phone recording.
@@ -132,7 +142,8 @@ struct ActivityMetricsScreen: View {
         if !current.watch.isEmpty { facts.append((L10n.get("activity_detail_device_label"), current.watch)) }
         if let wrist = wristText(current) { facts.append((L10n.get("activity_detail_watch_wrist_label"), wrist)) }
         if !current.locationName.isEmpty { facts.append((L10n.get("activity_detail_location_label"), current.locationName)) }
-        // The watch app, its firmware and when the phone got the activity (Android: the same lines).
+        // The watch app, its firmware and when the phone got the activity (Android: the same lines); a detail.
+        guard companion.shown(SettingsItem.metricsDeviceFacts) else { return facts }
         let app = [current.watchAppVersion, current.watchBuild].filter { !$0.isEmpty }.joined(separator: " · ")
         if !app.isEmpty { facts.append((L10n.get("activity_detail_watch_app_label"), app)) }
         let firmware = ([current.watchFirmware].filter { !$0.isEmpty } + (current.watchCiqVersion.isEmpty ? [] : ["Connect IQ \(current.watchCiqVersion)"]))

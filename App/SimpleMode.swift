@@ -64,3 +64,80 @@ struct ShowDetailsButton: View {
         return String(format: L10n.get("settings_show_details"), hidden)
     }
 }
+
+private struct ShowAllDetailsKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    /// "Show all details" for views that do not hold the Companion (cards, charts); set at the root. The default shows
+    /// everything, so a view outside the root never hides anything.
+    var showAllDetails: Bool {
+        get { self[ShowAllDetailsKey.self] }
+        set { self[ShowAllDetailsKey.self] = newValue }
+    }
+}
+
+extension SettingsItem {
+    /// Whether this block is shown: always with all details, else only at the simple level.
+    func shown(all: Bool) -> Bool { all || level == UiLevel.simple }
+}
+
+extension Companion {
+    /// Whether [item] is shown in the current mode (no page reveal; pages use `Detail`).
+    func shown(_ item: SettingsItem) -> Bool { showAllDetails || shows(item) }
+}
+
+/// The busy line (plan section 7, Android `BusyBanner`): while the app works with another system, one short line rotates
+/// through the kind's variants every 2.5 s (`busy_<kind>`, variants split by "|", the plain one first); then the plain
+/// result for 3 s when something changed. Screen readers get the plain variant only.
+struct BusyBanner: View {
+    @EnvironmentObject var companion: Companion
+
+    var body: some View {
+        if let key = companion.busyKind {
+            let variants = L10n.get(key).split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            let plain = variants.first ?? ""
+            HStack(spacing: 12) {
+                ProgressView()
+                TimelineView(.periodic(from: .now, by: 2.5)) { context in
+                    let index = variants.count > 1 ? Int(context.date.timeIntervalSinceReferenceDate / 2.5) % variants.count : 0
+                    Text(variants.isEmpty ? "" : variants[index])
+                        .contentTransition(.opacity)
+                        .animation(.easeInOut, value: index)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(plain)
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 4)
+        } else if let changes = companion.busyResult {
+            Label(String(format: L10n.get("busy_done_changes"), changes), systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .padding(.vertical, 4)
+                .task {
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    companion.busyResult = nil
+                }
+        }
+    }
+}
+
+/// "Details" under a plain problem sentence (plan section 6): the exact technical text on a tap; nothing when empty.
+struct ProblemDetails: View {
+    let text: String
+    @State private var open = false
+
+    var body: some View {
+        if !text.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Button(L10n.get(open ? "problem_details_hide" : "problem_details")) { open.toggle() }
+                    .font(.footnote)
+                    .buttonStyle(.borderless)
+                if open {
+                    Text(text).font(.footnote).foregroundStyle(.secondary).textSelection(.enabled)
+                }
+            }
+        }
+    }
+}

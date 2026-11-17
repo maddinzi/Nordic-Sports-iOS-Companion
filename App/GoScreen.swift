@@ -31,6 +31,8 @@ struct GoScreen: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    // The busy line while the app syncs, then its plain result (plan sections 7 and 8b, point 5).
+                    BusyBanner()
                     statusLine
                     ForEach(companion.liveActivities, id: \.deviceId) { live in
                         WatchLiveCard(live: live) { burstRoute = BurstRoute(id: $0) }

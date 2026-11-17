@@ -94,6 +94,7 @@ struct ActivityCard: View {
     var stravaConnected = false
     var diaryConnected = false
     let onOpen: (ActivityTarget) -> Void
+    @Environment(\.showAllDetails) private var showAll
 
     private var entryColor: Color {
         switch item.entryStatus {
@@ -162,7 +163,7 @@ struct ActivityCard: View {
             ].compactMap { $0 }.joined(separator: " · ")
             chip(numbers.isEmpty ? L10n.get("card_lane_metrics") : numbers, symbol: "chart.bar.fill") { onOpen(.data) }
         }
-        if item.sensorRecordCount > 0 {
+        if item.sensorRecordCount > 0 && SettingsItem.sensorRecords.shown(all: showAll) {
             chip("\(item.sensorRecordCount)", symbol: "dot.radiowaves.left.and.right") { onOpen(.sensor) }
         }
     }

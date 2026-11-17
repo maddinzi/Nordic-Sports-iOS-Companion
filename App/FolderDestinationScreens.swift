@@ -253,6 +253,7 @@ struct FolderDestinationPage: View {
     private func status(_ d: DestinationView) -> some View {
         if !d.issue.isEmpty {
             Text(d.issue).foregroundStyle(.red)
+            ProblemDetails(text: d.issueDetail)
         } else if !d.enabled {
             Text(L10n.get("destination_status_paused")).foregroundStyle(.secondary)
         } else if d.waiting > 0 {
