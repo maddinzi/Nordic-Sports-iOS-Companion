@@ -83,11 +83,6 @@ extension SettingsItem {
     func shown(all: Bool) -> Bool { level.shownAt(current: all ? UiLevel.expert : UiLevel.simple) }
 }
 
-extension Companion {
-    /// Whether [item] is shown in the current mode (no page reveal; pages use `Detail`).
-    func shown(_ item: SettingsItem) -> Bool { showAllDetails || shows(item) }
-}
-
 /// The busy line (plan section 7, Android `BusyBanner`): while the app works with another system, one short line rotates
 /// through the kind's variants every 2.5 s (`busy_<kind>`, variants split by "|", the plain one first); then the plain
 /// result for 3 s when something changed. Screen readers get the plain variant only.

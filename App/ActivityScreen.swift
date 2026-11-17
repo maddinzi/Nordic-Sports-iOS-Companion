@@ -36,7 +36,7 @@ struct ActivityScreen: View {
     }
 
     /// Sensor Records are a detail (shared `SettingsItem.SENSOR_RECORDS`): simple mode has no Sensor mode.
-    private var shownBursts: [RecordingBoostView] { companion.shown(SettingsItem.sensorRecords) ? bursts : [] }
+    private var shownBursts: [RecordingBoostView] { companion.shows(SettingsItem.sensorRecords) ? bursts : [] }
 
     /// The row as the list has it now.
     private var current: ActivityItem { companion.activities.first { $0.id == item.id } ?? item }
