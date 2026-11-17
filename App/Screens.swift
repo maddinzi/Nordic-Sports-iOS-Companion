@@ -283,7 +283,7 @@ struct ActivitiesScreen: View {
                                 if let report = companion.crashReports.first {
                                     WatchCrashCard(report: report)
                                 }
-                                if let reminder = companion.boostReminders.first, companion.shown(SettingsItem.sensorRecords) {
+                                if let reminder = companion.boostReminders.first, companion.shows(SettingsItem.sensorRecords) {
                                     BoostReminderCard(reminder: reminder, more: companion.boostReminders.count - 1)
                                 }
                             }
@@ -410,7 +410,7 @@ struct WatchLiveCard: View {
     /// Recordings whose screen opened by itself already (once per recording and app run, as on Android).
     private static var autoOpened = Set<Int64>()
     /// Sensor Record lines are a detail (shared `SettingsItem.SENSOR_RECORDS`).
-    private var shownBursts: [BurstRef] { companion.shown(SettingsItem.sensorRecords) ? bursts : [] }
+    private var shownBursts: [BurstRef] { companion.shows(SettingsItem.sensorRecords) ? bursts : [] }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in

@@ -43,8 +43,8 @@ struct ActivityMetricsScreen: View {
             let zones = metrics.hrZones.contains { Double(truncating: $0) > 0 } || !metrics.zoneGroups.isEmpty
             out += metrics.themes.filter { theme in
                 switch theme {
-                case .form: return companion.shown(SettingsItem.metricsForm)
-                case .heartRate: return zones || companion.shown(SettingsItem.metricsHrDetail)
+                case .form: return companion.shows(SettingsItem.metricsForm)
+                case .heartRate: return zones || companion.shows(SettingsItem.metricsHrDetail)
                 default: return true
                 }
             }.map { MetricsTheme.enhanced($0) }
@@ -143,7 +143,7 @@ struct ActivityMetricsScreen: View {
         if let wrist = wristText(current) { facts.append((L10n.get("activity_detail_watch_wrist_label"), wrist)) }
         if !current.locationName.isEmpty { facts.append((L10n.get("activity_detail_location_label"), current.locationName)) }
         // The watch app, its firmware and when the phone got the activity (Android: the same lines); a detail.
-        guard companion.shown(SettingsItem.metricsDeviceFacts) else { return facts }
+        guard companion.shows(SettingsItem.metricsDeviceFacts) else { return facts }
         let app = [current.watchAppVersion, current.watchBuild].filter { !$0.isEmpty }.joined(separator: " · ")
         if !app.isEmpty { facts.append((L10n.get("activity_detail_watch_app_label"), app)) }
         let firmware = ([current.watchFirmware].filter { !$0.isEmpty } + (current.watchCiqVersion.isEmpty ? [] : ["Connect IQ \(current.watchCiqVersion)"]))
