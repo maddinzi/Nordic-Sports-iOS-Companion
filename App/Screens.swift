@@ -1177,10 +1177,12 @@ struct SettingsScreen: View {
                  words: ["sync_mode_option_automated", "sync_mode_option_manual", "ios_last_sync"].map(L10n.get),
                  destination: AnyView(SettingsSyncPage())),
             Page(id: "app", title: L10n.get("settings_group_app"),
-                 words: ["ui_show_all_details", "start_screen_title", "nickname_label", "settings_review_new_activities", "status_place_names_switch", "language_section_title", "theme_section_title"].map(L10n.get),
+                 words: ["ui_show_all_details", "start_screen_title", "nickname_label", "my_sports_title", "settings_review_new_activities",
+                         "language_section_title", "theme_section_title", "demo_section_title"].map(L10n.get),
                  destination: AnyView(SettingsAppPage())),
             Page(id: "privacy", title: L10n.get("settings_page_privacy"),
-                 words: ["status_download_my_data", "status_delete_my_data", "feedback_title"].map(L10n.get),
+                 words: ["status_place_names_switch", "status_weather_switch", "status_download_my_data", "status_delete_my_data",
+                         "feedback_title"].map(L10n.get),
                  destination: AnyView(SettingsPrivacyPage())),
             Page(id: "logs", title: L10n.get("status_data_logs_heading"),
                  words: ["status_view_diary_log", "status_view_app_log", "ios_transfer_log", "status_view_strava_api_usage", "status_view_recording_boosts"].map(L10n.get),
@@ -1310,42 +1312,22 @@ struct SettingsAppPage: View {
     @AppStorage("themeChoice") private var themeChoice = ""
 
     var body: some View {
+        // Four sections as on Android (2026-11-18): You, Display, New activities, Demo. Place names and weather are on
+        // the Privacy page (what leaves the phone), as on Android.
         Form {
-                // Simple or expert mode: always shown, the way back to all details.
+                // You: the nickname, then the athlete's ranked sports (every sport list follows them).
                 Section {
-                    Toggle(L10n.get("ui_show_all_details"), isOn: Binding(
-                        get: { companion.showAllDetails },
-                        set: { companion.setShowAllDetails($0) }
-                    ))
-                } footer: {
-                    Text(L10n.get("ui_show_all_details_body"))
-                }
-                // Where the app opens; takes effect at the next start.
-                Section {
-                    Picker(L10n.get("start_screen_title"), selection: Binding(
-                        get: { companion.startScreen },
-                        set: { companion.setStartScreen($0) }
-                    )) {
-                        Text(L10n.get("start_screen_go")).tag("GO")
-                        Text(L10n.get("trends_tab_activities")).tag("ACTIVITIES")
-                        Text(L10n.get("trends_tab_trends")).tag("TRENDS")
-                    }
-                }
-                // The athlete's ranked sports: every sport list follows them.
-                MySportsSections()
-                Section {
-                    Picker(L10n.get("theme_section_title"), selection: $themeChoice) {
-                        Text(L10n.get("theme_option_system_default")).tag("")
-                        Text(L10n.get("theme_option_light")).tag("light")
-                        Text(L10n.get("theme_option_dark")).tag("dark")
-                    }
-                    .pickerStyle(.inline)
-                    .labelsHidden()
+                    TextField(L10n.get("nickname_label"), text: $nicknameDraft)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                        .onSubmit { companion.setNickname(nicknameDraft); nicknameDraft = companion.nickname }
+                    Text(L10n.get("nickname_body")).font(.footnote).foregroundStyle(.secondary)
                 } header: {
-                    Text(L10n.get("theme_section_title"))
+                    Text(L10n.get("settings_section_you"))
                 }
-                // One compact menu row with flag and the language's own name (Android `LanguageDropdown`, 2026-11-18),
-                // instead of an inline row per language.
+                .onAppear { nicknameDraft = companion.nickname }
+                MySportsSections()
+                // Display: one compact menu row each; language with flag and own name (Android `LanguageDropdown`).
                 Section {
                     Picker(L10n.get("language_section_title"), selection: $languageChoice) {
                         Text("\(AppLanguage.flag("")) " + String(format: L10n.get("language_option_system_with_language"),
@@ -1355,6 +1337,34 @@ struct SettingsAppPage: View {
                         }
                     }
                     .pickerStyle(.menu)
+                    Picker(L10n.get("theme_section_title"), selection: $themeChoice) {
+                        Text(L10n.get("theme_option_system_default")).tag("")
+                        Text(L10n.get("theme_option_light")).tag("light")
+                        Text(L10n.get("theme_option_dark")).tag("dark")
+                    }
+                    .pickerStyle(.menu)
+                    // Where the app opens; takes effect at the next start.
+                    Picker(L10n.get("start_screen_title"), selection: Binding(
+                        get: { companion.startScreen },
+                        set: { companion.setStartScreen($0) }
+                    )) {
+                        Text(L10n.get("start_screen_go")).tag("GO")
+                        Text(L10n.get("trends_tab_activities")).tag("ACTIVITIES")
+                        Text(L10n.get("trends_tab_trends")).tag("TRENDS")
+                    }
+                    .pickerStyle(.menu)
+                    // Simple or expert mode: always shown, the way back to all details.
+                    Toggle(isOn: Binding(
+                        get: { companion.showAllDetails },
+                        set: { companion.setShowAllDetails($0) }
+                    )) {
+                        HStack(spacing: 6) {
+                            Text(L10n.get("ui_show_all_details"))
+                            ChartInfoButton(title: L10n.get("ui_show_all_details"), text: L10n.get("ui_show_all_details_body"))
+                        }
+                    }
+                } header: {
+                    Text(L10n.get("settings_section_display"))
                 }
                 .onChange(of: languageChoice) { _, code in
                     guard code != AppLanguage.chosen else { return }
@@ -1388,11 +1398,6 @@ struct SettingsAppPage: View {
                                 companion.languageNativeName(effective)))
                 }
                 Section {
-                    TextField(L10n.get("nickname_label"), text: $nicknameDraft)
-                        .textInputAutocapitalization(.words)
-                        .autocorrectionDisabled()
-                        .onSubmit { companion.setNickname(nicknameDraft); nicknameDraft = companion.nickname }
-                    Text(L10n.get("nickname_body")).font(.footnote).foregroundStyle(.secondary)
                     Toggle(L10n.get("settings_review_new_activities"), isOn: Binding(
                         get: { companion.reviewNewActivities },
                         set: { companion.setReviewNewActivities($0) }
@@ -1409,33 +1414,25 @@ struct SettingsAppPage: View {
                     Text(L10n.get("settings_review_imported_activities_description"))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                    Toggle(L10n.get("status_place_names_switch"), isOn: Binding(
-                        get: { companion.placeNamesEnabled },
-                        set: { companion.setPlaceNamesEnabled($0) }
-                    ))
-                    Text(L10n.get("status_place_names_body")).font(.footnote).foregroundStyle(.secondary)
-                    // PRIVACY-SYNC: "Weather for activities" (shared WeatherSettingsStore, default on): off, no weather lookup leaves the phone. Changing this? Re-check the Companion's design/privacy-notice-sync.md.
-                    Toggle(L10n.get("status_weather_switch"), isOn: Binding(
-                        get: { companion.weatherEnabled },
-                        set: { companion.setWeatherEnabled($0) }
-                    ))
-                    Text(L10n.get("status_weather_body")).font(.footnote).foregroundStyle(.secondary)
                 } header: {
-                    Text(L10n.get("settings_group_app"))
+                    Text(L10n.get("settings_new_activities_heading"))
                 }
-                .onAppear { nicknameDraft = companion.nickname }
+                // Demo (iOS has no "I use a Garmin watch" switch): what it does behind the info icon.
                 Section {
-                    Toggle(L10n.get("demo_switch"), isOn: Binding(
+                    Toggle(isOn: Binding(
                         get: { companion.demoOn },
                         set: { on in Task { if on { await companion.loadDemoData() } else { await companion.removeDemoData() } } }
-                    ))
+                    )) {
+                        HStack(spacing: 6) {
+                            Text(L10n.get("demo_switch"))
+                            ChartInfoButton(title: L10n.get("demo_section_title"), text: L10n.get("demo_section_body"))
+                        }
+                    }
                     if companion.demoOn {
                         Button(L10n.get("demo_reload")) { Task { await companion.loadDemoData() } }
                     }
                 } header: {
                     Text(L10n.get("demo_section_title"))
-                } footer: {
-                    Text(L10n.get("demo_section_body"))
                 }
                 .onDisappear { if nicknameDraft != companion.nickname { companion.setNickname(nicknameDraft) } }
         }
@@ -1697,6 +1694,20 @@ struct SettingsPrivacyPage: View {
 
     var body: some View {
         Form {
+                // What leaves the phone first (as Android's Privacy & data page, 2026-11-18), then what you can take or delete.
+                Section {
+                    Toggle(L10n.get("status_place_names_switch"), isOn: Binding(
+                        get: { companion.placeNamesEnabled },
+                        set: { companion.setPlaceNamesEnabled($0) }
+                    ))
+                    Text(L10n.get("status_place_names_body")).font(.footnote).foregroundStyle(.secondary)
+                    // PRIVACY-SYNC: "Weather for activities" (shared WeatherSettingsStore, default on): off, no weather lookup leaves the phone. Changing this? Re-check the Companion's design/privacy-notice-sync.md.
+                    Toggle(L10n.get("status_weather_switch"), isOn: Binding(
+                        get: { companion.weatherEnabled },
+                        set: { companion.setWeatherEnabled($0) }
+                    ))
+                    Text(L10n.get("status_weather_body")).font(.footnote).foregroundStyle(.secondary)
+                }
                 Section(L10n.get("status_my_data_heading")) {
                     DownloadMyDataButton()
                     NavigationLink(L10n.get("feedback_title")) { FeedbackHubScreen() }
