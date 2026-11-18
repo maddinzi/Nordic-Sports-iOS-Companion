@@ -1321,7 +1321,7 @@ struct SettingsAppPage: View {
                         .textInputAutocapitalization(.words)
                         .autocorrectionDisabled()
                         .onSubmit { companion.setNickname(nicknameDraft); nicknameDraft = companion.nickname }
-                    Text(L10n.get("nickname_body")).font(.footnote).foregroundStyle(.secondary)
+                    Text(L10n.get("settings_desc_nickname")).font(.footnote).foregroundStyle(.secondary)
                 } header: {
                     Text(L10n.get("settings_section_you"))
                 }
@@ -1329,28 +1329,34 @@ struct SettingsAppPage: View {
                 MySportsSections()
                 // Display: one compact menu row each; language with flag and own name (Android `LanguageDropdown`).
                 Section {
-                    Picker(L10n.get("language_section_title"), selection: $languageChoice) {
+                    Picker(selection: $languageChoice) {
                         Text("\(AppLanguage.flag("")) " + String(format: L10n.get("language_option_system_with_language"),
                                     companion.languageNativeName(AppLanguage.system))).tag("")
                         ForEach(AppLanguage.supported, id: \.self) { code in
                             Text("\(AppLanguage.flag(code)) \(companion.languageNativeName(code))").tag(code)
                         }
+                    } label: {
+                        SettingLabel(title: L10n.get("language_section_title"), description: L10n.get("settings_desc_app_language"))
                     }
                     .pickerStyle(.menu)
-                    Picker(L10n.get("theme_section_title"), selection: $themeChoice) {
+                    Picker(selection: $themeChoice) {
                         Text(L10n.get("theme_option_system_default")).tag("")
                         Text(L10n.get("theme_option_light")).tag("light")
                         Text(L10n.get("theme_option_dark")).tag("dark")
+                    } label: {
+                        SettingLabel(title: L10n.get("theme_section_title"), description: L10n.get("settings_desc_appearance"))
                     }
                     .pickerStyle(.menu)
                     // Where the app opens; takes effect at the next start.
-                    Picker(L10n.get("start_screen_title"), selection: Binding(
+                    Picker(selection: Binding(
                         get: { companion.startScreen },
                         set: { companion.setStartScreen($0) }
                     )) {
                         Text(L10n.get("start_screen_go")).tag("GO")
                         Text(L10n.get("trends_tab_activities")).tag("ACTIVITIES")
                         Text(L10n.get("trends_tab_trends")).tag("TRENDS")
+                    } label: {
+                        SettingLabel(title: L10n.get("start_screen_title"), description: L10n.get("settings_desc_start_screen"))
                     }
                     .pickerStyle(.menu)
                     // Simple or expert mode: always shown, the way back to all details.
@@ -1358,10 +1364,8 @@ struct SettingsAppPage: View {
                         get: { companion.showAllDetails },
                         set: { companion.setShowAllDetails($0) }
                     )) {
-                        HStack(spacing: 6) {
-                            Text(L10n.get("ui_show_all_details"))
-                            ChartInfoButton(title: L10n.get("ui_show_all_details"), text: L10n.get("ui_show_all_details_body"))
-                        }
+                        SettingLabel(title: L10n.get("ui_show_all_details"), description: L10n.get("settings_desc_show_all_details"),
+                                     info: L10n.get("ui_show_all_details_body"))
                     }
                 } header: {
                     Text(L10n.get("settings_section_display"))
@@ -1411,7 +1415,7 @@ struct SettingsAppPage: View {
                         get: { companion.reviewImportedActivities },
                         set: { companion.setReviewImportedActivities($0) }
                     ))
-                    Text(L10n.get("settings_review_imported_activities_description"))
+                    Text(L10n.get("settings_desc_review_imported"))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } header: {
@@ -1423,10 +1427,8 @@ struct SettingsAppPage: View {
                         get: { companion.demoOn },
                         set: { on in Task { if on { await companion.loadDemoData() } else { await companion.removeDemoData() } } }
                     )) {
-                        HStack(spacing: 6) {
-                            Text(L10n.get("demo_switch"))
-                            ChartInfoButton(title: L10n.get("demo_section_title"), text: L10n.get("demo_section_body"))
-                        }
+                        SettingLabel(title: L10n.get("demo_switch"), description: L10n.get("settings_desc_demo"),
+                                     info: L10n.get("demo_section_body"))
                     }
                     if companion.demoOn {
                         Button(L10n.get("demo_reload")) { Task { await companion.loadDemoData() } }
@@ -1696,17 +1698,21 @@ struct SettingsPrivacyPage: View {
         Form {
                 // What leaves the phone first (as Android's Privacy & data page, 2026-11-18), then what you can take or delete.
                 Section {
-                    Toggle(L10n.get("status_place_names_switch"), isOn: Binding(
+                    Toggle(isOn: Binding(
                         get: { companion.placeNamesEnabled },
                         set: { companion.setPlaceNamesEnabled($0) }
-                    ))
-                    Text(L10n.get("status_place_names_body")).font(.footnote).foregroundStyle(.secondary)
+                    )) {
+                        SettingLabel(title: L10n.get("status_place_names_switch"), description: L10n.get("settings_desc_place_names"),
+                                     info: L10n.get("status_place_names_body"))
+                    }
                     // PRIVACY-SYNC: "Weather for activities" (shared WeatherSettingsStore, default on): off, no weather lookup leaves the phone. Changing this? Re-check the Companion's design/privacy-notice-sync.md.
-                    Toggle(L10n.get("status_weather_switch"), isOn: Binding(
+                    Toggle(isOn: Binding(
                         get: { companion.weatherEnabled },
                         set: { companion.setWeatherEnabled($0) }
-                    ))
-                    Text(L10n.get("status_weather_body")).font(.footnote).foregroundStyle(.secondary)
+                    )) {
+                        SettingLabel(title: L10n.get("status_weather_switch"), description: L10n.get("settings_desc_weather"),
+                                     info: L10n.get("status_weather_body"))
+                    }
                 }
                 Section(L10n.get("status_my_data_heading")) {
                     DownloadMyDataButton()

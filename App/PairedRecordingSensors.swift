@@ -235,33 +235,39 @@ struct PairedRecordingSettingsRows: View {
     var body: some View {
         Group {
             Detail(SettingsItem.watchPairedRecording) {
-                Toggle(L10n.get("paired_recording_switch"), isOn: Binding(
+                // A short line on what it does; the full text and the iPhone note behind the info button (2026-11-18).
+                Toggle(isOn: Binding(
                     get: { paired },
                     set: { paired = $0; recording.setEnabled(on: $0) }
-                ))
-                Text(L10n.get("paired_recording_body")).font(.footnote).foregroundStyle(.secondary)
-                Text(L10n.get("paired_recording_ios_note")).font(.footnote).foregroundStyle(.secondary)
+                )) {
+                    SettingLabel(title: L10n.get("paired_recording_switch"), description: L10n.get("settings_desc_paired_recording"),
+                                 info: L10n.get("paired_recording_body") + "\n\n" + L10n.get("paired_recording_ios_note"))
+                }
             }
             Detail(SettingsItem.watchPairedTrack) {
                 // Shown as off until iOS allows the location: switching it on asks for it.
-                Toggle(L10n.get("paired_track_switch"), isOn: Binding(
+                Toggle(isOn: Binding(
                     get: { track && granted },
                     set: { on in
                         track = on
                         recording.setTrackEnabled(on: on)
                         if on && !granted { askForLocation() }
                     }
-                ))
+                )) {
+                    SettingLabel(title: L10n.get("paired_track_switch"), description: L10n.get("settings_desc_paired_track"),
+                                 info: L10n.get("paired_track_body_ios"))
+                }
                 .disabled(!paired)
-                Text(L10n.get("paired_track_body_ios")).font(.footnote).foregroundStyle(.secondary)
             }
             Detail(SettingsItem.watchExtendedRecording) {
-                Toggle(L10n.get("extended_recording_switch"), isOn: Binding(
+                Toggle(isOn: Binding(
                     get: { extended },
                     set: { extended = $0; recording.setExtended(on: $0) }
-                ))
+                )) {
+                    SettingLabel(title: L10n.get("extended_recording_switch"), description: L10n.get("settings_desc_extended_recording"),
+                                 info: L10n.get("extended_recording_body"))
+                }
                 .disabled(!paired)
-                Text(L10n.get("extended_recording_body")).font(.footnote).foregroundStyle(.secondary)
             }
         }
         .onAppear(perform: read)
