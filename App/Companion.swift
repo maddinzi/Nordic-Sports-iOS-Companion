@@ -1192,6 +1192,9 @@ final class Companion: NSObject, ObservableObject {
     /// The language's own name ("Rumantsch").
     func languageNativeName(_ tag: String) -> String { core.languageNativeName(languageTag: tag) }
 
+    /// The language tag of a watch Language value ("de"), "" when unknown.
+    func languageTag(ofWatchValue value: Int32) -> String { core.languageTagOfWatchValue(value: value) }
+
     /// The watches that could take the app language [tag] and do not have it yet.
     func watchesForLanguage(_ tag: String) -> [WatchLanguageTarget] { core.watchesForLanguage(languageTag: tag) }
 
@@ -1919,6 +1922,21 @@ enum AppLanguage {
     }
 
     static var current: String { supported.contains(chosen) ? chosen : system }
+
+    /// The flag shown before a language's name in the pickers (Android `AppLanguage.flag`); a globe for the system's.
+    static func flag(_ code: String) -> String {
+        switch code {
+        case "en": return "\u{1F1EC}\u{1F1E7}"
+        case "de": return "\u{1F1E9}\u{1F1EA}"
+        case "fr": return "\u{1F1EB}\u{1F1F7}"
+        case "it": return "\u{1F1EE}\u{1F1F9}"
+        case "gsw", "rm": return "\u{1F1E8}\u{1F1ED}"
+        case "nb": return "\u{1F1F3}\u{1F1F4}"
+        case "fi": return "\u{1F1EB}\u{1F1EE}"
+        case "sv": return "\u{1F1F8}\u{1F1EA}"
+        default: return "\u{1F310}"
+        }
+    }
 }
 
 enum L10n {

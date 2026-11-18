@@ -1344,18 +1344,17 @@ struct SettingsAppPage: View {
                 } header: {
                     Text(L10n.get("theme_section_title"))
                 }
+                // One compact menu row with flag and the language's own name (Android `LanguageDropdown`, 2026-11-18),
+                // instead of an inline row per language.
                 Section {
                     Picker(L10n.get("language_section_title"), selection: $languageChoice) {
-                        Text(String(format: L10n.get("language_option_system_with_language"),
-                                    L10n.get("language_name_\(AppLanguage.system)"))).tag("")
+                        Text("\(AppLanguage.flag("")) " + String(format: L10n.get("language_option_system_with_language"),
+                                    companion.languageNativeName(AppLanguage.system))).tag("")
                         ForEach(AppLanguage.supported, id: \.self) { code in
-                            Text(L10n.get("language_name_\(code)")).tag(code)
+                            Text("\(AppLanguage.flag(code)) \(companion.languageNativeName(code))").tag(code)
                         }
                     }
-                    .pickerStyle(.inline)
-                    .labelsHidden()
-                } header: {
-                    Text(L10n.get("language_section_title"))
+                    .pickerStyle(.menu)
                 }
                 .onChange(of: languageChoice) { _, code in
                     guard code != AppLanguage.chosen else { return }
