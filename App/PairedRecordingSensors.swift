@@ -243,6 +243,7 @@ struct PairedRecordingSettingsRows: View {
                     SettingLabel(title: L10n.get("paired_recording_switch"), description: L10n.get("settings_desc_paired_recording"),
                                  info: L10n.get("paired_recording_body") + "\n\n" + L10n.get("paired_recording_ios_note"))
                 }
+                .settingsAnchor("PairedRecording")
             }
             Detail(SettingsItem.watchPairedTrack) {
                 // Shown as off until iOS allows the location: switching it on asks for it.
@@ -257,6 +258,7 @@ struct PairedRecordingSettingsRows: View {
                     SettingLabel(title: L10n.get("paired_track_switch"), description: L10n.get("settings_desc_paired_track"),
                                  info: L10n.get("paired_track_body_ios"))
                 }
+                .settingsAnchor("PairedTrack")
                 .disabled(!paired)
             }
             Detail(SettingsItem.watchExtendedRecording) {
@@ -267,6 +269,7 @@ struct PairedRecordingSettingsRows: View {
                     SettingLabel(title: L10n.get("extended_recording_switch"), description: L10n.get("settings_desc_extended_recording"),
                                  info: L10n.get("extended_recording_body"))
                 }
+                .settingsAnchor("ExtendedRecording")
                 .disabled(!paired)
             }
         }

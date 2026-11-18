@@ -1196,10 +1196,13 @@ struct SettingsScreen: View {
         companion.stravaConnected || !companion.stravaConfigured || !(companion.syncStatus?.stravaIssue.isEmpty ?? true)
     }
 
+    /// The pages the settings search lists as pages: the ones it does not know setting by setting (watch, App,
+    /// Privacy and Logs come as settings from the shared index).
     private var hits: [Page] {
         let q = query.trimmingCharacters(in: .whitespaces)
         return pages.filter { page in
-            page.title.localizedCaseInsensitiveContains(q) || page.words.contains { $0.localizedCaseInsensitiveContains(q) }
+            !["watch", "app", "privacy", "logs"].contains(page.id)
+                && (page.title.localizedCaseInsensitiveContains(q) || page.words.contains { $0.localizedCaseInsensitiveContains(q) })
         }
     }
 
@@ -1207,8 +1210,15 @@ struct SettingsScreen: View {
         NavigationStack {
             List {
                 if !query.trimmingCharacters(in: .whitespaces).isEmpty {
-                    if hits.isEmpty {
+                    let settingHits = companion.core.settingsSearch(query: query.trimmingCharacters(in: .whitespaces))
+                    if hits.isEmpty && settingHits.isEmpty {
                         Text(L10n.get("settings_search_no_results")).foregroundStyle(.secondary)
+                    }
+                    // The settings themselves: a tap opens the page at the row (its details shown).
+                    ForEach(Array(settingHits.enumerated()), id: \.offset) { _, hit in
+                        NavigationLink { settingsSearchDestination(hit).environment(\.detailsRevealed, true) } label: {
+                            SettingsSearchHitRow(hit: hit)
+                        }
                     }
                     // A search finds every level (simple mode plan, section 5): the page opens with its details shown.
                     ForEach(hits) { page in
@@ -1310,8 +1320,10 @@ struct SettingsAppPage: View {
     @State private var pendingLanguage: String?
     /// "" follows the system, else "light" / "dark"; read by the app's root (`preferredColorScheme`).
     @AppStorage("themeChoice") private var themeChoice = ""
+    @Environment(\.settingsFocus) private var focus
 
     var body: some View {
+        ScrollViewReader { proxy in
         // Four sections as on Android (2026-11-18): You, Display, New activities, Demo. Place names and weather are on
         // the Privacy page (what leaves the phone), as on Android.
         Form {
@@ -1321,6 +1333,7 @@ struct SettingsAppPage: View {
                         .textInputAutocapitalization(.words)
                         .autocorrectionDisabled()
                         .onSubmit { companion.setNickname(nicknameDraft); nicknameDraft = companion.nickname }
+                        .settingsAnchor("Nickname")
                     Text(L10n.get("settings_desc_nickname")).font(.footnote).foregroundStyle(.secondary)
                 } header: {
                     Text(L10n.get("settings_section_you"))
@@ -1339,6 +1352,7 @@ struct SettingsAppPage: View {
                         SettingLabel(title: L10n.get("language_section_title"), description: L10n.get("settings_desc_app_language"))
                     }
                     .pickerStyle(.menu)
+                    .settingsAnchor("Language")
                     Picker(selection: $themeChoice) {
                         Text(L10n.get("theme_option_system_default")).tag("")
                         Text(L10n.get("theme_option_light")).tag("light")
@@ -1347,6 +1361,7 @@ struct SettingsAppPage: View {
                         SettingLabel(title: L10n.get("theme_section_title"), description: L10n.get("settings_desc_appearance"))
                     }
                     .pickerStyle(.menu)
+                    .settingsAnchor("Appearance")
                     // Where the app opens; takes effect at the next start.
                     Picker(selection: Binding(
                         get: { companion.startScreen },
@@ -1359,6 +1374,7 @@ struct SettingsAppPage: View {
                         SettingLabel(title: L10n.get("start_screen_title"), description: L10n.get("settings_desc_start_screen"))
                     }
                     .pickerStyle(.menu)
+                    .settingsAnchor("StartScreen")
                     // Simple or expert mode: always shown, the way back to all details.
                     Toggle(isOn: Binding(
                         get: { companion.showAllDetails },
@@ -1367,6 +1383,7 @@ struct SettingsAppPage: View {
                         SettingLabel(title: L10n.get("ui_show_all_details"), description: L10n.get("settings_desc_show_all_details"),
                                      info: L10n.get("ui_show_all_details_body"))
                     }
+                    .settingsAnchor("ShowAllDetails")
                 } header: {
                     Text(L10n.get("settings_section_display"))
                 }
@@ -1406,6 +1423,7 @@ struct SettingsAppPage: View {
                         get: { companion.reviewNewActivities },
                         set: { companion.setReviewNewActivities($0) }
                     ))
+                    .settingsAnchor("ReviewNew")
                     Text(L10n.get(companion.reviewNewActivities
                                   ? "interaction_option_interactive_description"
                                   : "interaction_option_passive_description"))
@@ -1415,6 +1433,7 @@ struct SettingsAppPage: View {
                         get: { companion.reviewImportedActivities },
                         set: { companion.setReviewImportedActivities($0) }
                     ))
+                    .settingsAnchor("ReviewImported")
                     Text(L10n.get("settings_desc_review_imported"))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -1430,6 +1449,7 @@ struct SettingsAppPage: View {
                         SettingLabel(title: L10n.get("demo_switch"), description: L10n.get("settings_desc_demo"),
                                      info: L10n.get("demo_section_body"))
                     }
+                    .settingsAnchor("Demo")
                     if companion.demoOn {
                         Button(L10n.get("demo_reload")) { Task { await companion.loadDemoData() } }
                     }
@@ -1439,6 +1459,8 @@ struct SettingsAppPage: View {
                 .onDisappear { if nicknameDraft != companion.nickname { companion.setNickname(nicknameDraft) } }
         }
         .homeTitle(L10n.get("settings_group_app"))
+        .scrollsToSettingsFocus(proxy, focus)
+        }
     }
 
     /// The offer was closed without a choice: the picker goes back to the language in use.
@@ -1693,8 +1715,10 @@ struct SettingsLogsPage: View {
 struct SettingsPrivacyPage: View {
     @EnvironmentObject var companion: Companion
     @State private var confirmingDeleteAll = false
+    @Environment(\.settingsFocus) private var focus
 
     var body: some View {
+        ScrollViewReader { proxy in
         Form {
                 // What leaves the phone first (as Android's Privacy & data page, 2026-11-18), then what you can take or delete.
                 Section {
@@ -1705,6 +1729,7 @@ struct SettingsPrivacyPage: View {
                         SettingLabel(title: L10n.get("status_place_names_switch"), description: L10n.get("settings_desc_place_names"),
                                      info: L10n.get("status_place_names_body"))
                     }
+                    .settingsAnchor("PlaceNames")
                     // PRIVACY-SYNC: "Weather for activities" (shared WeatherSettingsStore, default on): off, no weather lookup leaves the phone. Changing this? Re-check the Companion's design/privacy-notice-sync.md.
                     Toggle(isOn: Binding(
                         get: { companion.weatherEnabled },
@@ -1713,9 +1738,10 @@ struct SettingsPrivacyPage: View {
                         SettingLabel(title: L10n.get("status_weather_switch"), description: L10n.get("settings_desc_weather"),
                                      info: L10n.get("status_weather_body"))
                     }
+                    .settingsAnchor("Weather")
                 }
                 Section(L10n.get("status_my_data_heading")) {
-                    DownloadMyDataButton()
+                    DownloadMyDataButton().settingsAnchor("MyData")
                     NavigationLink(L10n.get("feedback_title")) { FeedbackHubScreen() }
                     Button(L10n.get("status_delete_my_data"), role: .destructive) { confirmingDeleteAll = true }
                         .disabled(companion.syncing)
@@ -1731,6 +1757,8 @@ struct SettingsPrivacyPage: View {
                 }
         }
         .homeTitle(L10n.get("settings_page_privacy"))
+        .scrollsToSettingsFocus(proxy, focus)
+        }
     }
 }
 
