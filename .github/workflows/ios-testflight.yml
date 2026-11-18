@@ -10,6 +10,9 @@ on:
       companion_ref:
         description: "Companion branch or tag for the shared module (main unless a branch awaits its Android test)"
         default: main
+      xcode:
+        description: "Xcode version to pin (e.g. 26.6); empty = the newest released Xcode on the runner"
+        default: ""
 
 jobs:
   testflight:
@@ -30,8 +33,26 @@ jobs:
           echo "ARCHIVE_PATH=$RUNNER_TEMP/NordicSportsCompanion.xcarchive" >> "$GITHUB_ENV"
           echo "EXPORT_PATH=$RUNNER_TEMP/export" >> "$GITHUB_ENV"
 
+      # The newest released Xcode on the image, not the image's default: App Store Connect wants the newest SDK
+      # (ITMS-90725: from April 2027 only the iOS 27 SDK, Xcode 27). Betas and release candidates are skipped
+      # (TestFlight refuses their builds); the input "xcode" pins one, e.g. 26.6. docs/testflight-ci.md, "Xcode".
       - name: Xcode version
-        run: xcodebuild -version
+        env:
+          XCODE_PIN: ${{ inputs.xcode }}
+        run: |
+          if [ -n "$XCODE_PIN" ]; then
+            app="/Applications/Xcode_${XCODE_PIN}.app"
+          else
+            app=$(ls -d /Applications/Xcode_*.app | grep -E '/Xcode_[0-9]+(\.[0-9]+)*\.app$' | sort -V | tail -n 1)
+          fi
+          [ -d "$app" ] || { echo "::error::No Xcode at $app"; ls -d /Applications/Xcode*.app; exit 1; }
+          sudo xcode-select -s "$app/Contents/Developer"
+          xcodebuild -version
+          sdk=$(xcrun --sdk iphoneos --show-sdk-version)
+          echo "iOS SDK $sdk from $app"
+          if [ "${sdk%%.*}" -lt 27 ]; then
+            echo "::warning::Built with the iOS $sdk SDK. From April 2027 App Store Connect accepts only the iOS 27 SDK (Xcode 27) or later; this image has no released Xcode 27 yet."
+          fi
 
       # The shared Kotlin module lives in the private Companion repo. COMPANION_READ_TOKEN is a
       # fine-grained token with read-only "Contents" on that one repository.

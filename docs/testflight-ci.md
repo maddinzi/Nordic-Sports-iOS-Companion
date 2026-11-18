@@ -7,6 +7,9 @@ Moved out of the workspace `CLAUDE.md` (2026-10-27). Never print or commit any o
 
 Signing is manual: each run creates the App Store profile "Nordic Sports Companion App Store CI" through the API, so no registered device is needed.
 
+## Xcode
+The step "Xcode version" selects the newest released Xcode on the runner image (`/Applications/Xcode_<n>.app`, betas and release candidates skipped), not the image default, and prints the iOS SDK. The workflow input `xcode` pins one (e.g. `26.6`) if a new Xcode breaks the build. **Deadline (ITMS-90725, mail on build 68):** from April 2027 App Store Connect accepts only uploads built with the iOS 27 SDK (Xcode 27) or later. As long as the image has no released Xcode 27, the run shows a warning annotation. Before April 2027, check that a run says "iOS SDK 27"; if the `macos-26` image still has none, move `runs-on` to the image that has it (GitHub's runner-images README lists the Xcodes per image). A new Xcode may need a newer Kotlin for the shared XCFramework (Kotlin/Native names the Xcode versions it supports).
+
 ## Secrets (GitHub repository secrets)
 - `ASC_ISSUER_ID`, `ASC_KEY_ID`, `ASC_KEY_P8`: App Store Connect team API key, Admin role.
 - `DIST_CERT_P12` (base64), `DIST_CERT_PASSWORD`: the team's Apple Distribution certificate.
