@@ -52,11 +52,6 @@ struct GoScreen: View {
                         .background(CardTone.blue.container, in: RoundedRectangle(cornerRadius: 14))
                     }
                     if !week.isEmpty { weekCard }
-                    NavigationLink(L10n.get("go_about")) { AboutScreen() }
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 12)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
