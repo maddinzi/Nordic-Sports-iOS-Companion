@@ -56,6 +56,9 @@ final class MotionHub {
                 for handler in self.handlers(\.gyro) { handler(data.timestamp, r.x, r.y, r.z) }
             }
         }
+        // Registered again without a sensor it had: one nobody listens to any more stops (review 2026-11-18).
+        if accelWasOn, accel.isEmpty { motion.stopAccelerometerUpdates() }
+        if gyroWasOn, gyro.isEmpty { motion.stopGyroUpdates() }
     }
 
     /// Removes the listener [id]; a sensor nobody listens to stops.

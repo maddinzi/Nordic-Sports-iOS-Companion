@@ -1,3 +1,4 @@
+import Combine
 import CoreLocation
 import Darwin
 import Foundation
@@ -27,7 +28,6 @@ final class PairedRecordingSensors: NSObject, PairedSensors, CLLocationManagerDe
     static let shared = PairedRecordingSensors()
 
     private static let hubId = "pairedRecording"
-    private static let g = 9.80665
 
     private let hub = MotionHub.shared
     private let manager = CLLocationManager()
@@ -101,6 +101,9 @@ final class PairedRecordingSensors: NSObject, PairedSensors, CLLocationManagerDe
                 recording.addGyro(tEpochMs: Self.epochMs(t), xRad: x, yRad: y, zRad: z)
             }
             hub.add(Self.hubId, accel: accelerometer ? accelHandler : nil, gyro: gyroscope ? gyroHandler : nil)
+        } else {
+            // The route alone: no handlers of an earlier start keep feeding samples.
+            hub.remove(Self.hubId)
         }
         lock.lock()
         wantsLocation = location
@@ -228,6 +231,11 @@ final class PairedRecordingSensors: NSObject, PairedSensors, CLLocationManagerDe
     }
 }
 
+extension Notification.Name {
+    /// "Paired recording" was switched: every copy of its rows (one per watch) and "Extended recording" read it again.
+    static let pairedRecordingChanged = Notification.Name("pairedRecordingChanged")
+}
+
 /// Watch page, Recording card: "Paired recording" with "Route from the phone" (Android `PairedRecordingSwitch`,
 /// `PairedTrackSwitch`). Phone settings, the same for every watch. Rows only; the caller's section holds them.
 /// "Extended recording" stands in the Sensor Records card ([ExtendedRecordingSettingsRow]).
@@ -246,7 +254,11 @@ struct PairedRecordingSettingsRows: View {
                 // A short line on what it does; the full text and the iPhone note behind the info button (2026-11-18).
                 Toggle(isOn: Binding(
                     get: { paired },
-                    set: { paired = $0; recording.setEnabled(on: $0) }
+                    set: {
+                        paired = $0
+                        recording.setEnabled(on: $0)
+                        NotificationCenter.default.post(name: .pairedRecordingChanged, object: nil)
+                    }
                 )) {
                     SettingLabel(title: L10n.get("paired_recording_switch"), description: L10n.get("settings_desc_paired_recording"),
                                  info: L10n.get("paired_recording_body") + "\n\n" + L10n.get("paired_recording_ios_note"))
@@ -273,6 +285,7 @@ struct PairedRecordingSettingsRows: View {
         .onAppear(perform: read)
         // Back from the permission sheet or from the Settings app.
         .onChange(of: scenePhase) { _, phase in if phase == .active { read() } }
+        .onReceive(NotificationCenter.default.publisher(for: .pairedRecordingChanged)) { _ in read() }
     }
 
     private func read() {
@@ -316,5 +329,7 @@ struct ExtendedRecordingSettingsRow: View {
             paired = recording.isEnabled()
             extended = recording.isExtended()
         }
+        // Follows the Paired recording switch in the Recording card live (review 2026-11-18).
+        .onReceive(NotificationCenter.default.publisher(for: .pairedRecordingChanged)) { _ in paired = recording.isEnabled() }
     }
 }

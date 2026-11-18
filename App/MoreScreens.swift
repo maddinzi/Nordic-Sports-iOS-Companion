@@ -34,6 +34,18 @@ struct WatchSettingsScreen: View {
         "hr": "HrSensor", "sources": "Sources", "intervals": "Intervals", "routines": "Routines",
     ]
 
+    /// Blocks whose rows carry their own anchors ("PairedRecording", "PairedTrack", "ExtendedRecording"): an outer
+    /// anchor would hide them from the search's scroll and glow (review 2026-11-18).
+    private static let selfAnchored: Set<String> = ["paired", "extended"]
+
+    @ViewBuilder private func anchored(_ part: Block) -> some View {
+        if Self.selfAnchored.contains(part.id) {
+            part.content
+        } else {
+            part.content.settingsAnchor(Self.blockAnchors[part.id] ?? part.id)
+        }
+    }
+
     /// The six topics of the page, each one collapsible card, in page order (Android `WatchTopic`, 2026-11-18 review):
     /// watch and sensors (wrist, phone place, silent mode, touch, the automatics), the athlete's sports with their level
     /// and equipment, what a recording captures (Enhanced Metrics first, then the phone's part), what the watch shows,
@@ -91,7 +103,9 @@ struct WatchSettingsScreen: View {
                           waiting: watch.dataFieldGroups.filter(\.pending).count,
                           content: AnyView(NavigationLink(title) { WatchDataFieldsScreen(deviceId: id) }))]
         case .recording:
-            // What the phone does while the watch records (phone settings, the same for every watch).
+            // What the phone does while the watch records (phone settings, the same for every watch). Not for the small
+            // watches, which announce no recording (no interval slots is how they show; review 2026-11-18).
+            guard !watch.intervalSlots.isEmpty else { return [] }
             return [Block(id: "paired", item: .watchPairedRecording, content: AnyView(PairedRecordingSettingsRows()))]
         case .sensorRecord:
             var blocks: [Block] = []
@@ -333,12 +347,10 @@ struct WatchSettingsScreen: View {
                         if item.key == "WatchWrist" {
                             PhonePlacementRow().settingsAnchor("PhonePlacement")
                         }
-                        ForEach(parts.filter { $0.after == item.key }) { part in
-                            part.content.settingsAnchor(Self.blockAnchors[part.id] ?? part.id)
-                        }
+                        ForEach(parts.filter { $0.after == item.key }) { part in anchored(part) }
                     }
                     if !batteryFirst { batteryRows(watch, battery, instantOn) }
-                    ForEach(tail) { part in part.content.settingsAnchor(Self.blockAnchors[part.id] ?? part.id) }
+                    ForEach(tail) { part in anchored(part) }
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(topic.title).font(.headline)
@@ -1237,38 +1249,15 @@ struct WatchSettingRow: View {
         }
     }
 
-    /// What the setting does, one or two lines (Android `watchSettingDescription`, 2026-11-18). Data screens 3 to 5
-    /// share one text with their number.
-    static func description(_ key: String) -> String? {
-        switch key {
-        case "Language": return L10n.get("settings_desc_watch_language")
-        case "WatchWrist": return L10n.get("settings_desc_wrist")
-        case "SportOrder": return L10n.get("settings_desc_sport_order")
-        case "SkillLevel": return L10n.get("settings_desc_skill_level")
-        case "SilentMode": return L10n.get("settings_desc_silent_mode")
-        case "ShowCadencePage": return String(format: L10n.get("settings_desc_data_screen"), 3)
-        case "ShowAltitudePage": return String(format: L10n.get("settings_desc_data_screen"), 4)
-        case "ShowClockPage": return String(format: L10n.get("settings_desc_data_screen"), 5)
-        case "ShowMapPage": return L10n.get("settings_desc_breadcrumb_page")
-        case "AutoLapDistance": return L10n.get("settings_desc_auto_lap")
-        case "AutoPause": return L10n.get("settings_desc_auto_pause")
-        case "AutoProceed": return L10n.get("settings_desc_auto_proceed")
-        case "RecordingBoostEnabled": return L10n.get("settings_desc_sensor_record")
-        case "SensorRecordDeclare": return L10n.get("settings_desc_sensor_declare")
-        case "TouchInActivity": return L10n.get("settings_desc_touch")
-        case "InstantMode": return L10n.get("settings_desc_instant_mode")
-        case "DefaultWheelType": return L10n.get("settings_desc_default_wheel")
-        case "AskWheelType": return L10n.get("settings_desc_ask_wheel")
-        case "DefaultWaxType": return L10n.get("settings_desc_default_wax")
-        case "AskWaxType": return L10n.get("settings_desc_ask_wax")
-        case "EnhancedMetrics": return L10n.get("settings_desc_enhanced_metrics")
-        case "CaptureTemperature": return L10n.get("settings_desc_capture_temperature")
-        default: return nil
-        }
+    /// What the setting does, one or two lines: the shared table the search uses (`CompanionCore.watchSettingDescription`),
+    /// so the row and its search hit say the same as on Android (review 2026-11-18); nil for a setting without one.
+    private func descriptionText(_ key: String) -> String? {
+        let text = companion.core.watchSettingDescription(key: key)
+        return text.isEmpty ? nil : text
     }
 
     var body: some View {
-        let description = Self.description(item.key)
+        let description = descriptionText(item.key)
         VStack(alignment: .leading, spacing: 4) {
             if item.isToggle {
                 Toggle(isOn: Binding(

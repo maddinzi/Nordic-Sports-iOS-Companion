@@ -1340,7 +1340,6 @@ struct SettingsAppPage: View {
                 } header: {
                     Text(L10n.get("settings_section_you"))
                 }
-                .onAppear { nicknameDraft = companion.nickname }
                 MySportsSections()
                 // Display: one compact menu row each; language with flag and own name (Android `LanguageDropdown`).
                 Section {
@@ -1458,8 +1457,11 @@ struct SettingsAppPage: View {
                 } header: {
                     Text(L10n.get("demo_section_title"))
                 }
-                .onDisappear { if nicknameDraft != companion.nickname { companion.setNickname(nicknameDraft) } }
         }
+        // The page, not a section: a section's onAppear/onDisappear follow scrolling, so a draft typed at the top was
+        // reset on scrolling back and never saved when the Demo section stayed off screen (review 2026-11-18).
+        .onAppear { nicknameDraft = companion.nickname }
+        .onDisappear { if nicknameDraft != companion.nickname { companion.setNickname(nicknameDraft) } }
         .homeTitle(L10n.get("settings_group_app"))
         .scrollsToSettingsFocus(proxy, focus)
         }
