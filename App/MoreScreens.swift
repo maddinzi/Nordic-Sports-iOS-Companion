@@ -18,7 +18,6 @@ struct WatchSettingsScreen: View {
     @State private var revealed = false
     @Environment(\.detailsRevealed) private var outerRevealed
     /// Search over every setting of the watch (Android: the field on top of the watch page).
-    @State private var query = ""
     /// The topic cards opened by hand ("<deviceId>:<topic>"); all start closed, a search opens every hit.
     @State private var open: Set<String> = []
     /// The row a settings search hit leads to (`SettingsSearchHitView.id`): its card opens, details show, it scrolls
@@ -67,24 +66,20 @@ struct WatchSettingsScreen: View {
     /// Sport order and skill level get the Sports card (Android `topicOf`).
     static let sportsKeys: Set<String> = ["SportOrder", "SkillLevel"]
 
-    /// A part of a topic card beyond the plain settings: its level entry, the words the search looks at, how many
-    /// of its changes wait for the watch, and what it shows.
+    /// A part of a topic card beyond the plain settings: its level entry, how many of its changes wait for the
+    /// watch, and what it shows.
     private struct Block: Identifiable {
         let id: String
         let item: SettingsItem
-        let words: [String]
         var waiting = 0
         let content: AnyView
     }
 
-    private var q: String { query.trimmingCharacters(in: .whitespaces) }
-    private var searching: Bool { !q.isEmpty }
-    private func hit(_ text: String) -> Bool { text.localizedCaseInsensitiveContains(q) }
     private var detailsOpen: Bool { companion.showAllDetails || revealed || outerRevealed }
 
-    /// Expert rows show in expert mode, on a revealed page, or for a search hit (a search finds every level). Values are never touched.
-    private func shown(_ item: WatchSettingItem) -> Bool { searching || !item.expert || detailsOpen }
-    private func shown(_ item: SettingsItem) -> Bool { searching || detailsOpen || companion.shows(item) }
+    /// Expert rows show in expert mode or on a revealed page. Values are never touched.
+    private func shown(_ item: WatchSettingItem) -> Bool { !item.expert || detailsOpen }
+    private func shown(_ item: SettingsItem) -> Bool { detailsOpen || companion.shows(item) }
 
     private func topic(of item: WatchSettingItem, in group: WatchSettingGroupView) -> Topic {
         if Self.sensorRecordKeys.contains(item.key) { return .sensorRecord }
@@ -102,30 +97,28 @@ struct WatchSettingsScreen: View {
         switch topic {
         case .sports:
             guard let skill = watch.skillLevel else { return [] }
-            return [Block(id: "skill", item: .watchSkillLevelBySport, words: [skill.title],
+            return [Block(id: "skill", item: .watchSkillLevelBySport,
                           content: AnyView(NavigationLink(skill.title) { WatchSkillLevelScreen(deviceId: id) }))]
         case .pages:
             guard !watch.dataFieldGroups.isEmpty else { return [] }
             let title = L10n.get("watch_data_fields_title")
-            let words = [title] + watch.dataFieldGroups.map(\.title)
-                + watch.dataFieldGroups.flatMap { $0.screens.flatMap { $0.slots.map(\.fieldName) } }
-            return [Block(id: "fields", item: .watchDataFields, words: words,
+            return [Block(id: "fields", item: .watchDataFields,
                           waiting: watch.dataFieldGroups.filter(\.pending).count,
                           content: AnyView(NavigationLink(title) { WatchDataFieldsScreen(deviceId: id) }))]
         case .recording:
             guard let auto = watch.sportAuto else { return [] }
-            return [Block(id: "auto", item: .watchSportAuto, words: [auto.title],
+            return [Block(id: "auto", item: .watchSportAuto,
                           content: AnyView(NavigationLink(auto.title) { WatchSportAutoScreen(deviceId: id) }))]
         case .sensorRecord:
             guard watch.sensorProgram != nil else { return [] }
             let title = L10n.get("watch_sensor_program_title")
-            return [Block(id: "program", item: .watchSensorProgram, words: [title],
+            return [Block(id: "program", item: .watchSensorProgram,
                           content: AnyView(NavigationLink(title) { WatchSensorProgramScreen(deviceId: id) }))]
         case .device:
             // The watch reports a strap check only when a strap is paired with it (on the GPS wait screen).
             var blocks: [Block] = []
             if let hr = watch.hrStrap {
-                blocks.append(Block(id: "hr", item: .watchHrStrap, words: [hr.title], content: AnyView(Group {
+                blocks.append(Block(id: "hr", item: .watchHrStrap, content: AnyView(Group {
                     Text(hr.title).font(.subheadline.weight(.semibold))
                     Text(hr.status).foregroundStyle(hr.notFound ? Color.red : Color.primary)
                     Text(hr.checked).font(.footnote).foregroundStyle(.secondary)
@@ -135,7 +128,7 @@ struct WatchSettingsScreen: View {
             // What the app learned where two sources measured the same, and whether that data arrives. Enhanced
             // Metrics only, so not for the small watches (they have no Sensor Record setting either).
             if watch.groups.contains(where: { $0.items.contains { $0.key == "RecordingBoostEnabled" } }) {
-                blocks.append(Block(id: "sources", item: .watchSources, words: [L10n.get("sources_title")],
+                blocks.append(Block(id: "sources", item: .watchSources,
                                     content: AnyView(SourcesOverviewRows())))
             }
             return blocks
@@ -144,12 +137,12 @@ struct WatchSettingsScreen: View {
             var blocks: [Block] = []
             if !watch.intervalSlots.isEmpty {
                 let title = L10n.get("watch_interval_menu")
-                blocks.append(Block(id: "intervals", item: .watchIntervals, words: [title],
+                blocks.append(Block(id: "intervals", item: .watchIntervals,
                                     content: AnyView(NavigationLink(title) { WatchPlansScreen(deviceId: id, routines: false) })))
             }
             if !watch.routineSlots.isEmpty {
                 let title = L10n.get("watch_strength_routines")
-                blocks.append(Block(id: "routines", item: .watchStrengthRoutines, words: [title, L10n.get("watch_topic_strength")],
+                blocks.append(Block(id: "routines", item: .watchStrengthRoutines,
                                     content: AnyView(NavigationLink(title) { WatchPlansScreen(deviceId: id, routines: true) })))
             }
             return blocks
@@ -202,26 +195,21 @@ struct WatchSettingsScreen: View {
         }
     }
 
-    /// The settings of [topic] this watch shows now: by level, and while searching by title or label.
+    /// The settings of [topic] this watch shows now, by level.
     private func rows(_ watch: WatchSettingsView, _ topic: Topic) -> [WatchSettingItem] {
-        let titleHit = !searching || hit(topic.title)
-        return watch.groups.flatMap { group in
-            group.items.filter { self.topic(of: $0, in: group) == topic && shown($0) && (titleHit || hit($0.label)) }
+        watch.groups.flatMap { group in
+            group.items.filter { self.topic(of: $0, in: group) == topic && shown($0) }
         }
     }
 
     private func shownBlocks(_ watch: WatchSettingsView, _ topic: Topic) -> [Block] {
-        let titleHit = !searching || hit(topic.title)
-        return blocks(watch, topic).filter { shown($0.item) && (titleHit || $0.words.contains(where: hit)) }
+        blocks(watch, topic).filter { shown($0.item) }
     }
 
     private func showsShare(_ watch: WatchSettingsView) -> Bool {
-        shareable(watch) && (searching ? hit(L10n.get("watch_share_title")) : shown(SettingsItem.watchSettingsShare))
+        shareable(watch) && shown(SettingsItem.watchSettingsShare)
     }
 
-    private func anyHit(_ watch: WatchSettingsView) -> Bool {
-        Topic.allCases.contains { !rows(watch, $0).isEmpty || !shownBlocks(watch, $0).isEmpty } || showsShare(watch)
-    }
 
     private func waiting(_ watch: WatchSettingsView, _ topic: Topic) -> Int {
         let settings = watch.groups.flatMap { group in group.items.filter { self.topic(of: $0, in: group) == topic && $0.pending } }
@@ -295,7 +283,7 @@ struct WatchSettingsScreen: View {
         }
     }
 
-    /// One topic as a collapsible card (Android `SettingsTopicCard`): title and waiting changes, open while searching.
+    /// One topic as a collapsible card (Android `SettingsTopicCard`): title and waiting changes.
     @ViewBuilder
     private func topicCard(_ watch: WatchSettingsView, _ topic: Topic) -> some View {
         let settings = rows(watch, topic)
@@ -308,7 +296,7 @@ struct WatchSettingsScreen: View {
             let battery = settings.filter { Self.batteryKeys.contains($0.key) }
             Section {
                 DisclosureGroup(isExpanded: Binding(
-                    get: { searching || open.contains(cardId) },
+                    get: { open.contains(cardId) },
                     set: { on in if on { open.insert(cardId) } else { open.remove(cardId) } }
                 )) {
                     ForEach(plain, id: \.key) { item in
