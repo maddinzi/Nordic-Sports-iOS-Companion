@@ -10,6 +10,10 @@ import SwiftUI
 /// What the chart can show, in chip order.
 enum TimeKind: CaseIterable, Hashable {
     case speed, altitude, grade, technique
+    /// The phone's own per-second values of a paired recording (shared `ActivityTimeSeries` CADENCE, CONTACT, BOUNCE).
+    case cadence, contact, bounce
+
+    static let phone: Set<TimeKind> = [.cadence, .contact, .bounce]
 }
 
 /// What the map and the chart share (Android `TimeViewState`): the time window in seconds from the start (nil = all),
@@ -47,6 +51,9 @@ struct TimeSeriesData {
             .speed: s.speedKmh.map { $0.doubleValue },
             .altitude: s.altitudeM.map { $0.doubleValue },
             .grade: s.gradePct.map { $0.doubleValue },
+            .cadence: s.cadenceSpm.map { $0.doubleValue },
+            .contact: s.contactMs.map { $0.doubleValue },
+            .bounce: s.bounceCm.map { $0.doubleValue },
         ]
         technique = s.technique
         breaks = Set(s.breaks.map { $0.intValue })
@@ -55,6 +62,9 @@ struct TimeSeriesData {
         if s.hasAltitude { k.append(.altitude) }
         if s.hasGrade { k.append(.grade) }
         if s.hasTechnique { k.append(.technique) }
+        if s.hasCadence { k.append(.cadence) }
+        if s.hasContact { k.append(.contact) }
+        if s.hasBounce { k.append(.bounce) }
         kinds = k
     }
 
@@ -150,7 +160,8 @@ private struct TimeChart: View {
     @State private var pinchStart: (from: Double, to: Double)?
 
     private var run: Bool { ActivityFigures.shared.usesPace(art: item.sportArt) }
-    private var shown: Set<TimeKind> { view.shown ?? Set(data.kinds.filter { $0 != .grade }) }
+    // The phone's lines wait for a tap, as on Android (speed, altitude and technique first).
+    private var shown: Set<TimeKind> { view.shown ?? Set(data.kinds.filter { $0 != .grade && !TimeKind.phone.contains($0) }) }
     private var from: Double { view.from ?? 0 }
     private var to: Double { view.to ?? data.total }
     private var recordTimes: [Int] {
@@ -177,6 +188,9 @@ private struct TimeChart: View {
         case .altitude: return dark ? Color(red: 0xB7 / 255, green: 0x9C / 255, blue: 0xF7 / 255) : Color(red: 0x7C / 255, green: 0x3A / 255, blue: 0xED / 255)
         case .grade: return dark ? Color(red: 0xF5 / 255, green: 0xB5 / 255, blue: 0x4A / 255) : Color(red: 0xD2 / 255, green: 0x7A / 255, blue: 0x00 / 255)
         case .technique: return .gray
+        case .cadence: return dark ? Color(red: 0x5E / 255, green: 0xD6 / 255, blue: 0xC4 / 255) : Color(red: 0x0F / 255, green: 0x8A / 255, blue: 0x7A / 255)
+        case .contact: return dark ? Color(red: 0xF5 / 255, green: 0x8A / 255, blue: 0x8A / 255) : Color(red: 0xC0 / 255, green: 0x39 / 255, blue: 0x2B / 255)
+        case .bounce: return dark ? Color(red: 0x9B / 255, green: 0xD8 / 255, blue: 0x6A / 255) : Color(red: 0x4A / 255, green: 0x8A / 255, blue: 0x1C / 255)
         }
     }
 
@@ -327,6 +341,9 @@ private struct TimeChart: View {
         case .altitude: return L10n.get("recording_map_colour_altitude")
         case .grade: return L10n.get("recording_live_grade")
         case .technique: return L10n.get("recording_map_colour_technique")
+        case .cadence: return L10n.get("em_cad_name")
+        case .contact: return L10n.get("em_gct_name")
+        case .bounce: return L10n.get("em_vo_name")
         }
     }
 
@@ -336,6 +353,9 @@ private struct TimeChart: View {
         case .altitude: return String(format: "%.0f m", v)
         case .grade: return String(format: "%+.0f %%", v)
         case .technique: return ""
+        case .cadence: return String(format: "%.0f /min", v)
+        case .contact: return String(format: "%.0f ms", v)
+        case .bounce: return String(format: "%.1f cm", v)
         }
     }
 

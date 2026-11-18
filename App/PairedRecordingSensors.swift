@@ -66,6 +66,12 @@ final class PairedRecordingSensors: NSObject, PairedSensors, CLLocationManagerDe
     /// still runs gets its capture again right here.
     func attach(to core: CompanionCore) {
         recording = core.pairedRecording
+        // The coverage declaration's changes go to the running watch apps (the shared class calls under its lock:
+        // only hand on). Set before attach, which works the value out the first time.
+        core.pairedRecording.onCoverageChanged = { bits in
+            let value = bits.int32Value
+            Task { @MainActor in WatchLinkSpike.shared.sendCoverage(value) }
+        }
         core.pairedRecording.attach(sensors: self)
     }
 
@@ -172,6 +178,8 @@ final class PairedRecordingSensors: NSObject, PairedSensors, CLLocationManagerDe
     /// The app came to the screen while a capture wants the route: updates started now are delivered, also after
     /// the screen goes off again. This is how a capture that began in the pocket gets its route from here on.
     @objc private func appBecameActive() {
+        // The permission or the system's location may have changed while the app was away.
+        recording?.refreshCoverage()
         lock.lock()
         let wanted = wantsLocation
         lock.unlock()
@@ -194,6 +202,7 @@ final class PairedRecordingSensors: NSObject, PairedSensors, CLLocationManagerDe
         let wanted = wantsLocation
         lock.unlock()
         if allowed, wanted, !locationOn { startLocation() }
+        recording?.refreshCoverage()
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
