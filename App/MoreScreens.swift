@@ -22,24 +22,27 @@ struct WatchSettingsScreen: View {
     /// The topic cards opened by hand ("<deviceId>:<topic>"); all start closed, a search opens every hit.
     @State private var open: Set<String> = []
 
-    /// The topics of the page, each one collapsible card, in page order (Android `WatchTopic`).
+    /// The six topics of the page, each one collapsible card, in page order (Android `WatchTopic`, 2026-11-18): the
+    /// devices, the athlete's sports and level, how a recording runs, what the watch shows, what the athlete trains
+    /// with (Share and import follows it), the Sensor Records last. The watch menu keeps its own groups.
     enum Topic: String, CaseIterable {
-        case general = "GENERAL", pages = "PAGES", recording = "RECORDING", sensorRecord = "SENSOR_RECORD"
-        case equipment = "EQUIPMENT", capture = "CAPTURE", intervals = "INTERVALS", strength = "STRENGTH"
+        case device = "DEVICE", sports = "SPORTS", recording = "RECORDING", pages = "PAGES", plans = "PLANS"
+        case sensorRecord = "SENSOR_RECORD"
 
         var title: String {
             switch self {
-            case .general: return L10n.get("watch_group_general")
-            case .pages: return L10n.get("watch_group_pages")
+            case .device: return L10n.get("watch_topic_device")
+            case .sports: return L10n.get("watch_topic_sports")
             case .recording: return L10n.get("watch_group_recording")
+            case .pages: return L10n.get("watch_topic_pages")
+            case .plans: return L10n.get("watch_topic_plans")
             case .sensorRecord: return L10n.get("watch_topic_sensor_record")
-            case .equipment: return L10n.get("watch_group_equipment")
-            case .capture: return L10n.get("watch_group_capture")
-            case .intervals: return L10n.get("watch_interval_menu")
-            case .strength: return L10n.get("watch_topic_strength")
             }
         }
     }
+
+    /// Sport order and skill level get the Sports card (Android `topicOf`).
+    static let sportsKeys: Set<String> = ["SportOrder", "SkillLevel"]
 
     /// A part of a topic card beyond the plain settings: its level entry, the words the search looks at, how many
     /// of its changes wait for the watch, and what it shows.
@@ -62,13 +65,19 @@ struct WatchSettingsScreen: View {
 
     private func topic(of item: WatchSettingItem, in group: WatchSettingGroupView) -> Topic {
         if Self.sensorRecordKeys.contains(item.key) { return .sensorRecord }
-        return Topic(rawValue: group.key) ?? .general
+        if Self.sportsKeys.contains(item.key) { return .sports }
+        switch group.key {
+        case "PAGES": return .pages
+        // Equipment (asked at the start) and what is captured both shape a recording.
+        case "RECORDING", "EQUIPMENT", "CAPTURE": return .recording
+        default: return .device
+        }
     }
 
     private func blocks(_ watch: WatchSettingsView, _ topic: Topic) -> [Block] {
         let id = watch.deviceId
         switch topic {
-        case .general:
+        case .sports:
             guard let skill = watch.skillLevel else { return [] }
             return [Block(id: "skill", item: .watchSkillLevelBySport, words: [skill.title],
                           content: AnyView(NavigationLink(skill.title) { WatchSkillLevelScreen(deviceId: id) }))]
@@ -89,7 +98,7 @@ struct WatchSettingsScreen: View {
             let title = L10n.get("watch_sensor_program_title")
             return [Block(id: "program", item: .watchSensorProgram, words: [title],
                           content: AnyView(NavigationLink(title) { WatchSensorProgramScreen(deviceId: id) }))]
-        case .capture:
+        case .device:
             // The watch reports a strap check only when a strap is paired with it (on the GPS wait screen).
             var blocks: [Block] = []
             if let hr = watch.hrStrap {
@@ -107,18 +116,20 @@ struct WatchSettingsScreen: View {
                                     content: AnyView(SourcesOverviewRows())))
             }
             return blocks
-        case .intervals:
-            guard !watch.intervalSlots.isEmpty else { return [] }
-            let title = L10n.get("watch_interval_menu")
-            return [Block(id: "intervals", item: .watchIntervals, words: [title],
-                          content: AnyView(NavigationLink(title) { WatchPlansScreen(deviceId: id, routines: false) }))]
-        case .strength:
-            guard !watch.routineSlots.isEmpty else { return [] }
-            let title = L10n.get("watch_strength_routines")
-            return [Block(id: "routines", item: .watchStrengthRoutines, words: [title, L10n.get("watch_topic_strength")],
-                          content: AnyView(NavigationLink(title) { WatchPlansScreen(deviceId: id, routines: true) }))]
-        case .equipment:
-            return []
+        case .plans:
+            // Intervals, then the strength routines (each opens its own screen).
+            var blocks: [Block] = []
+            if !watch.intervalSlots.isEmpty {
+                let title = L10n.get("watch_interval_menu")
+                blocks.append(Block(id: "intervals", item: .watchIntervals, words: [title],
+                                    content: AnyView(NavigationLink(title) { WatchPlansScreen(deviceId: id, routines: false) })))
+            }
+            if !watch.routineSlots.isEmpty {
+                let title = L10n.get("watch_strength_routines")
+                blocks.append(Block(id: "routines", item: .watchStrengthRoutines, words: [title, L10n.get("watch_topic_strength")],
+                                    content: AnyView(NavigationLink(title) { WatchPlansScreen(deviceId: id, routines: true) })))
+            }
+            return blocks
         }
     }
 
@@ -137,7 +148,6 @@ struct WatchSettingsScreen: View {
 
     var body: some View {
         Form {
-            Section { Text(L10n.get("settings_intro_watch")).font(.footnote).foregroundStyle(.secondary) }
             if companion.watchSettings.isEmpty {
                 Text(L10n.get("watch_settings_none")).foregroundStyle(.secondary)
             }
@@ -190,42 +200,67 @@ struct WatchSettingsScreen: View {
 
     @ViewBuilder
     private func watchSections(_ watch: WatchSettingsView) -> some View {
+        // One status block (Android `WatchStatusCard`, 2026-11-18): a dot, the last report, the last send and a
+        // refresh icon; waiting changes and a failed send only when they occur. The intro and the separate rows that
+        // repeated each other are gone.
+        let failed = watch.sync?.kind == "failed"
+        let silent = Date().timeIntervalSince1970 - TimeInterval(watch.reportedAtEpochSec) > 3600
+        let showReport = shown(SettingsItem.watchSyncDetails)
         Section {
-            Detail(SettingsItem.watchSyncDetails) {
-                Text(String(format: L10n.get("watch_settings_as_of"), Format.dateOrTimeToday(watch.reportedAtEpochSec)))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            // Waiting changes and the stuck-link hint are problems: never hidden.
-            if watch.pendingCount > 0 {
-                Text(L10n.plural("watch_settings_waiting", Int(watch.pendingCount)))
-                    .font(.footnote)
-                    .foregroundStyle(.orange)
-                // Changes wait and the watch has been silent for hours: the link is probably stuck.
-                if Date().timeIntervalSince1970 - TimeInterval(watch.reportedAtEpochSec) > 3600 {
-                    Text(L10n.get("watch_settings_stale_hint"))
-                        .font(.footnote)
-                        .foregroundStyle(.red)
+            if showReport || watch.pendingCount > 0 || failed {
+                HStack(spacing: 10) {
+                    Circle()
+                        .fill(failed ? Color.red : (silent ? Color.secondary : Color.green))
+                        .frame(width: 10, height: 10)
+                    VStack(alignment: .leading, spacing: 2) {
+                        if showReport {
+                            Text(String(format: L10n.get("watch_settings_as_of"), Format.dateOrTimeToday(watch.reportedAtEpochSec)))
+                                .font(.subheadline)
+                        }
+                        // The last message to the watch; a received one is the report line itself.
+                        if let sync = watch.sync, sync.kind == "sent" {
+                            let at = Date(timeIntervalSince1970: TimeInterval(sync.atEpochMillis) / 1000).formatted(date: .omitted, time: .shortened)
+                            Text("\(sync.title) · \(at)").font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    if shown(SettingsItem.watchRefresh) {
+                        Button { companion.askWatchAgain(deviceId: watch.deviceId) } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel(L10n.get("watch_settings_refresh"))
+                    }
                 }
-            }
-            Detail(SettingsItem.watchRefresh) {
-                Button(L10n.get("watch_settings_refresh")) { companion.askWatchAgain(deviceId: watch.deviceId) }
-            }
-            if let sync = watch.sync {
-                WatchSyncRow(sync: sync)
+                // Waiting changes are a problem: never hidden. The text says when they apply.
+                if watch.pendingCount > 0 {
+                    Text(L10n.plural("watch_settings_waiting", Int(watch.pendingCount)))
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                    // Silent for over an hour: the link is probably stuck. A failed send gives the same advice.
+                    if silent && !failed {
+                        Text(L10n.get("watch_settings_stale_hint"))
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+                }
+                if failed, let sync = watch.sync {
+                    WatchSyncRow(sync: sync)
+                }
             }
         } header: {
             Text(watch.watchName)
         }
         ForEach(Topic.allCases, id: \.self) { topic in
-            topicCard(watch, topic)
-        }
-        if showsShare(watch) {
-            Section {
-                NavigationLink { WatchShareScreen(deviceId: watch.deviceId) } label: {
-                    Label(L10n.get("watch_share_title"), systemImage: "square.and.arrow.up")
+            // Share and import right below Plans and routines: it shares what Pages and Plans hold.
+            if topic == .sensorRecord && showsShare(watch) {
+                Section {
+                    NavigationLink { WatchShareScreen(deviceId: watch.deviceId) } label: {
+                        Label(L10n.get("watch_share_title"), systemImage: "square.and.arrow.up")
+                    }
                 }
             }
+            topicCard(watch, topic)
         }
     }
 
@@ -1194,7 +1229,10 @@ struct WatchSettingRow: View {
                     set: { companion.changeWatchSetting(deviceId: deviceId, key: item.key, value: $0) }
                 )) {
                     ForEach(item.options, id: \.value) { option in
-                        Text(option.label).tag(option.value)
+                        // The watch language with its flag, as the app's own language picker.
+                        Text(item.key == "Language"
+                             ? "\(AppLanguage.flag(companion.languageTag(ofWatchValue: option.value))) \(option.label)"
+                             : option.label).tag(option.value)
                     }
                 }
             }

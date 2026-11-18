@@ -9,17 +9,11 @@ import SwiftUI
 enum WordingFeedback {
     static let languages = ["en", "de", "fr", "it", "gsw", "rm", "nb", "fi", "sv"]
 
-    private static let flags = [
-        "en": "\u{1F1EC}\u{1F1E7}", "de": "\u{1F1E9}\u{1F1EA}", "fr": "\u{1F1EB}\u{1F1F7}",
-        "it": "\u{1F1EE}\u{1F1F9}", "gsw": "\u{1F1E8}\u{1F1ED}", "rm": "\u{1F1E8}\u{1F1ED}",
-        "nb": "\u{1F1F3}\u{1F1F4}", "fi": "\u{1F1EB}\u{1F1EE}", "sv": "\u{1F1F8}\u{1F1EA}",
-    ]
-
     /// Flag plus short code; Swiss German shows as CH (the code stays gsw in the data).
     static func label(_ code: String) -> String {
         let short = code == "gsw" ? "CH" : code.uppercased()
-        if let flag = flags[code] { return "\(flag) \(short)" }
-        return short
+        guard AppLanguage.supported.contains(code) else { return short }
+        return "\(AppLanguage.flag(code)) \(short)"
     }
 
     /// The entries of the bundled index, empty if the file is missing.
