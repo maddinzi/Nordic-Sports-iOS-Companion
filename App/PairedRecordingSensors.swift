@@ -23,7 +23,7 @@ import UIKit
 ///   from the phone" is on with location allowed. Opened later during the activity, it records from there
 ///   (`appBecameActive`). The switch texts say so (`paired_recording_ios_note`, `paired_track_body_ios`).
 /// - "Always" location would lift the first limit; it is not requested (the athlete's decision, App Review).
-// PRIVACY-SYNC: paired recording on iOS: motion (derived values per second only) and, with "Route from the phone", the position once a second, both only while a watch recording runs, stored on this phone with the activity, never sent. Notice: not covered yet. Changing this? Re-check the Companion's design/privacy-notice-sync.md.
+// PRIVACY-SYNC: paired recording on iOS: motion (derived values per second only) and, with "Route from the phone", the position once a second, both only while a watch recording runs, stored on this phone with the activity, never sent. Notice: "The phone in the watch recording (from version 0.9.128)". Changing this? Re-check the Companion's design/privacy-notice-sync.md.
 final class PairedRecordingSensors: NSObject, PairedSensors, CLLocationManagerDelegate {
     static let shared = PairedRecordingSensors()
 
