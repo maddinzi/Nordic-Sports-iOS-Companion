@@ -115,6 +115,24 @@ final class PhoneRecorderModel: NSObject, ObservableObject, CLLocationManagerDel
 
     var exercises: [PhoneExerciseView] { companion?.core.phoneExercises() ?? [] }
 
+    /// Before the next strength set (free order): routine exercise `index` comes next.
+    func chooseRoutineExercise(_ index: Int32) async {
+        _ = try? await companion?.core.choosePhoneRoutineExercise(index: index)
+        refresh()
+    }
+
+    /// Before the next strength set: exercise `id` (one of `exercises`) comes next.
+    func chooseExercise(_ id: Int32) async {
+        _ = try? await companion?.core.choosePhoneExercise(id: id)
+        refresh()
+    }
+
+    /// "Another set": the last set's exercise again.
+    func chooseSameExercise() async {
+        _ = try? await companion?.core.choosePhoneSameExercise()
+        refresh()
+    }
+
     func pause() async { _ = try? await companion?.core.pausePhoneRecording(); refresh() }
 
     func resume() async { _ = try? await companion?.core.resumePhoneRecording(); refresh() }
@@ -479,6 +497,7 @@ struct PhoneRecordingLiveScreen: View {
     @State private var askStop = false
     @State private var askDiscard = false
     @State private var correcting = false
+    @State private var choosingNext = false
 
     var body: some View {
         NavigationStack {
@@ -527,6 +546,11 @@ struct PhoneRecordingLiveScreen: View {
                     CorrectSetSheet(phone: phone, exercise: g.lastExercise, reps: g.lastReps, weightTenthKg: g.lastWeightTenthKg)
                 }
             }
+            .sheet(isPresented: $choosingNext) {
+                if let g = phone.view?.guide {
+                    NextExerciseSheet(phone: phone, choices: g.nextChoices)
+                }
+            }
         }
     }
 
@@ -546,7 +570,10 @@ struct PhoneRecordingLiveScreen: View {
             }
             Text(clock(v.movingSec)).font(.system(size: v.guide == nil ? 48 : 32, weight: .semibold).monospacedDigit())
             if let g = v.guide {
-                GuidePanel(guide: g, running: v.status == "RECORDING", onNext: { Task { await phone.guideNext() } }, onCorrect: { correcting = true })
+                GuidePanel(
+                    guide: g, running: v.status == "RECORDING", onNext: { Task { await phone.guideNext() } }, onCorrect: { correcting = true },
+                    onSame: { Task { await phone.chooseSameExercise() } }, onOther: { choosingNext = true }
+                )
             }
             if v.usesGps {
                 Grid(horizontalSpacing: 16, verticalSpacing: 8) {
@@ -615,6 +642,8 @@ private struct GuidePanel: View {
     let running: Bool
     let onNext: () -> Void
     let onCorrect: () -> Void
+    let onSame: () -> Void
+    let onOther: () -> Void
 
     var body: some View {
         let counting = guide.countdown > 0
@@ -637,6 +666,15 @@ private struct GuidePanel: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
             }
+            // Free order (feedback #71): before a set, the same exercise again or any other one comes next.
+            if guide.canChoose {
+                if !guide.anotherSet.isEmpty {
+                    Button(action: onSame) { Text(guide.anotherSet).frame(maxWidth: .infinity) }
+                        .buttonStyle(.bordered)
+                }
+                Button(action: onOther) { Text(L10n.get("phone_guide_other_exercise")).frame(maxWidth: .infinity) }
+                    .buttonStyle(.bordered)
+            }
             if !guide.lastSet.isEmpty {
                 HStack {
                     Text(guide.lastSet).font(.subheadline).foregroundStyle(.secondary)
@@ -649,6 +687,58 @@ private struct GuidePanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(accent, lineWidth: 1.5))
+    }
+}
+
+/// The next exercise (Android `NextExerciseDialog`): the routine's exercises with their sets done, the one coming next in
+/// bold, then "All exercises"; without a routine leading the full list at once.
+private struct NextExerciseSheet: View {
+    @ObservedObject var phone: PhoneRecorderModel
+    let choices: [PhoneNextChoiceView]
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if !choices.isEmpty {
+                    Section {
+                        ForEach(choices, id: \.index) { c in
+                            Button {
+                                Task { await phone.chooseRoutineExercise(c.index); dismiss() }
+                            } label: {
+                                HStack {
+                                    Text(c.label).fontWeight(c.current ? .bold : .regular)
+                                        .foregroundStyle(c.done ? Color.secondary : Color.primary)
+                                    Spacer()
+                                    Text(c.progress).monospacedDigit().foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                    Section {
+                        NavigationLink(L10n.get("phone_guide_all_exercises")) { allExercises }
+                    }
+                } else {
+                    allExercisesRows
+                }
+            }
+            .navigationTitle(L10n.get("phone_guide_other_exercise"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button(L10n.get("common_cancel")) { dismiss() } }
+            }
+        }
+    }
+
+    private var allExercises: some View {
+        List { allExercisesRows }.navigationTitle(L10n.get("phone_guide_all_exercises"))
+    }
+
+    /// Every exercise except "none" (the first entry of `phone.exercises`, only for corrections).
+    private var allExercisesRows: some View {
+        ForEach(phone.exercises.filter { $0.id >= 0 }, id: \.id) { e in
+            Button(e.label) { Task { await phone.chooseExercise(e.id); dismiss() } }
+        }
     }
 }
 
