@@ -152,6 +152,14 @@ struct ActivityMetricsScreen: View {
         if current.receivedAtEpochMillis > 0 {
             facts.append((L10n.get("activity_detail_received_label"), Format.date(current.receivedAtEpochMillis / 1000)))
         }
+        // "Paired recording": how long the phone measured along and what it cost its battery (Android: the same line).
+        if let cost = current.phoneCapture {
+            let value = cost.batteryStart >= 0 && cost.batteryEnd >= 0
+                // Kotlin Int is Int32 in Swift, which is what %d reads.
+                ? String(format: L10n.get("activity_detail_phone_capture_battery"), cost.minutes, cost.batteryStart, cost.batteryEnd)
+                : String(format: L10n.get("activity_detail_phone_capture_minutes"), cost.minutes)
+            facts.append((L10n.get("activity_detail_phone_capture_label"), value))
+        }
         return facts
     }
 
