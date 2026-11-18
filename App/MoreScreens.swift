@@ -1070,7 +1070,8 @@ struct WatchPlanEditScreen: View {
                             })
                         }
                         if !section.removeId.isEmpty {
-                            Button(L10n.get("watch_strength_remove_exercise"), role: .destructive) {
+                            // A section of an interval plan is a block, of a routine an exercise.
+                            Button(L10n.get(key.hasPrefix("IntervalPlan") ? "watch_interval_remove_block" : "watch_strength_remove_exercise"), role: .destructive) {
                                 self.view = companion.editWatchPlan(view, deviceId: deviceId, key: key, rowId: section.removeId, option: 0)
                             }
                         }
