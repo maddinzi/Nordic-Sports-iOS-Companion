@@ -219,15 +219,14 @@ final class PairedRecordingSensors: NSObject, PairedSensors, CLLocationManagerDe
     }
 }
 
-/// Watch page, below "Phone position": "Paired recording" with "Route from the phone" and "Extended recording"
-/// (Android `PairedRecordingSwitch`, `PairedTrackSwitch`, `ExtendedRecordingSwitch`). Phone settings, the same for
-/// every watch. Rows only; the caller's section holds them.
+/// Watch page, Recording card: "Paired recording" with "Route from the phone" (Android `PairedRecordingSwitch`,
+/// `PairedTrackSwitch`). Phone settings, the same for every watch. Rows only; the caller's section holds them.
+/// "Extended recording" stands in the Sensor Records card ([ExtendedRecordingSettingsRow]).
 struct PairedRecordingSettingsRows: View {
     @EnvironmentObject var companion: Companion
     @Environment(\.scenePhase) private var scenePhase
     @State private var paired = false
     @State private var track = false
-    @State private var extended = false
     @State private var granted = false
 
     private var recording: PairedRecording { companion.core.pairedRecording }
@@ -261,17 +260,6 @@ struct PairedRecordingSettingsRows: View {
                 .settingsAnchor("PairedTrack")
                 .disabled(!paired)
             }
-            Detail(SettingsItem.watchExtendedRecording) {
-                Toggle(isOn: Binding(
-                    get: { extended },
-                    set: { extended = $0; recording.setExtended(on: $0) }
-                )) {
-                    SettingLabel(title: L10n.get("extended_recording_switch"), description: L10n.get("settings_desc_extended_recording"),
-                                 info: L10n.get("extended_recording_body"))
-                }
-                .settingsAnchor("ExtendedRecording")
-                .disabled(!paired)
-            }
         }
         .onAppear(perform: read)
         // Back from the permission sheet or from the Settings app.
@@ -281,7 +269,6 @@ struct PairedRecordingSettingsRows: View {
     private func read() {
         paired = recording.isEnabled()
         track = recording.isTrackEnabled()
-        extended = recording.isExtended()
         granted = PairedRecordingSensors.shared.locationAuthorized
     }
 
@@ -291,6 +278,34 @@ struct PairedRecordingSettingsRows: View {
             PairedRecordingSensors.shared.requestLocation()
         } else if let url = URL(string: UIApplication.openSettingsURLString) {
             UIApplication.shared.open(url)
+        }
+    }
+}
+
+/// Watch page, Sensor Records card: "Extended recording" (Android `ExtendedRecordingSwitch`, 2026-11-18 review): for
+/// testing and learning, the phone also measures what the watch does. A phone setting; off while Paired recording is.
+struct ExtendedRecordingSettingsRow: View {
+    @EnvironmentObject var companion: Companion
+    @State private var paired = false
+    @State private var extended = false
+
+    private var recording: PairedRecording { companion.core.pairedRecording }
+
+    var body: some View {
+        Detail(SettingsItem.watchExtendedRecording) {
+            Toggle(isOn: Binding(
+                get: { extended },
+                set: { extended = $0; recording.setExtended(on: $0) }
+            )) {
+                SettingLabel(title: L10n.get("extended_recording_switch"), description: L10n.get("settings_desc_extended_recording"),
+                             info: L10n.get("extended_recording_body"))
+            }
+            .settingsAnchor("ExtendedRecording")
+            .disabled(!paired)
+        }
+        .onAppear {
+            paired = recording.isEnabled()
+            extended = recording.isExtended()
         }
     }
 }
