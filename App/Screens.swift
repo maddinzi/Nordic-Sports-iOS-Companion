@@ -896,7 +896,9 @@ struct ActivityDetailScreen: View {
             // The Recording Boost captures of this activity: a count, a tap lists them with their CSV files.
             if !boosts.isEmpty {
                 Section {
-                    Button(String(format: L10n.get("activity_detail_boosts"), boosts.count)) { showBoosts = true }
+                    Button { showBoosts = true } label: {
+                        Label(String(format: L10n.get("activity_detail_boosts"), boosts.count), systemImage: "waveform.path.ecg")
+                    }
                 }
             }
             if onOutThereTab {
