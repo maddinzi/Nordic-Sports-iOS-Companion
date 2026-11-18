@@ -1560,6 +1560,7 @@ final class Companion: NSObject, ObservableObject {
         }
         FilesDiaryAccess.shared.forget()
         FolderFiles.shared.forgetRenewals()
+        UserDefaults.standard.removeObject(forKey: FeedbackPrefs.includeNicknameKey)
         let files = FileManager.default
         if let documents = files.urls(for: .documentDirectory, in: .userDomainMask).first {
             // As Android's PublicStorageWriter.deleteAllAppFiles: the folders this app writes in Documents.
