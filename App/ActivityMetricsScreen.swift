@@ -213,11 +213,17 @@ struct ActivityMetricsScreen: View {
                 themeSections(selectedTheme)
             }
             if current.hasWatchMetrics {
+                // A card row like the other links (Android `TrendsLinkCard`, 2026-11-18: a loose footnote button).
                 Section {
-                    Button(L10n.get("dash_more_like_this")) { Task { await companion.showTrends(for: current) } }
-                        .font(.footnote)
+                    Button { Task { await companion.showTrends(for: current) } } label: {
+                        HStack {
+                            Label(L10n.get("dash_more_like_this"), systemImage: "chart.bar").fontWeight(.semibold)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                        }
+                    }
                 }
-                .listRowBackground(Color.clear)
+                .listRowBackground(CardTone.navy.container)
             }
         }
         .textSelection(.enabled)
