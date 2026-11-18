@@ -2286,7 +2286,8 @@ struct FeedbackScreen: View {
     @State private var text = ""
     @State private var email = ""
     @State private var includeDetails = true
-    @State private var includeNickname = false
+    /// Kept from the last sent message (Android's feedback_ui "include_nickname", feedback #72); off until first sent on.
+    @State private var includeNickname = UserDefaults.standard.bool(forKey: FeedbackPrefs.includeNicknameKey)
     @State private var watches: [FeedbackWatchView] = []
     @State private var latestWatch = ""
     /// Index into [watches]; -1 = "Other watch" (typed in), also while no watch is known.
@@ -2350,9 +2351,13 @@ struct FeedbackScreen: View {
         }
     }
     private var extrasSummary: String {
-        String(format: L10n.get("feedback_extras_summary"),
-               L10n.get(includeDetails ? "feedback_extras_on" : "feedback_extras_off"),
-               L10n.get(trimmedEmail.isEmpty ? "feedback_extras_off" : "feedback_extras_on"))
+        let details = L10n.get(includeDetails ? "feedback_extras_on" : "feedback_extras_off")
+        let mail = L10n.get(trimmedEmail.isEmpty ? "feedback_extras_off" : "feedback_extras_on")
+        if companion.nickname.isEmpty {
+            return String(format: L10n.get("feedback_extras_summary"), details, mail)
+        }
+        return String(format: L10n.get("feedback_extras_summary_nickname"), details, mail,
+                      L10n.get(includeNickname ? "feedback_extras_on" : "feedback_extras_off"))
     }
 
     /// Send, the last row of the form; the pinned copy below shows only while this one is scrolled out of view.
@@ -2567,11 +2572,21 @@ struct FeedbackScreen: View {
             return
         }
         switch result {
-        case "sent": sent = true
+        case "sent":
+            sent = true
+            // Only a form that offered the switch changes the remembered choice.
+            if !companion.nickname.isEmpty {
+                UserDefaults.standard.set(includeNickname, forKey: FeedbackPrefs.includeNicknameKey)
+            }
         case "tooMany": error = L10n.get("feedback_error_too_many")
         default: error = L10n.get("feedback_error_failed")
         }
     }
+}
+
+/// Feedback form choices kept on this phone; "delete my data" removes them.
+enum FeedbackPrefs {
+    static let includeNicknameKey = "feedback_include_nickname"
 }
 
 /// "What do you want to tell us?": one row per kind of feedback, each opening its own short form
