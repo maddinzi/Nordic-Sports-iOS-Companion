@@ -86,7 +86,7 @@ final class PhoneMotionCapture {
     static let maxCaptureS = 90.0
     private static let keyOn = "phoneMotion.on"
     private static let keyPlacement = "phoneMotion.placement"
-    private static let samplingS = 0.01
+    private static let samplingS = MotionHub.samplingS
     private static let g = 9.80665
 
     /// A TestFlight build (its receipt is the sandbox one), not the App Store build.
@@ -130,6 +130,8 @@ final class PhoneMotionCapture {
     /// The phone's one Core Motion manager, shared with the paired recording (`PairedRecordingSensors`).
     private let hub = MotionHub.shared
     private var queue: OperationQueue { hub.queue }
+    /// Where a finished capture's file is built and written, one at a time.
+    private static let writeQueue = DispatchQueue(label: "PhoneMotionCapture.write", qos: .utility)
     private let lock = NSLock()
     private var session: Session?
 
@@ -230,11 +232,15 @@ final class PhoneMotionCapture {
             // Only this capture's handlers go: another one (the next heads-up, a paired recording) keeps its own, and
             // the hub stops the sensors when nobody listens.
             self.hub.remove(s.hubId)
-            self.write(s, burstId: burstId, reason: reason)
-            DispatchQueue.main.async {
-                if s.backgroundTask != .invalid {
-                    UIApplication.shared.endBackgroundTask(s.backgroundTask)
-                    s.backgroundTask = .invalid
+            // The file is written off the hub's queue: it serves the paired recording's 100 Hz samples too, which
+            // would wait behind 20 s of CSV (review 2026-11-18). With done set no sample touches [s] any more.
+            Self.writeQueue.async {
+                self.write(s, burstId: burstId, reason: reason)
+                DispatchQueue.main.async {
+                    if s.backgroundTask != .invalid {
+                        UIApplication.shared.endBackgroundTask(s.backgroundTask)
+                        s.backgroundTask = .invalid
+                    }
                 }
             }
         }
