@@ -21,6 +21,29 @@ struct WatchSettingsScreen: View {
     @State private var query = ""
     /// The topic cards opened by hand ("<deviceId>:<topic>"); all start closed, a search opens every hit.
     @State private var open: Set<String> = []
+    /// The row a settings search hit leads to (`SettingsSearchHitView.id`): its card opens, details show, it scrolls
+    /// into view and glows (the search itself lives on the settings overview since 2026-11-18).
+    var focus: String? = nil
+
+    /// The card of a search target: a watch setting by its group, a phone row or block by its id (shared index).
+    private func topic(ofFocus id: String, _ watch: WatchSettingsView) -> Topic? {
+        for group in watch.groups { if let item = group.items.first(where: { $0.key == id }) { return topic(of: item, in: group) } }
+        switch id {
+        case "PhonePlacement", "PairedRecording", "PairedTrack", "ExtendedRecording", "HrSensor", "Sources": return .device
+        case "SkillPerSport": return .sports
+        case "SportAuto": return .recording
+        case "DataFields", "FieldChanges": return .pages
+        case "Intervals", "Routines": return .plans
+        case "PhoneMotion", "SensorProgram": return .sensorRecord
+        default: return nil
+        }
+    }
+
+    /// The search anchor of a block ([Block.id]).
+    private static let blockAnchors = [
+        "skill": "SkillPerSport", "fields": "DataFields", "auto": "SportAuto", "program": "SensorProgram",
+        "hr": "HrSensor", "sources": "Sources", "intervals": "Intervals", "routines": "Routines",
+    ]
 
     /// The six topics of the page, each one collapsible card, in page order (Android `WatchTopic`, 2026-11-18): the
     /// devices, the athlete's sports and level, how a recording runs, what the watch shows, what the athlete trains
@@ -147,6 +170,7 @@ struct WatchSettingsScreen: View {
     }
 
     var body: some View {
+        ScrollViewReader { proxy in
         Form {
             if companion.watchSettings.isEmpty {
                 Text(L10n.get("watch_settings_none")).foregroundStyle(.secondary)
@@ -154,22 +178,28 @@ struct WatchSettingsScreen: View {
             ForEach(companion.watchSettings, id: \.deviceId) { watch in
                 watchSections(watch)
             }
-            if searching && !companion.watchSettings.isEmpty && !companion.watchSettings.contains(where: { anyHit($0) }) {
-                Text(L10n.get("settings_search_no_results")).foregroundStyle(.secondary)
-            }
             // One "Show details" for the page (plan section 5), naming hidden settings that differ from the default.
             let left = companion.watchSettings.map { hidden($0) }
             let count = left.reduce(0) { $0 + $1.count }
-            if !searching && !companion.showAllDetails && (revealed || count > 0) {
+            if focus == nil && !companion.showAllDetails && (revealed || count > 0) {
                 Section {
                     ShowDetailsButton(revealed: $revealed, hidden: count, changed: left.reduce(0) { $0 + $1.changed })
                 }
             }
         }
-        .searchable(text: $query, prompt: L10n.get("settings_search_hint"))
-        .environment(\.detailsRevealed, revealed || outerRevealed || searching)
+        .environment(\.detailsRevealed, revealed || outerRevealed || focus != nil)
         .homeTitle(L10n.get("settings_tile_watch"))
-        .onAppear { companion.refreshWatchSettings() }
+        .onAppear {
+            companion.refreshWatchSettings()
+            // From a search hit: open the card that holds the row.
+            if let focus {
+                for watch in companion.watchSettings {
+                    if let topic = topic(ofFocus: focus, watch) { open.insert("\(watch.deviceId):\(topic.rawValue)") }
+                }
+            }
+        }
+        .scrollsToSettingsFocus(proxy, focus)
+        }
     }
 
     /// The settings of [topic] this watch shows now: by level, and while searching by title or label.
@@ -260,6 +290,7 @@ struct WatchSettingsScreen: View {
                 NavigationLink { WatchShareScreen(deviceId: watch.deviceId) } label: {
                     Label(L10n.get("watch_share_title"), systemImage: "square.and.arrow.up")
                 }
+                .settingsAnchor("Share")
             }
         }
     }
@@ -282,10 +313,11 @@ struct WatchSettingsScreen: View {
                 )) {
                     ForEach(plain, id: \.key) { item in
                         WatchSettingRow(deviceId: watch.deviceId, item: item, instantModeOn: instantOn)
+                            .settingsAnchor(item.key)
                         // Where the athlete's devices sit: the phone's place right below the watch's wrist
                         // (a phone setting, the same for every watch).
                         if item.key == "WatchWrist" {
-                            PhonePlacementRow()
+                            PhonePlacementRow().settingsAnchor("PhonePlacement")
                             // What the phone does while the watch records (phone settings as well).
                             PairedRecordingSettingsRows()
                         }
@@ -297,14 +329,15 @@ struct WatchSettingsScreen: View {
                             .foregroundStyle(Color(red: 0xB2 / 255, green: 0x6A / 255, blue: 0x00 / 255))
                         ForEach(battery, id: \.key) { item in
                             WatchSettingRow(deviceId: watch.deviceId, item: item, instantModeOn: instantOn)
+                                .settingsAnchor(item.key)
                             // The phone's own motion record runs alongside each watch Sensor Record, so its
                             // switch stands right below that one (a phone setting, the same for every watch).
                             if item.key == "RecordingBoostEnabled" {
-                                Detail(SettingsItem.watchPhoneMotion) { PhoneMotionSettingsRows() }
+                                Detail(SettingsItem.watchPhoneMotion) { PhoneMotionSettingsRows().settingsAnchor("PhoneMotion") }
                             }
                         }
                     }
-                    ForEach(parts) { $0.content }
+                    ForEach(parts) { part in part.content.settingsAnchor(Self.blockAnchors[part.id] ?? part.id) }
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(topic.title).font(.headline)
