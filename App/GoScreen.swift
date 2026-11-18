@@ -30,28 +30,32 @@ struct GoScreen: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                // GO's one look (as Android `GoHomeScreen`, 2026-11-18): every card has 16 pt corners; the Record
+                // tile is the one filled card (the action); the information cards carry a border and their heading
+                // above them.
+                VStack(alignment: .leading, spacing: 12) {
                     // The busy line while the app syncs, then its plain result (plan sections 7 and 8b, point 5).
                     BusyBanner()
                     statusLine
                     ForEach(companion.liveActivities, id: \.deviceId) { live in
                         WatchLiveCard(live: live) { burstRoute = BurstRoute(id: $0) }
                             .padding(14)
-                            .background(CardTone.red.container, in: RoundedRectangle(cornerRadius: 14))
+                            .background(CardTone.red.container, in: RoundedRectangle(cornerRadius: Self.corner))
                     }
                     recordTile
                     if let last = companion.activities.max(by: { $0.startEpochSec < $1.startEpochSec }) {
-                        Text(L10n.get("go_last_activity"))
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.leading, 4)
+                        sectionTitle(L10n.get("go_last_activity"))
                         ActivityCard(item: last, stravaConnected: companion.stravaConnected, diaryConnected: companion.diaryReceives) {
                             route = ActivityRoute(id: last.id, target: $0)
                         }
-                        .padding(14)
-                        .background(CardTone.blue.container, in: RoundedRectangle(cornerRadius: 14))
+                        .padding(12)
+                        .background(CardTone.blue.container, in: RoundedRectangle(cornerRadius: Self.corner))
+                        .overlay(RoundedRectangle(cornerRadius: Self.corner).strokeBorder(CardTone.blue.border, lineWidth: 1.5))
                     }
-                    if !week.isEmpty { weekCard }
+                    if !week.isEmpty {
+                        sectionTitle(L10n.get("go_week_distance"))
+                        weekCard
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
@@ -116,7 +120,8 @@ struct GoScreen: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
-                    .background(tone.container, in: RoundedRectangle(cornerRadius: 14))
+                    .background(tone.container, in: RoundedRectangle(cornerRadius: Self.corner))
+                    .overlay(RoundedRectangle(cornerRadius: Self.corner).strokeBorder(tone.border, lineWidth: 1.5))
             }
             .buttonStyle(.plain)
         }
@@ -128,7 +133,7 @@ struct GoScreen: View {
         return Button {
             if running { recordLive = true } else { choosing = true }
         } label: {
-            HStack(spacing: 18) {
+            HStack(spacing: 16) {
                 Image(systemName: running ? "record.circle" : "figure.skiing.crosscountry")
                     .font(.system(size: 44))
                     .foregroundStyle(running ? Color.red : Color.accentColor)
@@ -143,9 +148,9 @@ struct GoScreen: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(18)
+            .padding(16)
             .frame(maxWidth: .infinity, minHeight: 128)
-            .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 20))
+            .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: Self.corner))
         }
         .buttonStyle(.plain)
     }
@@ -156,7 +161,6 @@ struct GoScreen: View {
         let max = Swift.max(week.map { Int($0.metres) }.max() ?? 1, 1)
         return Button(action: onShowTrends) {
             VStack(alignment: .leading, spacing: 10) {
-                Text(L10n.get("go_week_distance")).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
                 ForEach(week, id: \.family) { row in
                     HStack(spacing: 8) {
                         Text(trendFamilyName(row.family))
@@ -179,9 +183,22 @@ struct GoScreen: View {
                 }
             }
             .padding(16)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20))
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: Self.corner))
+            .overlay(RoundedRectangle(cornerRadius: Self.corner).strokeBorder(Color(.separator), lineWidth: 1))
         }
         .buttonStyle(.plain)
+    }
+
+    /// GO's one corner radius (as Android `GO_CARD_SHAPE`).
+    static let corner: CGFloat = 16
+
+    /// A heading above an information card; the extra top space groups it with its card.
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.leading, 4)
+            .padding(.top, 8)
     }
 }
 
