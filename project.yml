@@ -115,7 +115,9 @@ targets:
         # Woken in the background when the watch sends data (part of what spike 1 measures).
         # Recording on the phone (Companion design/phone-recording.md): location while the app is in use, kept running
         # with the screen off by the background mode location (blue indicator), only while a recording runs.
-        NSLocationWhenInUseUsageDescription: Nordic Sports Companion records the route of an activity you start on the phone, only while that recording runs.
+        # The same for a paired recording (the watch records, App/PairedRecordingSensors.swift): "while in use" only,
+        # so its route needs the app open when the watch starts.
+        NSLocationWhenInUseUsageDescription: Nordic Sports Companion records the route of an activity you start on the phone or record with your watch, only while that recording runs.
         UIBackgroundModes:
           - bluetooth-central
           - location

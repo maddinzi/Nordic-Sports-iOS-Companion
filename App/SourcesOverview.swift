@@ -25,6 +25,17 @@ struct SourcesOverviewRows: View {
                     format: L10n.get(PhoneMotionCapture.isEnabled ? "sources_phone_on" : "sources_phone_off"),
                     L10n.get("phone_motion_placement_\(PhoneMotionCapture.placement)")
                 ))
+                // The last paired recording in numbers (Android alike): what the phone kept and what it cost.
+                if let last = companion.core.pairedRecording.lastCapture() {
+                    Text(String(
+                        format: L10n.get("sources_paired_last"),
+                        date(last.startTimeEpochSec), Int(last.minutes), Int(last.records),
+                        last.batteryStart >= 0 ? "\(last.batteryStart)" : "?", last.batteryEnd >= 0 ? "\(last.batteryEnd)" : "?"
+                    ))
+                    if last.trackPoints > 0 {
+                        Text(String(format: L10n.get("sources_paired_track"), Int(last.trackPoints)))
+                    }
+                }
             }
             Text(L10n.get("sources_intro")).font(.footnote).foregroundStyle(.secondary)
         }

@@ -105,13 +105,9 @@ final class PhoneMotionCapture {
     /// The watch's record id in a Sensor Record file name (either layout), 0 when there is none.
     static func burstId(fileName: String) -> Int64 { SensorRecordFolders.burstId(fileName) }
 
-    private let motion = CMMotionManager()
-    private let queue: OperationQueue = {
-        let q = OperationQueue()
-        q.maxConcurrentOperationCount = 1
-        q.name = "PhoneMotionCapture"
-        return q
-    }()
+    /// The phone's one Core Motion manager, shared with the paired recording (`PairedRecordingSensors`).
+    private let hub = MotionHub.shared
+    private var queue: OperationQueue { hub.queue }
     private let lock = NSLock()
     private var session: Session?
 
@@ -129,6 +125,7 @@ final class PhoneMotionCapture {
         var lagMinNs = Int64.max
         var lagMaxNs = Int64.min
         var done = false
+        var hubId: String { "sensorRecord-\(at)-\(headsUpMs)" }
 
         init(at: Int64, headsUpMs: Int64, placement: String, appState: String) {
             self.at = at
@@ -156,7 +153,7 @@ final class PhoneMotionCapture {
             }
             self.lock.unlock()
             if previous != nil { self.stop(burstId: 0, reason: "next heads-up") }
-            guard self.motion.isAccelerometerAvailable, self.motion.isGyroAvailable else {
+            guard self.hub.accelerometerAvailable, self.hub.gyroscopeAvailable else {
                 WatchLinkSpike.shared.add("phone motion: no accelerometer or gyroscope")
                 return
             }
@@ -169,18 +166,11 @@ final class PhoneMotionCapture {
             self.lock.lock()
             self.session = s
             self.lock.unlock()
-            self.motion.accelerometerUpdateInterval = Self.samplingS
-            self.motion.gyroUpdateInterval = Self.samplingS
-            self.motion.startAccelerometerUpdates(to: self.queue) { [weak self] data, _ in
-                guard let data else { return }
-                let a = data.acceleration
-                self?.add(s, "a", data.timestamp, -a.x * Self.g, -a.y * Self.g, -a.z * Self.g)
-            }
-            self.motion.startGyroUpdates(to: self.queue) { [weak self] data, _ in
-                guard let data else { return }
-                let r = data.rotationRate
-                self?.add(s, "g", data.timestamp, r.x, r.y, r.z)
-            }
+            self.hub.add(
+                s.hubId,
+                accel: { [weak self] t, x, y, z in self?.add(s, "a", t, -x * Self.g, -y * Self.g, -z * Self.g) },
+                gyro: { [weak self] t, x, y, z in self?.add(s, "g", t, x, y, z) }
+            )
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.maxCaptureS) { [weak self] in
                 self?.stop(session: s, burstId: 0, reason: "time cap")
             }
@@ -215,17 +205,9 @@ final class PhoneMotionCapture {
         queue.addOperation { [weak self] in
             guard let self, !s.done else { return }
             s.done = true
-            DispatchQueue.main.sync {
-                // A capture that started meanwhile (the next heads-up) has its own handlers on the same manager: its
-                // updates keep running; only with no capture left are they stopped.
-                self.lock.lock()
-                let newer = self.session
-                self.lock.unlock()
-                if newer == nil {
-                    self.motion.stopAccelerometerUpdates()
-                    self.motion.stopGyroUpdates()
-                }
-            }
+            // Only this capture's handlers go: another one (the next heads-up, a paired recording) keeps its own, and
+            // the hub stops the sensors when nobody listens.
+            self.hub.remove(s.hubId)
             self.write(s, burstId: burstId, reason: reason)
             DispatchQueue.main.async {
                 if s.backgroundTask != .invalid {

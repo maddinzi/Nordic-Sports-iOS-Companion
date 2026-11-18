@@ -143,6 +143,8 @@ final class Companion: NSObject, ObservableObject {
         if IOSAppAttestRegistration.available {
             core.storeRegistration = AppAttestStoreRegistration(core: core)
         }
+        // "Paired recording": the phone's sensors for the shared capture.
+        PairedRecordingSensors.shared.attach(to: core)
         stravaConnected = core.stravaConnected()
         refreshDiary()
         refreshWatchSettings()
