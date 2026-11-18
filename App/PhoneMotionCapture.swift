@@ -11,11 +11,31 @@ struct PhoneMotionSettingsRows: View {
 
     var body: some View {
         Group {
-            Toggle(L10n.get("phone_motion_switch"), isOn: Binding(
+            Toggle(isOn: Binding(
                 get: { on },
                 set: { on = $0; PhoneMotionCapture.setEnabled($0) }
-            ))
-            Text(L10n.get("phone_motion_body")).font(.footnote).foregroundStyle(.secondary)
+            )) {
+                SettingLabel(title: L10n.get("phone_motion_switch"), description: L10n.get("settings_desc_phone_motion"),
+                             info: L10n.get("phone_motion_body"))
+            }
+        }
+    }
+}
+
+/// A setting's label with its short description (at most two lines) and, where there is more to say, an info button
+/// (Android `ToggleRow` with description and info, 2026-11-18).
+struct SettingLabel: View {
+    let title: String
+    let description: String
+    var info: String? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Text(title)
+                if let info { ChartInfoButton(title: title, text: info) }
+            }
+            Text(description).font(.footnote).foregroundStyle(.secondary)
         }
     }
 }
@@ -30,13 +50,15 @@ struct PhonePlacementRow: View {
         let keys = PhoneMotionCapture.offeredPlacements.contains(placement)
             ? PhoneMotionCapture.offeredPlacements
             : PhoneMotionCapture.offeredPlacements + [placement]
-        Picker(L10n.get("phone_motion_placement"), selection: Binding(
+        Picker(selection: Binding(
             get: { placement },
             set: { placement = $0; PhoneMotionCapture.placement = $0 }
         )) {
             ForEach(keys, id: \.self) { key in
                 Text(L10n.get("phone_motion_placement_\(key)")).tag(key)
             }
+        } label: {
+            SettingLabel(title: L10n.get("phone_motion_placement"), description: L10n.get("settings_desc_phone_position"))
         }
     }
 }

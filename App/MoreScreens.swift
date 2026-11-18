@@ -252,15 +252,15 @@ struct WatchSettingsScreen: View {
             Text(watch.watchName)
         }
         ForEach(Topic.allCases, id: \.self) { topic in
-            // Share and import right below Plans and routines: it shares what Pages and Plans hold.
-            if topic == .sensorRecord && showsShare(watch) {
-                Section {
-                    NavigationLink { WatchShareScreen(deviceId: watch.deviceId) } label: {
-                        Label(L10n.get("watch_share_title"), systemImage: "square.and.arrow.up")
-                    }
+            topicCard(watch, topic)
+        }
+        // Share and import after the last section (Android, 2026-11-18).
+        if showsShare(watch) {
+            Section {
+                NavigationLink { WatchShareScreen(deviceId: watch.deviceId) } label: {
+                    Label(L10n.get("watch_share_title"), systemImage: "square.and.arrow.up")
                 }
             }
-            topicCard(watch, topic)
         }
     }
 
@@ -1202,7 +1202,38 @@ struct WatchSettingRow: View {
         }
     }
 
+    /// What the setting does, one or two lines (Android `watchSettingDescription`, 2026-11-18). Data screens 3 to 5
+    /// share one text with their number.
+    static func description(_ key: String) -> String? {
+        switch key {
+        case "Language": return L10n.get("settings_desc_watch_language")
+        case "WatchWrist": return L10n.get("settings_desc_wrist")
+        case "SportOrder": return L10n.get("settings_desc_sport_order")
+        case "SkillLevel": return L10n.get("settings_desc_skill_level")
+        case "SilentMode": return L10n.get("settings_desc_silent_mode")
+        case "ShowCadencePage": return String(format: L10n.get("settings_desc_data_screen"), 3)
+        case "ShowAltitudePage": return String(format: L10n.get("settings_desc_data_screen"), 4)
+        case "ShowClockPage": return String(format: L10n.get("settings_desc_data_screen"), 5)
+        case "ShowMapPage": return L10n.get("settings_desc_breadcrumb_page")
+        case "AutoLapDistance": return L10n.get("settings_desc_auto_lap")
+        case "AutoPause": return L10n.get("settings_desc_auto_pause")
+        case "AutoProceed": return L10n.get("settings_desc_auto_proceed")
+        case "RecordingBoostEnabled": return L10n.get("settings_desc_sensor_record")
+        case "SensorRecordDeclare": return L10n.get("settings_desc_sensor_declare")
+        case "TouchInActivity": return L10n.get("settings_desc_touch")
+        case "InstantMode": return L10n.get("settings_desc_instant_mode")
+        case "DefaultWheelType": return L10n.get("settings_desc_default_wheel")
+        case "AskWheelType": return L10n.get("settings_desc_ask_wheel")
+        case "DefaultWaxType": return L10n.get("settings_desc_default_wax")
+        case "AskWaxType": return L10n.get("settings_desc_ask_wax")
+        case "EnhancedMetrics": return L10n.get("settings_desc_enhanced_metrics")
+        case "CaptureTemperature": return L10n.get("settings_desc_capture_temperature")
+        default: return nil
+        }
+    }
+
     var body: some View {
+        let description = Self.description(item.key)
         VStack(alignment: .leading, spacing: 4) {
             if item.isToggle {
                 Toggle(isOn: Binding(
@@ -1214,17 +1245,17 @@ struct WatchSettingRow: View {
                             Text(item.label)
                             if let info { ChartInfoButton(title: item.label, text: info) }
                         }
+                        // What it does; Instant Mode's says it needs the phone nearby (it receives the live messages).
                         if paused {
                             Text(L10n.get("watch_setting_recording_boost_paused")).font(.footnote).foregroundStyle(.secondary)
-                        } else if item.key == "InstantMode" {
-                            // Instant Mode works only with the phone nearby (it receives the live messages).
-                            Text(L10n.get("watch_setting_instant_mode_phone")).font(.footnote).foregroundStyle(.secondary)
+                        } else if let description {
+                            Text(description).font(.footnote).foregroundStyle(.secondary)
                         }
                     }
                 }
                 .opacity(paused ? 0.6 : 1)
             } else {
-                Picker(item.label, selection: Binding(
+                Picker(selection: Binding(
                     get: { item.value },
                     set: { companion.changeWatchSetting(deviceId: deviceId, key: item.key, value: $0) }
                 )) {
@@ -1233,6 +1264,11 @@ struct WatchSettingRow: View {
                         Text(item.key == "Language"
                              ? "\(AppLanguage.flag(companion.languageTag(ofWatchValue: option.value))) \(option.label)"
                              : option.label).tag(option.value)
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.label)
+                        if let description { Text(description).font(.footnote).foregroundStyle(.secondary) }
                     }
                 }
             }
