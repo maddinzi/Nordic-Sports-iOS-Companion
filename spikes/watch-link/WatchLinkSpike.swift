@@ -318,7 +318,11 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
                 if pingBack {
                     self.snapshotPings &+= 1
                     let seq = NSNumber(value: Int32(10_000 + self.snapshotPings % 10_000))
-                    self.send(["type": "clockPing", "seq": seq], to: app, what: "clock ping \(seq)")
+                    // The coverage declaration rides on the ping (Companion design/coverage-declaration.md); this
+                    // watch app gets later changes too (sendCoverage).
+                    let cov = NSNumber(value: Companion.shared.core.pairedRecording.coverageBits())
+                    self.coverageApps[deviceId] = app
+                    self.send(["type": "clockPing", "seq": seq, "cov": cov], to: app, what: "clock ping \(seq), coverage \(cov)")
                 }
                 if !Companion.shared.core.watchMessage(
                     deviceId: deviceId, watchName: watchName, appId: appId, json: json, arrivedAtEpochMillis: arrivedAt
@@ -339,6 +343,17 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
     /// Every message to the watch goes out here, with this phone's clock as it is sent (PhoneClock.stamped). The result
     /// also goes to WatchContact, so the home screen's mark follows what the phone just tried: with [anyFailure] (the
     /// athlete's settings messages) every failure counts, otherwise only "device not available".
+    /// The watch apps that sent a settings snapshot this run (each watch app start), for coverage changes.
+    private var coverageApps: [Int64: IQApp] = [:]
+
+    /// A change of what this phone covers itself (shared `PairedRecording.onCoverageChanged`): once to every watch app
+    /// that runs, as a live message (never queued; the next app start's clock ping carries the value again).
+    @MainActor func sendCoverage(_ bits: Int32) {
+        for app in coverageApps.values {
+            send(["type": "coverage", "cov": NSNumber(value: bits)], to: app, what: "coverage \(bits)")
+        }
+    }
+
     private func send(_ message: [String: Any], to app: IQApp, what: String, anyFailure: Bool = false,
                       done: ((IQSendMessageResult) -> Void)? = nil) {
         let deviceId = app.device.map { Self.deviceId($0) }
