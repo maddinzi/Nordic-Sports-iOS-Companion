@@ -634,31 +634,48 @@ struct WatchShareScreen: View {
 
     var body: some View {
         let text = companion.watchShareText(deviceId: deviceId, ids: sets.map(\.id).filter { picked.contains($0) })
-        Form {
-            Section { Text(L10n.get("watch_share_intro")).font(.footnote).foregroundStyle(.secondary) }
-            Section(L10n.get("watch_share_pick")) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L10n.get("watch_share_intro")).font(.footnote).foregroundStyle(.secondary)
+                ShareSectionTitle(L10n.get("watch_share_pick"))
                 if sets.isEmpty {
-                    Text(L10n.get("watch_share_nothing")).foregroundStyle(.secondary)
+                    Text(L10n.get("watch_share_nothing")).font(.footnote).foregroundStyle(.secondary)
                 }
                 ForEach(sets, id: \.id) { set in
-                    Toggle(isOn: Binding(
-                        get: { picked.contains(set.id) },
-                        set: { on in if on { picked.insert(set.id) } else { picked.remove(set.id) } }
-                    )) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(set.title)
-                            Text(set.summary).font(.footnote).foregroundStyle(.secondary)
+                    let on = picked.contains(set.id)
+                    Button {
+                        if on { picked.remove(set.id) } else { picked.insert(set.id) }
+                    } label: {
+                        ShareSetCard(active: on) {
+                            HStack(spacing: 12) {
+                                Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                                    .font(.title3)
+                                    .foregroundStyle(on ? Color.accentColor : .secondary)
+                                ShareSetText(title: set.title, summary: set.summary, active: on)
+                                Spacer(minLength: 0)
+                            }
                         }
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(on ? .isSelected : [])
                 }
-                ShareLink(item: text) { Label(L10n.get("watch_share_send"), systemImage: "square.and.arrow.up") }
-                    .disabled(text.isEmpty)
-            }
-            Section {
+                ShareLink(item: text) {
+                    Label(L10n.get("watch_share_send"), systemImage: "square.and.arrow.up")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(text.isEmpty)
+                .padding(.top, 8)
                 NavigationLink { WatchImportScreen(deviceId: deviceId) } label: {
                     Label(L10n.get("watch_import_title"), systemImage: "square.and.arrow.down")
+                        .frame(maxWidth: .infinity)
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
         }
         .homeTitle(L10n.get("watch_share_title"))
         .onAppear {
@@ -681,61 +698,70 @@ struct WatchImportScreen: View {
     @State private var also: [Set<String>] = []
 
     var body: some View {
-        Form {
-            if let sets {
-                Section { Text(L10n.get("watch_import_choose")).font(.footnote).foregroundStyle(.secondary) }
-                ForEach(Array(sets.enumerated()), id: \.offset) { i, set in
-                    Section {
-                        Text(set.summary).font(.footnote).foregroundStyle(.secondary)
-                        if set.targets.isEmpty {
-                            Text(L10n.get("watch_import_no_slot")).font(.footnote).foregroundStyle(.red)
-                        } else {
-                            Picker(L10n.get("watch_import_goes_to"), selection: $targets[i]) {
-                                Text(L10n.get("watch_import_skip")).tag("")
-                                ForEach(set.targets, id: \.key) { target in
-                                    Text(target.label).tag(target.key)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                if let sets {
+                    Text(L10n.get("watch_import_choose")).font(.footnote).foregroundStyle(.secondary)
+                    ForEach(Array(sets.enumerated()), id: \.offset) { i, set in
+                        ShareSetCard(active: !targets[i].isEmpty || !also[i].isEmpty) {
+                            ShareSetText(title: set.title, summary: set.summary, active: !targets[i].isEmpty || !also[i].isEmpty)
+                            if set.targets.isEmpty {
+                                Text(L10n.get("watch_import_no_slot")).font(.footnote).foregroundStyle(.red)
+                            } else {
+                                HStack {
+                                    Text(L10n.get("watch_import_goes_to")).font(.subheadline)
+                                    Spacer(minLength: 8)
+                                    Picker(L10n.get("watch_import_goes_to"), selection: $targets[i]) {
+                                        Text(L10n.get("watch_import_skip")).tag("")
+                                        ForEach(set.targets, id: \.key) { target in
+                                            Text(target.label).tag(target.key)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .labelsHidden()
                                 }
                             }
-                            .pickerStyle(.navigationLink)
-                        }
-                        // A data field set can go to further sports too (e.g. a running set to Langlauf).
-                        let extra = set.alsoTargets.filter { $0.key != targets[i] }
-                        if !extra.isEmpty {
-                            Text(L10n.get("watch_import_also_apply")).font(.footnote).foregroundStyle(.secondary)
-                            ForEach(extra, id: \.key) { target in
-                                Toggle(target.label, isOn: Binding(
-                                    get: { also[i].contains(target.key) },
-                                    set: { on in if on { also[i].insert(target.key) } else { also[i].remove(target.key) } }
-                                ))
+                            // A data field set can go to further sports too (e.g. a running set to Langlauf).
+                            let extra = set.alsoTargets.filter { $0.key != targets[i] }
+                            if !extra.isEmpty {
+                                Text(L10n.get("watch_import_also_apply")).font(.footnote).foregroundStyle(.secondary)
+                                ForEach(extra, id: \.key) { target in
+                                    Toggle(target.label, isOn: Binding(
+                                        get: { also[i].contains(target.key) },
+                                        set: { on in if on { also[i].insert(target.key) } else { also[i].remove(target.key) } }
+                                    ))
+                                    .font(.subheadline)
+                                }
                             }
                         }
-                    } header: {
-                        Text(set.title)
                     }
-                }
-                Section {
-                    Button(L10n.get("watch_import_apply")) {
+                    Button {
                         companion.applyWatchImportAlso(deviceId: deviceId, text: text, targets: targets, also: also.map { Array($0) })
                         dismiss()
+                    } label: {
+                        Text(L10n.get("watch_import_apply")).frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                     .disabled(targets.allSatisfy { $0.isEmpty } && also.allSatisfy { $0.isEmpty })
-                }
-            } else {
-                Section {
+                    .padding(.top, 8)
+                } else {
                     Text(L10n.get("watch_import_paste_hint")).font(.footnote).foregroundStyle(.secondary)
                     // PasteButton reads the clipboard without iOS asking for permission.
                     PasteButton(payloadType: String.self) { strings in
                         if let first = strings.first { text = first; invalid = false }
                     }
                     TextEditor(text: $text)
-                        .frame(minHeight: 120)
+                        .frame(minHeight: 140)
+                        .padding(8)
+                        .scrollContentBackground(.hidden)
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+                        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(invalid ? Color.red : Color(.separator), lineWidth: 1))
                         .onChange(of: text) { invalid = false }
                     if invalid {
                         Text(L10n.get("watch_import_invalid")).font(.footnote).foregroundStyle(.red)
                     }
-                }
-                Section {
-                    Button(L10n.get("watch_import_next")) {
+                    Button {
                         if let found = companion.readWatchImport(deviceId: deviceId, text: text), !found.isEmpty {
                             targets = found.map(\.proposed)
                             also = found.map { _ in [] }
@@ -743,12 +769,65 @@ struct WatchImportScreen: View {
                         } else {
                             invalid = true
                         }
+                    } label: {
+                        Text(L10n.get("watch_import_next")).frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                     .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .padding(.top, 8)
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
         }
         .homeTitle(L10n.get("watch_import_title"))
+    }
+}
+
+/// One shared or imported set as a card in GO's look (16 pt corners, a frame; Android `SetCard`): blue while it is
+/// picked or has a slot, grey while it is left out.
+private struct ShareSetCard<Content: View>: View {
+    let active: Bool
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        let tone: CardTone = active ? .blue : .grey
+        VStack(alignment: .leading, spacing: 6) { content() }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(tone.container, in: RoundedRectangle(cornerRadius: GoScreen.corner))
+            .overlay(RoundedRectangle(cornerRadius: GoScreen.corner).strokeBorder(tone.border, lineWidth: 1.5))
+            .contentShape(RoundedRectangle(cornerRadius: GoScreen.corner))
+    }
+}
+
+/// A set's name in the card's title colour and what it holds, at most two lines (Android `SetText`).
+private struct ShareSetText: View {
+    let title: String
+    let summary: String
+    let active: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle((active ? CardTone.blue : CardTone.grey).title)
+            Text(summary).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+        }
+    }
+}
+
+/// A heading above a group of cards, as on GO.
+private struct ShareSectionTitle: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.leading, 4)
+            .padding(.top, 8)
     }
 }
 
