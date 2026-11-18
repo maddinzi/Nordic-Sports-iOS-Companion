@@ -320,6 +320,7 @@ private func tileTexts(_ key: String) -> (name: String, desc: String, abbreviati
     case "10k": return (L10n.get("em_best_10k"), "", nil)
     case "21k": return (L10n.get("em_best_21k"), "", nil)
     case "vo": return (L10n.get("em_vo_name"), L10n.get("em_vo_desc"), nil)
+    case "legpush": return (L10n.get("em_legs_push_name"), L10n.get("em_legs_push_desc"), nil)
     case "vr": return (L10n.get("em_vr_name"), L10n.get("em_vr_desc"), nil)
     case "ascent": return (L10n.get("em_ascent_name"), L10n.get("em_ascent_desc"), nil)
     case "descent": return (L10n.get("em_descent_name"), L10n.get("em_descent_desc"), nil)
@@ -429,8 +430,25 @@ struct EnhancedMetricsCard: View {
                         Text(String(format: L10n.get("em_gct_calibrated_note"), Int(view.gctCalibrationRuns), date))
                             .font(.caption).foregroundStyle(tone.subtitle)
                     }
+                    // The bounce is the phone's own measurement ("Paired recording"): said so (Android `FormSection`).
+                    if view.voFromPhone {
+                        Text(L10n.get("em_vo_phone_note")).font(.caption).foregroundStyle(tone.subtitle)
+                    }
                 }
             }
+            }
+            // What the legs did, from the phone on the body ("Paired recording"): the watch sees the poles only
+            // (Android `LegsSection`).
+            if shows(.technique), !isRun, let legs = view.legs {
+                section(L10n.get("em_legs_title")) {
+                    if legs.pushPerMin >= 0 {
+                        tiles([EmValue(key: "legpush", value: String(format: "%.0f", legs.pushPerMin), unit: "/min")])
+                    }
+                    Text(String(format: L10n.get("em_legs_shares"),
+                                clock(Int(legs.pushSeconds)), clock(Int(legs.poleSeconds)), clock(Int(legs.quietSeconds))))
+                        .font(.footnote).foregroundStyle(tone.title)
+                    Text(L10n.get("em_legs_note")).font(.caption).foregroundStyle(tone.subtitle)
+                }
             }
             if shows(.overview) {
             if isRun, !view.gait.isEmpty {

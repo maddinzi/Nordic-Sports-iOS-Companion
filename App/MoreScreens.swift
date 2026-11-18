@@ -249,7 +249,11 @@ struct WatchSettingsScreen: View {
                         WatchSettingRow(deviceId: watch.deviceId, item: item, instantModeOn: instantOn)
                         // Where the athlete's devices sit: the phone's place right below the watch's wrist
                         // (a phone setting, the same for every watch).
-                        if item.key == "WatchWrist" { PhonePlacementRow() }
+                        if item.key == "WatchWrist" {
+                            PhonePlacementRow()
+                            // What the phone does while the watch records (phone settings as well).
+                            PairedRecordingSettingsRows()
+                        }
                     }
                     // The settings that cost extra watch battery under a battery line (Android `BatteryFrame`).
                     if !battery.isEmpty {
