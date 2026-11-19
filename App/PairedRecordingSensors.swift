@@ -78,6 +78,10 @@ final class PairedRecordingSensors: NSObject, PairedSensors, CLLocationManagerDe
             let id = deviceId.int64Value
             Task { @MainActor in WatchLinkSpike.shared.sendCalibrate(id, reason: reason) }
         }
+        // A request counts only when it can reach the recording's own watch (shared `calibrationRoute`).
+        core.pairedRecording.calibrationRoute = { deviceId in
+            KotlinBoolean(value: WatchLinkSpike.shared.hasCalibrationRoute(deviceId.int64Value))
+        }
         core.pairedRecording.attach(sensors: self)
     }
 

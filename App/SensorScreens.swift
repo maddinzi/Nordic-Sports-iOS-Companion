@@ -53,7 +53,12 @@ struct SensorModeView: View {
 
 private enum BurstPage: String, CaseIterable {
     case stroke, rhythm, legs, path, context
-    var label: String { L10n.get(self == .legs ? "burst_page_legs_ski" : "burst_page_\(rawValue)") }
+
+    /// The page's name; the legs page is "Arms & legs" when running, "Poles & legs" otherwise.
+    func label(_ sport: BurstSport?) -> String {
+        if self == .legs { return L10n.get(sport == BurstSport.running ? "burst_page_legs_run" : "burst_page_legs_ski") }
+        return L10n.get("burst_page_\(rawValue)")
+    }
 }
 
 /// The charts of one Sensor Record: the time window, the page pills, the summary card and the open page.
@@ -78,11 +83,14 @@ struct SensorRecordView: View {
     /// The record's label and technique choices (its sport only), for the technique menu.
     @State private var record: RecordingBoostView?
 
-    /// The legs page shows only where a phone on the trunk was recorded along (Android `legsPage`).
+    /// The legs page shows only where a phone on the trunk was recorded along: the shared placements (Android `legsPage`).
     private var legsPage: Bool {
         guard let placement = full?.phone?.placement else { return false }
-        return placement == "belt" || placement == "chest"
+        return LegEvents.shared.PLACEMENTS.contains(placement)
     }
+
+    /// The record's sport, one for every page: what the legs were computed for, else the record's facts.
+    private var sport: BurstSport? { full?.legs?.sport ?? facts?.sport }
 
     /// Saves [code] as the declared technique ("" clears it). The rest of a label stays; a first label also takes
     /// the record's terrain and poles suggestion, as the label sheet does (Android `BurstScreen` onTechnique).
@@ -120,22 +128,21 @@ struct SensorRecordView: View {
                                 }
                             }
                         }
-                        Picker("", selection: $page) {
-                            // The legs page only where a phone on the trunk was recorded along; its title follows the sport.
-                            ForEach(BurstPage.allCases.filter { $0 != .legs || legsPage }, id: \.self) { p in
-                                Text(p == .legs && facts?.sport == BurstSport.running ? L10n.get("burst_page_legs_run") : p.label).tag(p)
-                            }
-                        }
-                        .pickerStyle(.segmented)
+                        // Scrollable pills (Android PartPills): five pages with long names fit no segmented control on a
+                        // narrow phone. The legs page only where a phone on the trunk was recorded along.
+                        PartPills(pills: BurstPage.allCases.filter { $0 != .legs || legsPage }.map { p in
+                            PartPill(id: p.rawValue, label: p.label(sport), selected: page == p) { page = p }
+                        })
                         BurstHero(v: v)
+                        let texts = SportTexts.of(sport)
                         switch page {
-                        case .stroke: StrokePage(v: v, phone: showPhone ? v.phone : nil, texts: SportTexts.of(facts?.sport))
-                        case .rhythm: RhythmPage(v: v, phone: showPhone ? v.phone : nil, texts: SportTexts.of(facts?.sport))
+                        case .stroke: StrokePage(v: v, phone: showPhone ? v.phone : nil, texts: texts)
+                        case .rhythm: RhythmPage(v: v, phone: showPhone ? v.phone : nil, texts: texts)
                         case .legs:
                             // The athlete's label, else the watch's declaration (as Android).
                             let label = record?.labelTechnique ?? ""
-                            LegsPage(v: v, sport: facts?.sport, technique: label.isEmpty ? (facts?.declaredTechnique ?? "") : label)
-                        case .path: PathPage(v: v, texts: SportTexts.of(facts?.sport))
+                            LegsPage(v: v, sport: sport, technique: label.isEmpty ? (facts?.declaredTechnique ?? "") : label)
+                        case .path: PathPage(v: v, texts: texts)
                         case .context: ContextPage(v: v, facts: facts)
                         }
                         Text(L10n.get("burst_caveat")).font(.caption2).foregroundStyle(.secondary)
@@ -623,19 +630,25 @@ private struct LegsPage: View {
 
     var body: some View {
         if let legs = v.legs {
+            // The sport the legs were computed for decides rows, units and tiles (never a lookup that may be missing).
+            let sport: BurstSport? = legs.sport
             let running = sport == BurstSport.running
             let skating = sport == BurstSport.skating
+            // The four rows converted from Kotlin once per body, not once per row and draw.
+            let rows = [legs.arm.swiftArray, legs.side.swiftArray, legs.vertical.swiftArray, legs.turn.swiftArray]
             let read = running ? "legs_read_run" : sport == BurstSport.classic ? "legs_read_classic" : "legs_read_skate"
             burstCard {
-                ChartFrame(title: L10n.get(running ? "burst_page_legs_run" : "burst_page_legs_ski"), info: pageInfo([read])) { _ in
+                ChartFrame(title: BurstPage.legs.label(sport), info: pageInfo([read])) { space in
+                    // Full screen reads at arm's length: rows and labels grow as Android's (ChartSpace.scale 1.4).
+                    let s: CGFloat = space.maximized ? 1.4 : 1
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(0..<4, id: \.self) { r in
-                            Text(L10n.get(rowLabel(r, running))).font(.system(size: 11)).foregroundStyle(.secondary)
-                            LegsRow(legs: legs, values: rowValues(legs, r), color: r == 0 ? .accentColor : phoneColor,
+                            Text(L10n.get(rowLabel(r, running))).font(.system(size: 11 * s)).foregroundStyle(.secondary)
+                            LegsRow(legs: legs, values: rows[r], color: r == 0 ? .accentColor : phoneColor,
                                     showEvents: r == (skating ? 1 : 2))
-                                .frame(height: 52)
+                                .frame(height: 52 * s)
                         }
-                        Text(L10n.get("legs_cycle_title")).font(.system(size: 11)).foregroundStyle(.secondary)
+                        Text(L10n.get("legs_cycle_title")).font(.system(size: 11 * s)).foregroundStyle(.secondary)
                         Canvas { ctx, size in
                             let mid = size.height / 2
                             var base = Path(); base.move(to: CGPoint(x: 0, y: mid)); base.addLine(to: CGPoint(x: size.width, y: mid))
@@ -679,15 +692,6 @@ private struct LegsPage: View {
         case 1: return "legs_row_side"
         case 2: return "legs_row_vertical"
         default: return "legs_row_turn"
-        }
-    }
-
-    private func rowValues(_ legs: LegEventsResult, _ r: Int) -> [Float] {
-        switch r {
-        case 0: return legs.arm.swiftArray
-        case 1: return legs.side.swiftArray
-        case 2: return legs.vertical.swiftArray
-        default: return legs.turn.swiftArray
         }
     }
 

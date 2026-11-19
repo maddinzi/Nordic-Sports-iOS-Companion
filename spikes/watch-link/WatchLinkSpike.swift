@@ -212,6 +212,8 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         let source = label(app)
         let size = Self.describe(message)
         let senderId = app.device.map { Self.deviceId($0) }
+        // Any stamped message shows where this watch's app runs: the route for calibration requests.
+        if let senderId, dict?["txMs"] != nil { learnCalibrationRoute(senderId, app) }
         Task { @MainActor in
             if let senderId { WatchContact.shared.heard(senderId) }
             let state = UIApplication.shared.applicationState
@@ -354,11 +356,31 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         }
     }
 
+    /// The watch apps that sent a stamped message ("txMs") this run, by device: where calibration requests go (Android
+    /// `calibrationRoutes`). Learned from every such message, so after iOS relaunches the app mid-recording the next
+    /// live message of the watch brings the route back. The shared code asks for it from any thread: its own lock.
+    private var calibrationApps: [Int64: IQApp] = [:]
+    private let calibrationLock = NSLock()
+
+    private func learnCalibrationRoute(_ deviceId: Int64, _ app: IQApp) {
+        calibrationLock.lock(); defer { calibrationLock.unlock() }
+        calibrationApps[deviceId] = app
+    }
+
+    /// Whether a calibration request to [deviceId] can go out now (shared `PairedRecording.calibrationRoute`).
+    func hasCalibrationRoute(_ deviceId: Int64) -> Bool {
+        calibrationLock.lock(); defer { calibrationLock.unlock() }
+        return calibrationApps[deviceId] != nil
+    }
+
     /// The phone asks the watch [deviceId] for a background calibration record (shared `PairedRecording.onCalibrate`,
-    /// `CalibrationRequests`): a live message, once, never queued; the watch serves it when free or drops it. With
-    /// one watch app running and none under that id, it goes to that one.
+    /// `CalibrationRequests`): a live message, once, never queued; the watch serves it when free or drops it. Only to
+    /// that recording's own watch, never to another one.
     @MainActor func sendCalibrate(_ deviceId: Int64, reason: String) {
-        guard let app = coverageApps[deviceId] ?? (coverageApps.count == 1 ? coverageApps.values.first : nil) else {
+        calibrationLock.lock()
+        let route = calibrationApps[deviceId]
+        calibrationLock.unlock()
+        guard let app = route else {
             add("calibrate (\(reason)): no running watch app known for \(deviceId)")
             return
         }
