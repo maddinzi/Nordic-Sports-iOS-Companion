@@ -511,9 +511,12 @@ private struct BurstHero: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if v.rhythmic && v.cycleCount > 0 {
+                // Two by two (Android: same): four in a row break their labels mid-word at a large text size.
                 HStack(spacing: 8) {
                     tile(String(format: "%.2f s", v.cycleS), L10n.get("burst_tile_cycle"))
                     tile("\(v.swingsPerMin)", L10n.get("burst_tile_rate"))
+                }
+                HStack(spacing: 8) {
                     tile("\(Int((v.steadiness * 100).rounded())) %", L10n.get("burst_tile_steady"))
                     tile(String(format: "%.1f g", v.peakAccelG), L10n.get("burst_tile_peak"))
                 }

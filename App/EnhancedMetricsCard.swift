@@ -276,8 +276,12 @@ private struct MetricBars: View {
             .frame(width: 64, alignment: .leading)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
+                    // A faded bar (little data) keeps its hue: a light fill inside an outline in the full colour
+                    // (Android: same); half alpha alone turned orange brown on the dark tile.
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(stateColor(bar.key).opacity((bar.faded ? 0.45 : 1) * (dim ? 0.4 : 1)))
+                        .fill(stateColor(bar.key).opacity((bar.faded ? 0.35 : 1) * (dim ? 0.4 : 1)))
+                        .overlay(RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(stateColor(bar.key).opacity(bar.faded ? (dim ? 0.4 : 1) : 0), lineWidth: 1.5))
                         .frame(width: geo.size.width * CGFloat(bar.value / scale) * grow)
                     if let average {
                         let x = geo.size.width * CGFloat(average / scale)
@@ -552,7 +556,9 @@ struct EnhancedMetricsCard: View {
                 section(L10n.get("em_hrv_title"), badge: view.hrv.isEmpty || !hrDetail ? nil : hrvSourceName) {
                     if !view.hrv.isEmpty && hrDetail {
                         tiles(view.hrv)
-                        Text(L10n.get("em_hrv_note")).font(.caption).foregroundStyle(tone.subtitle)
+                        // The note follows the badge: with a chest strap it does not advise one (Android: same).
+                        Text(L10n.get(view.hrvSource == "strap" ? "em_hrv_note_strap" : "em_hrv_note"))
+                            .font(.caption).foregroundStyle(tone.subtitle)
                     }
                     if hasHrZones { zoneDonut }
                     ForEach(view.zoneGroups, id: \.id) { group in zoneBars(group) }
