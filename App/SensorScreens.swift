@@ -120,9 +120,9 @@ struct SensorRecordView: View {
                         .pickerStyle(.segmented)
                         BurstHero(v: v)
                         switch page {
-                        case .stroke: StrokePage(v: v, phone: showPhone ? v.phone : nil)
-                        case .rhythm: RhythmPage(v: v, phone: showPhone ? v.phone : nil)
-                        case .path: PathPage(v: v)
+                        case .stroke: StrokePage(v: v, phone: showPhone ? v.phone : nil, texts: SportTexts.of(facts?.sport))
+                        case .rhythm: RhythmPage(v: v, phone: showPhone ? v.phone : nil, texts: SportTexts.of(facts?.sport))
+                        case .path: PathPage(v: v, texts: SportTexts.of(facts?.sport))
                         case .context: ContextPage(v: v, facts: facts)
                         }
                         Text(L10n.get("burst_caveat")).font(.caption2).foregroundStyle(.secondary)
@@ -531,6 +531,26 @@ private struct BurstHero: View {
     }
 }
 
+/// The pages' reading help for the record's sport (shared `BurstSport`, as Android's `SportTexts`): on skis the arm
+/// cycle is the pole stroke and a trunk peak a leg push (skating) or a kick / the double-pole dip (classic); when running
+/// the arm cycle is the arm swing and a trunk peak a foot strike.
+private struct SportTexts {
+    let stroke: String, rhythm: String, path: String, phone: String, phoneRhythm: String
+
+    static func of(_ sport: BurstSport?) -> SportTexts {
+        if sport == BurstSport.running {
+            return SportTexts(stroke: "burst_read_stroke_run", rhythm: "burst_read_rhythm_run", path: "burst_read_path_run",
+                              phone: "burst_read_phone_run", phoneRhythm: "burst_read_phone_rhythm_run")
+        }
+        if sport == BurstSport.classic {
+            return SportTexts(stroke: "burst_read_stroke", rhythm: "burst_read_rhythm", path: "burst_read_path",
+                              phone: "burst_read_phone_classic", phoneRhythm: "burst_read_phone_rhythm_classic")
+        }
+        return SportTexts(stroke: "burst_read_stroke", rhythm: "burst_read_rhythm", path: "burst_read_path",
+                          phone: "burst_read_phone", phoneRhythm: "burst_read_phone_rhythm")
+    }
+}
+
 /// How to read a page (its first chart's (i)), followed by how to read a single value.
 private func pageInfo(_ keys: [String]) -> String {
     (keys.map { L10n.get($0) } + [L10n.get("burst_sel_hint")]).joined(separator: "\n\n")
@@ -580,6 +600,7 @@ private struct StrokePage: View {
     let v: BurstView
     /// The phone over the same arm cycles (dashed, own scale); nil = watch only.
     var phone: PhoneOverlay? = nil
+    var texts: SportTexts = SportTexts.of(nil)
     @State private var selA: Int?
     @State private var selG: Int?
 
@@ -587,7 +608,7 @@ private struct StrokePage: View {
         if let a = v.strokeAccel, let g = v.strokeGyro {
             burstCard {
                 ChartFrame(title: L10n.get("burst_stroke_accel"),
-                           info: pageInfo(phone != nil ? ["burst_read_stroke", "burst_read_phone"] : ["burst_read_stroke"])) { space in
+                           info: pageInfo(phone != nil ? [texts.stroke, texts.phone] : [texts.stroke])) { space in
                     BandChart(band: a, cycleS: v.cycleS, color: .accentColor, unit: "g", space: space, selected: $selA, phone: phone?.strokeAccel)
                 }
                 ChartFrame(title: L10n.get("burst_stroke_gyro")) { space in
@@ -709,6 +730,7 @@ private struct RhythmPage: View {
     let v: BurstView
     /// The phone's movement spectrum next to the arm's (dashed); nil = watch only.
     var phone: PhoneOverlay? = nil
+    var texts: SportTexts = SportTexts.of(nil)
     @State private var sel: Int?
 
     var body: some View {
@@ -717,7 +739,7 @@ private struct RhythmPage: View {
         } else {
             burstCard {
                 ChartFrame(title: L10n.get("burst_rhythm_title"),
-                           info: pageInfo(phone?.spectrumAccel != nil ? ["burst_read_rhythm", "burst_read_phone_rhythm"] : ["burst_read_rhythm"])) { space in
+                           info: pageInfo(phone?.spectrumAccel != nil ? [texts.rhythm, texts.phoneRhythm] : [texts.rhythm])) { space in
                     SpectrumChart(gyro: v.spectrumGyro, accel: v.spectrumAccel, rhythmic: v.rhythmic, space: space, selected: $sel,
                                   phone: phone?.spectrumAccel)
                 }
@@ -819,6 +841,7 @@ private struct SpectrumChart: View {
 
 private struct PathPage: View {
     let v: BurstView
+    var texts: SportTexts = SportTexts.of(nil)
     @State private var sel: Int?
 
     var body: some View {
@@ -826,7 +849,7 @@ private struct PathPage: View {
             burstCard { Text(L10n.get("burst_no_rhythm")).font(.footnote) }
         } else {
             burstCard {
-                ChartFrame(title: L10n.get("burst_path_title"), info: pageInfo(["burst_read_path"])) { space in
+                ChartFrame(title: L10n.get("burst_path_title"), info: pageInfo([texts.path])) { space in
                     PathChart(v: v, space: space, selected: $sel)
                 }
             }
