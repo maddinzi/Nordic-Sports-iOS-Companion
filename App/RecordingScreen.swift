@@ -356,7 +356,8 @@ struct TrackPoints {
     func colourModes(withGrade: Bool) -> [TrackColour] {
         TrackColour.allCases.filter { mode in
             switch mode {
-            case .technique: return hasTechnique
+            // Only once a point carries a state (Android `LiveTrackMap`): a track without any was all grey, no legend.
+            case .technique: return hasTechnique && technique.contains { !$0.isEmpty }
             case .speed: return true
             case .altitude: return hasAltitude
             case .grade: return withGrade && hasGrade
@@ -425,7 +426,11 @@ struct TrackColours {
         }
         let values = Array((mode == .speed ? t.speedKmh : t.altitudeM).prefix(n))
         let present = values.filter { !$0.isNaN }
-        let lo = present.min(), hi = present.max()
+        // Speed: the 5th and 95th percentile of the moving points (Android `trackColours`), so a GPS spike and standing
+        // no longer set the scale; points beyond take the end colours.
+        let moving = mode == .speed ? present.filter { $0 >= 2 }.sorted() : []
+        let lo = moving.count >= 10 ? moving[moving.count * 5 / 100] : present.min()
+        let hi = moving.count >= 10 ? moving[moving.count * 95 / 100] : present.max()
         let span = (lo != nil && hi != nil) ? hi! - lo! : 0
         let (a, b) = Self.ramp(mode)
         colours = values.map { v in

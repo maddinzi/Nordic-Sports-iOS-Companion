@@ -248,7 +248,7 @@ struct ActivityMetricsScreen: View {
                 rows: technicalRows, facts: technicalFacts
             )
         }
-        .listRowBackground(CardTone.navy.container)
+        .listRowBackground(CardTone.blue.container)
     }
 
     /// The themes that are not open, composed at no size and not drawn: their charts register with the screen's registry.
