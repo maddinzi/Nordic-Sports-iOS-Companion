@@ -501,11 +501,31 @@ struct ActivityBoostsSheet: View {
         SensorRecordFolders.existing(fileName: burst.fileName)
     }
 
+    /// "automatic · 12 s", "calibration · 3 s" or "20 s"; nil without a length or origin.
+    private static func detail(_ burst: RecordingBoostView) -> String? {
+        var parts: [String] = []
+        switch burst.origin {
+        case "auto": parts.append(L10n.get("sensor_record_origin_auto"))
+        case "calibration": parts.append(L10n.get("sensor_record_origin_calibration"))
+        default: break
+        }
+        if burst.sampleRateHz > 0 && burst.sampleCount > 0 {
+            parts.append("\((Int(burst.sampleCount) + Int(burst.sampleRateHz) / 2) / Int(burst.sampleRateHz)) s")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
     var body: some View {
         NavigationStack {
             List(boosts, id: \.id) { burst in
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(Format.date(burst.burstId)).font(.subheadline.bold())
+                    // What the record is when the athlete did not press, and its length (Android `SensorRecordsCard`).
+                    HStack(spacing: 6) {
+                        Text(Format.date(burst.burstId)).font(.subheadline.bold())
+                        if let detail = Self.detail(burst) {
+                            Text(detail).font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    }
                     if burst.fileName.isEmpty {
                         Text(L10n.get("recording_boost_list_file_missing")).font(.footnote).foregroundStyle(.red)
                     } else {
