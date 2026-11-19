@@ -52,8 +52,8 @@ struct SensorModeView: View {
 }
 
 private enum BurstPage: String, CaseIterable {
-    case stroke, rhythm, path, context
-    var label: String { L10n.get("burst_page_\(rawValue)") }
+    case stroke, rhythm, legs, path, context
+    var label: String { L10n.get(self == .legs ? "burst_page_legs_ski" : "burst_page_\(rawValue)") }
 }
 
 /// The charts of one Sensor Record: the time window, the page pills, the summary card and the open page.
@@ -77,6 +77,12 @@ struct SensorRecordView: View {
     @State private var facts: BurstFacts?
     /// The record's label and technique choices (its sport only), for the technique menu.
     @State private var record: RecordingBoostView?
+
+    /// The legs page shows only where a phone on the trunk was recorded along (Android `legsPage`).
+    private var legsPage: Bool {
+        guard let placement = full?.phone?.placement else { return false }
+        return placement == "belt" || placement == "chest"
+    }
 
     /// Saves [code] as the declared technique ("" clears it). The rest of a label stays; a first label also takes
     /// the record's terrain and poles suggestion, as the label sheet does (Android `BurstScreen` onTechnique).
@@ -115,13 +121,20 @@ struct SensorRecordView: View {
                             }
                         }
                         Picker("", selection: $page) {
-                            ForEach(BurstPage.allCases, id: \.self) { Text($0.label).tag($0) }
+                            // The legs page only where a phone on the trunk was recorded along; its title follows the sport.
+                            ForEach(BurstPage.allCases.filter { $0 != .legs || legsPage }, id: \.self) { p in
+                                Text(p == .legs && facts?.sport == BurstSport.running ? L10n.get("burst_page_legs_run") : p.label).tag(p)
+                            }
                         }
                         .pickerStyle(.segmented)
                         BurstHero(v: v)
                         switch page {
                         case .stroke: StrokePage(v: v, phone: showPhone ? v.phone : nil, texts: SportTexts.of(facts?.sport))
                         case .rhythm: RhythmPage(v: v, phone: showPhone ? v.phone : nil, texts: SportTexts.of(facts?.sport))
+                        case .legs:
+                            // The athlete's label, else the watch's declaration (as Android).
+                            let label = record?.labelTechnique ?? ""
+                            LegsPage(v: v, sport: facts?.sport, technique: label.isEmpty ? (facts?.declaredTechnique ?? "") : label)
                         case .path: PathPage(v: v, texts: SportTexts.of(facts?.sport))
                         case .context: ContextPage(v: v, facts: facts)
                         }
@@ -591,6 +604,140 @@ private func timeGuides(_ ctx: GraphicsContext, xs: [CGFloat], top: CGFloat, bot
     for x in xs {
         var p = Path(); p.move(to: CGPoint(x: x, y: top)); p.addLine(to: CGPoint(x: x, y: bottom + 2))
         ctx.stroke(p, with: .color(.secondary.opacity(0.5)), style: StrokeStyle(lineWidth: 1, dash: [2, 3]))
+    }
+}
+
+// MARK: Poles & legs / Arms & legs
+
+/// The second side's colour on the legs page (the first is `phoneColor`; Android `OTHER_SIDE_COLOR`).
+private let otherSideColor = Color(red: 0xE0 / 255, green: 0x8A / 255, blue: 0x1E / 255)
+
+/// The legs against the arm (shared `LegEvents`, Android `LegsPage`, Companion design/phone-watch-views.md): the
+/// watch's arm swing and the trunk's sideways, up-down and turning movement as rows over the same seconds, a dotted
+/// line from every arm event through all rows, the leg events as dots (colour = side, size = strength), all arm cycles
+/// folded onto one, and the numbers.
+private struct LegsPage: View {
+    let v: BurstView
+    let sport: BurstSport?
+    let technique: String
+
+    var body: some View {
+        if let legs = v.legs {
+            let running = sport == BurstSport.running
+            let skating = sport == BurstSport.skating
+            let read = running ? "legs_read_run" : sport == BurstSport.classic ? "legs_read_classic" : "legs_read_skate"
+            burstCard {
+                ChartFrame(title: L10n.get(running ? "burst_page_legs_run" : "burst_page_legs_ski"), info: pageInfo([read])) { _ in
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(0..<4, id: \.self) { r in
+                            Text(L10n.get(rowLabel(r, running))).font(.system(size: 11)).foregroundStyle(.secondary)
+                            LegsRow(legs: legs, values: rowValues(legs, r), color: r == 0 ? .accentColor : phoneColor,
+                                    showEvents: r == (skating ? 1 : 2))
+                                .frame(height: 52)
+                        }
+                        Text(L10n.get("legs_cycle_title")).font(.system(size: 11)).foregroundStyle(.secondary)
+                        Canvas { ctx, size in
+                            let mid = size.height / 2
+                            var base = Path(); base.move(to: CGPoint(x: 0, y: mid)); base.addLine(to: CGPoint(x: size.width, y: mid))
+                            ctx.stroke(base, with: .color(.secondary), lineWidth: 1)
+                            for x in [CGFloat(1), size.width - 1] {
+                                var p = Path(); p.move(to: CGPoint(x: x, y: 0)); p.addLine(to: CGPoint(x: x, y: size.height))
+                                ctx.stroke(p, with: .color(.accentColor), lineWidth: 2)
+                            }
+                            for p in legs.phases {
+                                let x = CGFloat(p.doubleValue) * size.width
+                                ctx.fill(Path(ellipseIn: CGRect(x: x - 4, y: mid - 4, width: 8, height: 8)), with: .color(phoneColor.opacity(0.45)))
+                            }
+                        }
+                        .frame(height: 28)
+                    }
+                }
+                let expected = LegEvents.shared.expected(sport: sport ?? BurstSport.other, technique: technique)
+                let perKey = running ? "legs_tile_run" : sport == BurstSport.classic ? "legs_tile_classic" : "legs_tile_skate"
+                let perLabel = L10n.get(perKey) + (expected.map { " · " + String(format: L10n.get("legs_tile_expected"), Int($0.int32Value)) } ?? "")
+                HStack(spacing: 8) {
+                    tile(legs.eventsPerCycle.map { String(format: "%.1f", $0.doubleValue) } ?? "-", perLabel)
+                    tile(legs.gapMs.map { String(format: "%+d", Int($0.doubleValue.rounded())) } ?? "-", L10n.get("legs_tile_gap"))
+                    tile(legs.impulse.map { String(format: skating ? "%.2f g·s" : "%.1f g", $0.doubleValue) } ?? "-", L10n.get("legs_tile_size"))
+                }
+                HStack(spacing: 8) {
+                    tile(legs.asymmetry.map { "+\(Int((($0.doubleValue - 1) * 100).rounded())) %" } ?? "-", L10n.get("legs_tile_asym"))
+                    if skating {
+                        tile(legs.armSideShare.map { "\(Int(($0.doubleValue * 100).rounded())) %" } ?? "-", L10n.get("legs_tile_same_side"))
+                    }
+                }
+                Text(L10n.get(legs.byMotion ? "legs_timing_motion" : "legs_timing_clock")).font(.footnote).foregroundStyle(.secondary)
+            }
+        } else {
+            burstCard { Text(L10n.get("legs_none")).font(.footnote) }
+        }
+    }
+
+    private func rowLabel(_ r: Int, _ running: Bool) -> String {
+        switch r {
+        case 0: return running ? "legs_row_arm_run" : "legs_row_arm_ski"
+        case 1: return "legs_row_side"
+        case 2: return "legs_row_vertical"
+        default: return "legs_row_turn"
+        }
+    }
+
+    private func rowValues(_ legs: LegEventsResult, _ r: Int) -> [Float] {
+        switch r {
+        case 0: return legs.arm.swiftArray
+        case 1: return legs.side.swiftArray
+        case 2: return legs.vertical.swiftArray
+        default: return legs.turn.swiftArray
+        }
+    }
+
+    private func tile(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value).font(.headline).lineLimit(1).minimumScaleFactor(0.7)
+            Text(label).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8).padding(.vertical, 6)
+        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+/// One row of the legs page: a line scaled to its own range, the arm events as dotted lines, the leg events as dots.
+private struct LegsRow: View {
+    let legs: LegEventsResult
+    let values: [Float]
+    let color: Color
+    let showEvents: Bool
+
+    var body: some View {
+        Canvas { ctx, size in
+            guard values.count > 1, let lo = values.min(), let hi = values.max() else { return }
+            let range = hi - lo > 1e-6 ? hi - lo : 1
+            let rowHz = Double(LegEvents.shared.ROW_HZ)
+            let span = Double(values.count) / rowHz
+            func x(_ t: Double) -> CGFloat { CGFloat((t - legs.startS) / span) * size.width }
+            func y(_ v: Float) -> CGFloat { size.height - CGFloat((v - lo) / range) * size.height }
+            for a in legs.armS {
+                var p = Path(); p.move(to: CGPoint(x: x(a.doubleValue), y: 0)); p.addLine(to: CGPoint(x: x(a.doubleValue), y: size.height))
+                ctx.stroke(p, with: .color(.secondary.opacity(0.6)), style: StrokeStyle(lineWidth: 1, dash: [2, 3]))
+            }
+            var line = Path()
+            for (i, v) in values.enumerated() {
+                let pt = CGPoint(x: CGFloat(i) / CGFloat(values.count - 1) * size.width, y: y(v))
+                if i == 0 { line.move(to: pt) } else { line.addLine(to: pt) }
+            }
+            ctx.stroke(line, with: .color(color), lineWidth: 1.5)
+            if showEvents {
+                let biggest = max(legs.events.map { abs($0.impulse) }.max() ?? 1, 1e-9)
+                for e in legs.events {
+                    let i = min(max(Int((e.tS - legs.startS) * rowHz), 0), values.count - 1)
+                    let r = CGFloat(3 + 5 * abs(e.impulse) / biggest)
+                    let c = CGPoint(x: x(e.tS), y: y(values[i]))
+                    ctx.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)),
+                             with: .color(e.side >= 0 ? phoneColor : otherSideColor))
+                }
+            }
+        }
     }
 }
 
