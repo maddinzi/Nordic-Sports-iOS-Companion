@@ -245,9 +245,12 @@ struct ActivitiesScreen: View {
                     BusyBanner().padding(.horizontal)
                     if companion.showSetupTip { SetupTips().padding() }
                     ContentUnavailableView {
-                        Label(companion.nickname.isEmpty
-                              ? L10n.get("activity_list_empty_no_activities")
-                              : String(format: L10n.get("activity_list_empty_no_activities_named"), companion.nickname),
+                        // The day's waiting greeting (Android: the listener notification and the empty list).
+                        Label(WaitingGreeting.shared.ofDay(
+                                text: companion.nickname.isEmpty
+                                    ? L10n.get("watch_listener_notification_title")
+                                    : String(format: L10n.get("watch_listener_notification_title_named"), companion.nickname),
+                                epochDay: Int64(Calendar.current.startOfDay(for: Date()).timeIntervalSince1970 / 86400)),
                               systemImage: "applewatch")
                     } description: {
                         Text(L10n.get("activity_list_empty_hint"))
