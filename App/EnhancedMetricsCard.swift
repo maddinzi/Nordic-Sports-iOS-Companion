@@ -276,13 +276,13 @@ private struct MetricBars: View {
             .frame(width: 64, alignment: .leading)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    // A faded bar (little data) keeps its hue: a light fill inside an outline in the full colour
-                    // (Android: same); half alpha alone turned orange brown on the dark tile.
+                    // A faded bar (little data) is a thin bar in the full colour (Android: same): any transparency
+                    // turned orange brown on the dark tile.
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(stateColor(bar.key).opacity((bar.faded ? 0.35 : 1) * (dim ? 0.4 : 1)))
-                        .overlay(RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(stateColor(bar.key).opacity(bar.faded ? (dim ? 0.4 : 1) : 0), lineWidth: 1.5))
-                        .frame(width: geo.size.width * CGFloat(bar.value / scale) * grow)
+                        .fill(stateColor(bar.key).opacity(dim ? 0.4 : 1))
+                        .frame(width: geo.size.width * CGFloat(bar.value / scale) * grow,
+                               height: bar.faded ? geo.size.height * 0.35 : geo.size.height)
+                        .frame(maxHeight: .infinity, alignment: .center)
                     if let average {
                         let x = geo.size.width * CGFloat(average / scale)
                         Path { path in
