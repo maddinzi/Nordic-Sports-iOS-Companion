@@ -711,7 +711,7 @@ private struct LegsPage: View {
 
 /// One row of the legs page: a line scaled to its own range, the arm events as dotted lines, the leg events as dots.
 private struct LegsRow: View {
-    let legs: LegEventsResult
+    let legs: LegEvents.Result
     let values: [Float]
     let color: Color
     let showEvents: Bool
