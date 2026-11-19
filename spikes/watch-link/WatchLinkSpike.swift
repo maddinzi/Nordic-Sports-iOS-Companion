@@ -354,6 +354,17 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         }
     }
 
+    /// The phone asks the watch [deviceId] for a background calibration record (shared `PairedRecording.onCalibrate`,
+    /// `CalibrationRequests`): a live message, once, never queued; the watch serves it when free or drops it. With
+    /// one watch app running and none under that id, it goes to that one.
+    @MainActor func sendCalibrate(_ deviceId: Int64, reason: String) {
+        guard let app = coverageApps[deviceId] ?? (coverageApps.count == 1 ? coverageApps.values.first : nil) else {
+            add("calibrate (\(reason)): no running watch app known for \(deviceId)")
+            return
+        }
+        send(["type": "calibrate", "reason": reason], to: app, what: "calibrate (\(reason))")
+    }
+
     private func send(_ message: [String: Any], to app: IQApp, what: String, anyFailure: Bool = false,
                       done: ((IQSendMessageResult) -> Void)? = nil) {
         let deviceId = app.device.map { Self.deviceId($0) }

@@ -72,6 +72,12 @@ final class PairedRecordingSensors: NSObject, PairedSensors, CLLocationManagerDe
             let value = bits.int32Value
             Task { @MainActor in WatchLinkSpike.shared.sendCoverage(value) }
         }
+        // Background calibration requests (shared CalibrationRequests): to the watch app of that recording, the
+        // log only, nothing shown. Also called under the shared lock: only hand on.
+        core.pairedRecording.onCalibrate = { deviceId, reason in
+            let id = deviceId.int64Value
+            Task { @MainActor in WatchLinkSpike.shared.sendCalibrate(id, reason: reason) }
+        }
         core.pairedRecording.attach(sensors: self)
     }
 
