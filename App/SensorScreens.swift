@@ -797,7 +797,8 @@ private struct BandChart: View {
         VStack(alignment: .leading, spacing: 4) {
             GeometryReader { geo in
                 let left: CGFloat = 36, top: CGFloat = 10, bottom = geo.size.height - 16
-                let w = geo.size.width - left - 8
+                // The phone's range sits at the right edge: the plot leaves it the room of the left axis (Android: same).
+                let w = geo.size.width - left - (pm == nil ? 8 : 36)
                 let x = { (i: Int) -> CGFloat in left + w * CGFloat(i) / CGFloat(max(n - 1, 1)) }
                 let y = { (v: Float) -> CGFloat in bottom - (bottom - top) * CGFloat((v - lo) / max(hi - lo, 1e-6)) }
                 Canvas { ctx, size in
@@ -817,7 +818,7 @@ private struct BandChart: View {
                     ctx.draw(Text(String(format: fmt, lo)).font(.system(size: 10)).foregroundColor(.secondary), at: CGPoint(x: 2, y: bottom), anchor: .leading)
                     ctx.draw(Text("0 s").font(.system(size: 10)).foregroundColor(.secondary), at: CGPoint(x: left, y: bottom + 8), anchor: .leading)
                     ctx.draw(Text(String(format: "%.1f s", cycleS)).font(.system(size: 10)).foregroundColor(.secondary),
-                             at: CGPoint(x: size.width - 8, y: bottom + 8), anchor: .trailing)
+                             at: CGPoint(x: x(n - 1), y: bottom + 8), anchor: .trailing)
                     if let pm, let plo = pm.min(), let phi = pm.max() {
                         let py = { (v: Float) -> CGFloat in bottom - (bottom - top) * CGFloat((v - plo) / max(phi - plo, 1e-6)) }
                         var pline = Path()

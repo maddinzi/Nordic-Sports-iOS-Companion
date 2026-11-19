@@ -738,7 +738,8 @@ struct EnhancedMetricsCard: View {
                     let seconds = row.seconds.map { Int(truncating: $0) }
                     let rowDim = group.rows.contains(where: { $0.key == selectedKey }) && selectedKey != row.key
                     HStack(spacing: 8) {
-                        RoundedRectangle(cornerRadius: 3).fill(stateColor(row.key)).frame(width: 10, height: 10)
+                        // A ring, not a filled square: the row's colour must not read as a zone colour (Android: same).
+                        Circle().strokeBorder(stateColor(row.key), lineWidth: 2).frame(width: 10, height: 10)
                         Text(stateShort(row.key)).font(.footnote.weight(.bold)).lineLimit(1).minimumScaleFactor(0.8)
                             .frame(width: group.id == "terrain" ? 92 : 52, alignment: .leading)
                         Chart(Array(seconds.enumerated()), id: \.offset) { index, value in
@@ -789,7 +790,12 @@ struct EnhancedMetricsCard: View {
         }
     }
 
-    private var sourceName: String? { formSourceLabel(view.formSource) }
+    /// A paired run mixes sources (contact time from the watch, the bounce from the phone): the badge says both and the
+    /// notes below say which value is whose (Android `FormSection`).
+    private var sourceName: String? {
+        if view.voFromPhone && !view.formSource.isEmpty && view.formSource != "phone" { return L10n.get("em_src_watch_phone") }
+        return formSourceLabel(view.formSource)
+    }
 
     private func formSourceLabel(_ source: String) -> String? {
         switch source {

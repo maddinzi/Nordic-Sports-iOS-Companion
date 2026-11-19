@@ -172,7 +172,11 @@ struct ActivityMetricsScreen: View {
     }
 
     var body: some View {
+        // Another theme starts at its top (Android: same): the page below changes completely.
+        ScrollViewReader { proxy in
         Form {
+            Color.clear.frame(height: 0).id(Self.topId)
+                .listRowInsets(EdgeInsets()).listRowBackground(Color.clear).listRowSeparator(.hidden)
             // The title, sync ticks and demo declaration are in the top card of ActivityScreen.
             // Level 3 of the navigation: the themes as a pill row; the first numbers stay above every theme but All data.
             // The pills and "Clear selection" share one tight section: on their own each cost a full section gap.
@@ -238,7 +242,11 @@ struct ActivityMetricsScreen: View {
             trackLoaded = true
         }
         .homeTitle(L10n.get("card_lane_metrics"))
+        .onChange(of: selectedTheme) { _, _ in proxy.scrollTo(Self.topId, anchor: .top) }
+        }
     }
+
+    private static let topId = "metrics-top"
 
     /// The technical data (the sets have their own page).
     @ViewBuilder private var dataSections: some View {
