@@ -109,6 +109,7 @@ final class Companion: NSObject, ObservableObject {
     private var queuedMessages: [String] = []
     private var storeFailures = 0
     private var exportingBoosts = false
+    private var prunedRecords = false
 
     private override init() {
         let language = Self.preferredLanguage()
@@ -312,6 +313,15 @@ final class Companion: NSObject, ObservableObject {
         guard !exportingBoosts else { return }
         exportingBoosts = true
         defer { exportingBoosts = false }
+        // Once per app run: unlabelled automatic and calibration records older than 30 days go (shared
+        // SensorRecordRetention, Android WatchEventRepository.start()), their folders with them.
+        if !prunedRecords {
+            prunedRecords = true
+            if let gone = try? await core.pruneSensorRecords(), !gone.isEmpty {
+                let files = SensorRecordFolders.remove(gone.map { $0.int64Value })
+                WatchLinkSpike.shared.add("Removed \(gone.count) automatic Sensor Records older than 30 days (\(files) folders/files)")
+            }
+        }
         guard let pending = try? await core.recordingBoostsToExport(), !pending.isEmpty else { return }
         for burst in pending {
             do {
