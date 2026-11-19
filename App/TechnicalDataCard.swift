@@ -11,12 +11,13 @@ struct KeyFigure {
 
 /// The technical data of an activity in the look of the Enhanced Metrics key data (Android: `TechnicalDataCard` in
 /// `ActivityDetailScreen.kt`): tiles for the numbers in rows that belong together (a lone tile fills its row), then
-/// the facts that are text (start, device, wrist, place) together in one tile. Dark blue, `CardTone.navy`.
+/// the facts that are text (start, device, wrist, place) together in one tile. Blue like the other metrics pages
+/// (`CardTone.blue`; 2026-11-19, Android's sat in a blue card with navy tiles).
 struct TechnicalDataCard: View {
     let title: String
     let rows: [[KeyFigure]]
     let facts: [(label: String, value: String)]
-    private let tone = CardTone.navy
+    private let tone = CardTone.blue
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
