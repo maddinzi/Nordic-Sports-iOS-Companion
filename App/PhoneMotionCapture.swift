@@ -92,8 +92,9 @@ final class PhoneMotionCapture {
     /// A TestFlight build (its receipt is the sandbox one), not the App Store build.
     static var isTestBuild: Bool { Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt" }
 
-    /// The places the settings offer: "hand" is a test position, so only test builds list it.
-    static var offeredPlacements: [String] { isTestBuild ? placements : placements.filter { $0 != "hand" } }
+    /// The places the settings offer, every one in every build while the store listing is a test phase (2026-11-19,
+    /// as Android): "hand" is the test position for calibrating a watch and phone together, which testers need too.
+    static var offeredPlacements: [String] { placements }
 
     static var isEnabled: Bool { UserDefaults.standard.bool(forKey: keyOn) }
 
