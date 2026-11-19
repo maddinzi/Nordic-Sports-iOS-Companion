@@ -73,6 +73,26 @@ enum SensorRecordFolders {
         return allFiles().first { $0.lastPathComponent == fileName }
     }
 
+    /// Removes the files of the records [burstIds] (the shared `SensorRecordRetention` removed their rows): each
+    /// record's folder, found by the id in its name (any time zone's stamp), and old flat files of those records.
+    /// Best effort: a file that cannot be removed stays. Returns how many folders and files went.
+    @discardableResult
+    static func remove(_ burstIds: [Int64]) -> Int {
+        guard !burstIds.isEmpty, let docs = documents else { return 0 }
+        let ids = Set(burstIds)
+        let files = FileManager.default
+        var removed = 0
+        let root = docs.appendingPathComponent(folder, isDirectory: true)
+        for record in (try? files.contentsOfDirectory(atPath: root.path)) ?? [] where ids.contains(burstId(record)) {
+            if (try? files.removeItem(at: root.appendingPathComponent(record, isDirectory: true))) != nil { removed += 1 }
+        }
+        let legacy = docs.appendingPathComponent(legacyFolder, isDirectory: true)
+        for name in (try? files.contentsOfDirectory(atPath: legacy.path)) ?? [] where ids.contains(burstId(name)) {
+            if (try? files.removeItem(at: legacy.appendingPathComponent(name))) != nil { removed += 1 }
+        }
+        return removed
+    }
+
     /// Every phone motion record by its Sensor Record's id; the new layout wins over an old file of the same record.
     static func phoneFiles() -> [Int64: URL] {
         var out: [Int64: URL] = [:]
