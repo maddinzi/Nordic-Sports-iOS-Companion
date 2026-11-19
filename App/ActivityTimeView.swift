@@ -96,6 +96,17 @@ struct TimeSeriesData {
         if n == 0 { return nil }
         return (min: lo, mean: sum / n, max: hi)
     }
+
+    /// The typical range (5th-95th percentile) of [kind] in the window, values below [atLeast] left out: the pace chip
+    /// (Android `ActivityTimeSeries.Data.typical`), so a walk at a stop and a burst of GPS do not set its ends.
+    func typical(_ kind: TimeKind, _ from: Double, _ to: Double, atLeast: Double = -Double.infinity) -> (min: Double, mean: Double, max: Double)? {
+        guard let v = values[kind] else { return nil }
+        let picked = seconds.indices.filter { Double(seconds[$0]) >= from && Double(seconds[$0]) <= to }
+            .map { v[$0] }.filter { !$0.isNaN && $0 >= atLeast }.sorted()
+        guard !picked.isEmpty else { return nil }
+        func at(_ q: Double) -> Double { picked[min(max(Int(Double(picked.count - 1) * q), 0), picked.count - 1)] }
+        return (min: at(0.05), mean: picked.reduce(0, +) / Double(picked.count), max: at(0.95))
+    }
 }
 
 /// The map card and the chart card of a saved activity's track ([track] has a `series`). [showMap] is false for the
@@ -369,7 +380,7 @@ private struct TimeChart: View {
         }
         if kind == .speed && run {
             // only speeds that have a pace (Android ActivityTimeView)
-            guard let st = data.stats(kind, from, to, atLeast: 2) else { return "–" }
+            guard let st = data.typical(kind, from, to, atLeast: 2) else { return "–" }
             return "\(valueText(kind, st.min).replacingOccurrences(of: " /km", with: ""))–\(valueText(kind, st.max))"
         }
         guard let st = data.stats(kind, from, to) else { return nil }
