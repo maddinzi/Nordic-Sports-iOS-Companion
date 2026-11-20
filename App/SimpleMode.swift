@@ -31,16 +31,18 @@ struct Detail<Content: View>: View {
     }
 
     var body: some View {
-        if revealed || companion.showAllDetails || companion.shows(item) {
+        // A testing block (shared `SettingsItem.testing`) follows Testing tools only; "Show details" never reveals it.
+        if item.testing ? companion.testingTools : (revealed || companion.showAllDetails || companion.shows(item)) {
             content()
         }
     }
 }
 
 extension Companion {
-    /// How many of [items] the page leaves out in the current mode (for "Show details (n more)").
+    /// How many of [items] the page leaves out in the current mode (for "Show details (n more)"); testing blocks are
+    /// no hidden details.
     func hiddenCount(_ items: [SettingsItem]) -> Int {
-        showAllDetails ? 0 : items.filter { !shows($0) }.count
+        showAllDetails ? 0 : items.filter { !$0.testing && !shows($0) }.count
     }
 }
 
@@ -76,11 +78,24 @@ extension EnvironmentValues {
         get { self[ShowAllDetailsKey.self] }
         set { self[ShowAllDetailsKey.self] = newValue }
     }
+
+    /// "Testing tools" (shared `TestingToolsStore`) for views that do not hold the Companion; set at the root.
+    var testingTools: Bool {
+        get { self[TestingToolsKey.self] }
+        set { self[TestingToolsKey.self] = newValue }
+    }
+}
+
+private struct TestingToolsKey: EnvironmentKey {
+    static let defaultValue = false
 }
 
 extension SettingsItem {
-    /// Whether this block is shown: always with all details, else only at the simple level.
-    func shown(all: Bool) -> Bool { level.shownAt(current: all ? UiLevel.expert : UiLevel.simple) }
+    /// Whether this block is shown: always with all details, else only at the simple level; a testing block only
+    /// with Testing tools ([testingTools]).
+    func shown(all: Bool, testingTools: Bool = false) -> Bool {
+        testing ? testingTools : level.shownAt(current: all ? UiLevel.expert : UiLevel.simple)
+    }
 }
 
 /// The busy line (plan section 7, Android `BusyBanner`): while the app works with another system, one short line rotates

@@ -72,6 +72,8 @@ final class Companion: NSObject, ObservableObject {
     @Published private(set) var syncAutomatically = true
     /// "Show all details" (Settings › App): false is simple mode (Companion repo, design/simple-and-expert-mode.md).
     @Published private(set) var showAllDetails = true
+    /// "Testing tools" (shared `TestingToolsStore`): the Testing tools page and the testing blocks.
+    @Published private(set) var testingTools = false
     /// The tab the app opens on and a title tap returns to: "GO", "ACTIVITIES" or "TRENDS" (shared `StartScreen`).
     @Published private(set) var startScreen = "ACTIVITIES"
     /// "My sports" (Companion design/my-sports.md): the athlete's sports in their order, then the others.
@@ -159,6 +161,7 @@ final class Companion: NSObject, ObservableObject {
         reviewImportedActivities = core.reviewImportedActivities()
         syncAutomatically = core.syncAutomatically()
         showAllDetails = core.showAllDetails()
+        testingTools = core.testingTools()
         startScreen = core.startScreen()
         mySportRows = core.mySportRows()
         // An unfinished recording on the phone an earlier run left: offered for save or discard.
@@ -317,6 +320,9 @@ final class Companion: NSObject, ObservableObject {
         // SensorRecordRetention, Android WatchEventRepository.start()), their folders with them.
         if !prunedRecords {
             prunedRecords = true
+            // Testing tools' default on an install that ran before (rule A): once, before the retention below.
+            try? await core.decideTestingTools()
+            testingTools = core.testingTools()
             if let gone = try? await core.pruneSensorRecords(), !gone.isEmpty {
                 let files = SensorRecordFolders.remove(gone.map { $0.int64Value })
                 WatchLinkSpike.shared.add("Removed \(gone.count) automatic Sensor Records older than 30 days (\(files) folders/files)")
@@ -1447,8 +1453,15 @@ final class Companion: NSObject, ObservableObject {
         }
     }
 
-    /// Whether the settings block [item] is shown in the current mode (its level is declared in shared `SettingsItem`).
+    /// Whether the settings block [item] is shown in the current mode (its level is declared in shared `SettingsItem`;
+    /// a testing block only with Testing tools).
     func shows(_ item: SettingsItem) -> Bool { core.shows(item: item) }
+
+    /// "Testing tools" (shared `TestingToolsStore`, 2026-11-20): the Testing tools page and every testing block.
+    func setTestingTools(_ on: Bool) {
+        core.setTestingTools(on: on)
+        testingTools = core.testingTools()
+    }
 
     /// Takes effect at the next start (as on Android); a title tap goes there at once.
     func setStartScreen(_ name: String) {

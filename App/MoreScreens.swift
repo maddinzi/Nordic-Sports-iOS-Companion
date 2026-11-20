@@ -22,6 +22,13 @@ struct WatchSettingsScreen: View {
     /// The row a settings search hit leads to (`SettingsSearchHitView.id`): its card opens, details show, it scrolls
     /// into view and glows (the search itself lives on the settings overview since 2026-11-18).
     var focus: String? = nil
+    /// The Testing tools page's part (Android `testingPart`, 2026-11-20): each watch's Sensor Record card only, every
+    /// row shown. False: the watch page without the testing settings and blocks.
+    var testingPart: Bool = false
+
+    /// Whether a setting row or block belongs to this part (shared `WatchSetting.testing` / `SettingsItem.testing`).
+    private func inPart(key: String) -> Bool { companion.core.watchSettingIsTesting(key: key) == testingPart }
+    private func inPart(_ item: SettingsItem) -> Bool { item.testing == testingPart }
 
     /// The card of a search target, a watch setting or a phone row or block, from the shared index.
     private func topic(ofFocus id: String, _ watch: WatchSettingsView) -> Topic? {
@@ -78,7 +85,7 @@ struct WatchSettingsScreen: View {
         var after: String? { WatchSettingsScreen.blockAnchors[id].flatMap { SettingsSearchIndex.shared.watchBlockAfter(id: $0) } }
     }
 
-    private var detailsOpen: Bool { companion.showAllDetails || revealed || outerRevealed }
+    private var detailsOpen: Bool { testingPart || companion.showAllDetails || revealed || outerRevealed }
 
     /// Expert rows show in expert mode or on a revealed page. Values are never touched.
     private func shown(_ item: WatchSettingItem) -> Bool { !item.expert || detailsOpen }
@@ -103,10 +110,18 @@ struct WatchSettingsScreen: View {
                           waiting: watch.dataFieldGroups.filter(\.pending).count,
                           content: AnyView(NavigationLink(title) { WatchDataFieldsScreen(deviceId: id) }))]
         case .recording:
+            var blocks: [Block] = []
+            // Auto lap and auto pause per sport, right below the auto pause (in Recording since 2026-11-20, as Android).
+            if let auto = watch.sportAuto {
+                blocks.append(Block(id: "auto", item: .watchSportAuto,
+                                    content: AnyView(NavigationLink(auto.title) { WatchSportAutoScreen(deviceId: id) })))
+            }
             // What the phone does while the watch records (phone settings, the same for every watch). Not for the small
             // watches, which announce no recording (no interval slots is how they show; review 2026-11-18).
-            guard !watch.intervalSlots.isEmpty else { return [] }
-            return [Block(id: "paired", item: .watchPairedRecording, content: AnyView(PairedRecordingSettingsRows()))]
+            if !watch.intervalSlots.isEmpty {
+                blocks.append(Block(id: "paired", item: .watchPairedRecording, content: AnyView(PairedRecordingSettingsRows())))
+            }
+            return blocks
         case .sensorRecord:
             var blocks: [Block] = []
             // For testing and learning like the Sensor Records (2026-11-18 review): the phone also measures what
@@ -122,11 +137,6 @@ struct WatchSettingsScreen: View {
             return blocks
         case .device:
             var blocks: [Block] = []
-            // Auto lap and auto pause per sport, right below the auto pause.
-            if let auto = watch.sportAuto {
-                blocks.append(Block(id: "auto", item: .watchSportAuto,
-                                    content: AnyView(NavigationLink(auto.title) { WatchSportAutoScreen(deviceId: id) })))
-            }
             // The watch reports a strap check only when a strap is paired with it (on the GPS wait screen).
             if let hr = watch.hrStrap {
                 blocks.append(Block(id: "hr", item: .watchHrStrap, content: AnyView(Group {
@@ -136,12 +146,7 @@ struct WatchSettingsScreen: View {
                     ForEach(hr.lines, id: \.label) { line in LabeledContent(line.label, value: line.value) }
                 })))
             }
-            // What the app learned where two sources measured the same, and whether that data arrives. Enhanced
-            // Metrics only, so not for the small watches (they have no Sensor Record setting either).
-            if watch.groups.contains(where: { $0.items.contains { $0.key == "RecordingBoostEnabled" } }) {
-                blocks.append(Block(id: "sources", item: .watchSources,
-                                    content: AnyView(SourcesOverviewRows())))
-            }
+            // "Sources and calibration" moved to the Testing tools page (TestingToolsScreen, 2026-11-20).
             return blocks
         case .plans:
             // Intervals, then the strength routines (each opens its own screen).
@@ -167,8 +172,8 @@ struct WatchSettingsScreen: View {
     /// The expert settings and blocks this watch leaves out now, and how many of those settings differ from the default.
     private func hidden(_ watch: WatchSettingsView) -> (count: Int, changed: Int) {
         if detailsOpen { return (0, 0) }
-        let settings = watch.groups.flatMap { $0.items }.filter { $0.expert }
-        var items = Topic.allCases.flatMap { blocks(watch, $0) }.map(\.item)
+        let settings = watch.groups.flatMap { $0.items }.filter { $0.expert && inPart(key: $0.key) }
+        var items = Topic.allCases.flatMap { blocks(watch, $0) }.map(\.item).filter { inPart($0) }
         if shareable(watch) { items.append(SettingsItem.watchSettingsShare) }
         return (settings.count + companion.hiddenCount(items), settings.filter { $0.changed }.count)
     }
@@ -179,20 +184,27 @@ struct WatchSettingsScreen: View {
             if companion.watchSettings.isEmpty {
                 Text(L10n.get("watch_settings_none")).foregroundStyle(.secondary)
             }
+            if testingPart {
+                Section { Text(L10n.get("testing_tools_intro")).font(.footnote).foregroundStyle(.secondary) }
+            }
             ForEach(companion.watchSettings, id: \.deviceId) { watch in
                 watchSections(watch)
             }
-            // One "Show details" for the page (plan section 5), naming hidden settings that differ from the default.
-            let left = companion.watchSettings.map { hidden($0) }
-            let count = left.reduce(0) { $0 + $1.count }
-            if focus == nil && !companion.showAllDetails && (revealed || count > 0) {
-                Section {
-                    ShowDetailsButton(revealed: $revealed, hidden: count, changed: left.reduce(0) { $0 + $1.changed })
+            if testingPart {
+                testingSections
+            } else {
+                // One "Show details" for the page (plan section 5), naming hidden settings that differ from the default.
+                let left = companion.watchSettings.map { hidden($0) }
+                let count = left.reduce(0) { $0 + $1.count }
+                if focus == nil && !companion.showAllDetails && (revealed || count > 0) {
+                    Section {
+                        ShowDetailsButton(revealed: $revealed, hidden: count, changed: left.reduce(0) { $0 + $1.changed })
+                    }
                 }
             }
         }
         .environment(\.detailsRevealed, revealed || outerRevealed || focus != nil)
-        .homeTitle(L10n.get("settings_tile_watch"))
+        .homeTitle(L10n.get(testingPart ? "testing_tools_title" : "settings_tile_watch"))
         .onAppear {
             companion.refreshWatchSettings()
             // From a search hit: open the card that holds the row.
@@ -209,17 +221,32 @@ struct WatchSettingsScreen: View {
     /// The settings of [topic] this watch shows now, by level, in page order (shared `watchPageRank`).
     private func rows(_ watch: WatchSettingsView, _ topic: Topic) -> [WatchSettingItem] {
         watch.groups.flatMap { group in
-            group.items.filter { self.topic(of: $0, in: group) == topic && shown($0) }
+            group.items.filter { self.topic(of: $0, in: group) == topic && inPart(key: $0.key) && shown($0) }
         }
         .sorted { SettingsSearchIndex.shared.watchPageRank(key: $0.key) < SettingsSearchIndex.shared.watchPageRank(key: $1.key) }
     }
 
     private func shownBlocks(_ watch: WatchSettingsView, _ topic: Topic) -> [Block] {
-        blocks(watch, topic).filter { shown($0.item) }
+        blocks(watch, topic).filter { inPart($0.item) && (testingPart || shown($0.item)) }
     }
 
     private func showsShare(_ watch: WatchSettingsView) -> Bool {
-        shareable(watch) && shown(SettingsItem.watchSettingsShare)
+        !testingPart && shareable(watch) && shown(SettingsItem.watchSettingsShare)
+    }
+
+    /// The Testing tools page below the watches' Sensor Record cards: sources and calibration (full-version watches)
+    /// and the diagnostics logs (Android `SettingsPage.Testing`).
+    @ViewBuilder private var testingSections: some View {
+        if companion.watchSettings.contains(where: { w in w.groups.contains { $0.items.contains { $0.key == "RecordingBoostEnabled" } } }) {
+            Section {
+                SourcesOverviewRows()
+            } header: { Text(L10n.get("sources_title")) } footer: { Text(L10n.get("sources_intro")) }
+            .settingsAnchor("Sources")
+        }
+        Section {
+            TestingLogsRows()
+        } header: { Text(L10n.get("testing_tools_logs")) }
+        .settingsAnchor("TestingLogs")
     }
 
 
@@ -236,6 +263,7 @@ struct WatchSettingsScreen: View {
         let failed = watch.sync?.kind == "failed"
         let silent = Date().timeIntervalSince1970 - TimeInterval(watch.reportedAtEpochSec) > 3600
         let showReport = shown(SettingsItem.watchSyncDetails)
+        if !testingPart {
         Section {
             if showReport || watch.pendingCount > 0 || failed {
                 HStack(spacing: 10) {
@@ -281,7 +309,9 @@ struct WatchSettingsScreen: View {
         } header: {
             Text(watch.watchName)
         }
-        ForEach(Topic.allCases, id: \.self) { topic in
+        }
+        // The Sensor Record card lives on the Testing tools page (2026-11-20).
+        ForEach(Topic.allCases.filter { ($0 == .sensorRecord) == testingPart }, id: \.self) { topic in
             topicCard(watch, topic)
         }
         // Share and import after the last section (Android, 2026-11-18).
@@ -353,7 +383,15 @@ struct WatchSettingsScreen: View {
                     ForEach(tail) { part in anchored(part) }
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(topic.title).font(.headline)
+                        Text(testingPart ? String(format: L10n.get("testing_tools_sensor_record_named"), watch.watchName) : topic.title)
+                            .font(.headline)
+                        // The closed card says what is set (Android, 2026-11-20): its first list values, no switches.
+                        let summary = settings.filter { !$0.isToggle }.prefix(3)
+                            .compactMap { item in item.options.first { $0.value == item.value }?.label }
+                            .joined(separator: " · ")
+                        if !open.contains(cardId) && !summary.isEmpty {
+                            Text(summary).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                        }
                         if waiting > 0 {
                             Text(L10n.plural("watch_settings_waiting_short", waiting)).font(.footnote).foregroundStyle(.orange)
                         }
