@@ -12,6 +12,38 @@ import UserNotifications
 final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, IQAppMessageDelegate, WatchMessenger {
     static let shared = WatchLinkSpike()
 
+    /// The one line from this phone to each watch (shared `WatchLine`, the same as Android): every message to a
+    /// watch app waits its turn there, one at a time, and while the watch sends a Sensor Record only right after a
+    /// chunk arrived, when the watch is silent. Before, each message went out directly; one arriving while the watch
+    /// transmitted could be lost, and the fenix 6X Pro ended its app twice with both sides sending (Watch
+    /// guides/companion-handover.md, "One line in each direction").
+    private let line = WatchLine(sender: WatchLinkSpike.lineRelay)
+    private static let lineRelay = LineRelay()
+
+    /// Hands what the line releases to the one instance; a type of its own, so the line exists before `shared` does.
+    private final class LineRelay: NSObject, WatchLineSender {
+        func send(deviceId: Int64, token: Int64, item: Any) {
+            WatchLinkSpike.shared.deliver(deviceId: deviceId, token: token, item: item)
+        }
+    }
+
+    /// One message waiting on the line.
+    private final class Pending: NSObject {
+        let message: [String: Any]
+        let app: IQApp
+        let what: String
+        let anyFailure: Bool
+        let done: ((IQSendMessageResult) -> Void)?
+
+        init(message: [String: Any], app: IQApp, what: String, anyFailure: Bool, done: ((IQSendMessageResult) -> Void)?) {
+            self.message = message
+            self.app = app
+            self.what = what
+            self.anyFailure = anyFailure
+            self.done = done
+        }
+    }
+
     /// Registered in project.yml (CFBundleURLTypes); Garmin Connect Mobile calls back with it.
     static let urlScheme = "nordicsports-ciq"
 
@@ -92,7 +124,7 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
             guard (try? await Companion.shared.core.closeSilentSensorRecords(deviceId: deviceId))?.boolValue == true,
                   let app
             else { return }
-            self.send(["type": "resend"], to: app, what: "resend request (Sensor Record incomplete)") { result in
+            self.send(["type": "resend"], to: app, what: "resend request (Sensor Record incomplete)", key: "resend") { result in
                 let status = Self.name(of: result)
                 Task { @MainActor in Companion.shared.core.resendRequested(deviceId: deviceId, status: status) }
             }
@@ -189,7 +221,7 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
                   let app = self.apps.first(where: { Self.deviceId($0.device) == deviceId && $0.uuid.uuidString.lowercased() == appId.lowercased() })
             else { return }
             try? await Task.sleep(nanoseconds: 2_000_000_000)
-            self.send(["type": "resend"], to: app, what: "resend request") { result in
+            self.send(["type": "resend"], to: app, what: "resend request", key: "resend") { result in
                 let status = Self.name(of: result)
                 Task { @MainActor in Companion.shared.core.resendRequested(deviceId: deviceId, status: status) }
             }
@@ -242,7 +274,7 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
                 "phoneS": NSNumber(value: Int32(truncatingIfNeeded: nowMs / 1000)),
                 "phoneMs": NSNumber(value: Int32(nowMs % 1000)),
             ]
-            send(ack, to: app, what: "Sensor Record answer \(at)")
+            send(ack, to: app, what: "Sensor Record answer \(at)", urgent: true)
             // The phone's own motion record of the same moment (TestFlight, switch in Settings > App).
             PhoneMotionCapture.shared.onHeadsUp(at: at, arrivedAtMs: arrivedAt)
             // After the answer is out: its send time ("txMs") is the clock sample closest to the record (shared
@@ -264,13 +296,18 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
         if let dict, type == "recordingBoostBurst", let burstId = (dict["burstId"] as? NSNumber)?.int64Value {
             // The watch's 20 s are over once its record arrives: the phone's motion record stops.
             PhoneMotionCapture.shared.onRecordChunk(burstId: burstId)
-            // While the record arrives, every 8th chunk: a clock ping (phone motion record on, watch that stamps its
-            // chunks), echoed inside the next chunks, so the pair can be placed (Android CLOCK_PING_EVERY, seq = index).
+            // While the record arrives, every 24th chunk: a clock ping (phone motion record on, watch that stamps its
+            // chunks), echoed inside the next chunk, so the pair can be placed (Android CLOCK_PING_EVERY, seq = index).
+            // It was every 8th until 2026-11-20: 5-6 pings per record are enough, the tightest one sets the bound.
             let index = (dict["chunkIndex"] as? NSNumber)?.intValue ?? -1
-            if index >= 0, index % 8 == 0, dict["txMs"] != nil, PhoneMotionCapture.isEnabled {
-                Task { @MainActor in
-                    self.send(["type": "clockPing", "seq": NSNumber(value: Int32(index))], to: app, what: "clock ping \(index)")
+            let pingDue = index >= 0 && index % 24 == 0 && dict["txMs"] != nil && PhoneMotionCapture.isEnabled
+            let chunkDevice = app.device.map { Self.deviceId($0) } ?? 0
+            Task { @MainActor in
+                if pingDue {
+                    self.send(["type": "clockPing", "seq": NSNumber(value: Int32(index))], to: app, what: "clock ping \(index)", key: "ping")
                 }
+                // The watch is silent until its next chunk: one waiting message goes now (after the ping was queued).
+                self.line.chunkArrived(deviceId: chunkDevice)
             }
         }
         if let dict, type == "activity" || type == "recordingBoostBurst" || type == "activityTables" {
@@ -288,6 +325,8 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
                 // A stored Recording Boost burst: the watch holds it, and allows no next boost, until this arrives.
                 if burstId > 0 {
                     let burst = NSNumber(value: Int32(truncatingIfNeeded: burstId))
+                    // The record is complete: the watch is silent and waits for this receipt.
+                    self.line.recordComplete(deviceId: deviceId)
                     self.send(["type": "burstReceipt", "burstId": burst], to: app, what: "burst receipt \(burstId)")
                 }
                 if startTime > 0 {
@@ -324,7 +363,7 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
                     // watch app gets later changes too (sendCoverage).
                     let cov = NSNumber(value: Companion.shared.core.pairedRecording.coverageBits())
                     self.coverageApps[deviceId] = app
-                    self.send(["type": "clockPing", "seq": seq, "cov": cov], to: app, what: "clock ping \(seq), coverage \(cov)")
+                    self.send(["type": "clockPing", "seq": seq, "cov": cov], to: app, what: "clock ping \(seq), coverage \(cov)", key: "ping")
                 }
                 if !Companion.shared.core.watchMessage(
                     deviceId: deviceId, watchName: watchName, appId: appId, json: json, arrivedAtEpochMillis: arrivedAt
@@ -342,8 +381,8 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
     /// Counts the clock pings that answer settings snapshots (their seq, apart from Android's record pings; main thread).
     private var snapshotPings = 0
 
-    /// Every message to the watch goes out here, with this phone's clock as it is sent (PhoneClock.stamped). The result
-    /// also goes to WatchContact, so the home screen's mark follows what the phone just tried: with [anyFailure] (the
+    /// Every message to the watch goes through `send` and the line, and leaves in `deliver` with this phone's clock as
+    /// it is sent (PhoneClock.stamped). The result also goes to WatchContact, so the home screen's mark follows what the phone just tried: with [anyFailure] (the
     /// athlete's settings messages) every failure counts, otherwise only "device not available".
     /// The watch apps that sent a settings snapshot this run (each watch app start), for coverage changes.
     private var coverageApps: [Int64: IQApp] = [:]
@@ -352,7 +391,7 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
     /// that runs, as a live message (never queued; the next app start's clock ping carries the value again).
     @MainActor func sendCoverage(_ bits: Int32) {
         for app in coverageApps.values {
-            send(["type": "coverage", "cov": NSNumber(value: bits)], to: app, what: "coverage \(bits)")
+            send(["type": "coverage", "cov": NSNumber(value: bits)], to: app, what: "coverage \(bits)", key: "coverage")
         }
     }
 
@@ -384,20 +423,40 @@ final class WatchLinkSpike: NSObject, ObservableObject, IQDeviceEventDelegate, I
             add("calibrate (\(reason)): no running watch app known for \(deviceId)")
             return
         }
-        send(["type": "calibrate", "reason": reason], to: app, what: "calibrate (\(reason))")
+        send(["type": "calibrate", "reason": reason], to: app, what: "calibrate (\(reason))", key: "calibrate")
     }
 
+    /// Queues [message] on the line to its watch. With a [key] it replaces a waiting message of the same key (the
+    /// latest coverage value, clock ping, calibration request, resend); [urgent] puts it first (the Sensor Record
+    /// answer, which the watch is timing).
     private func send(_ message: [String: Any], to app: IQApp, what: String, anyFailure: Bool = false,
-                      done: ((IQSendMessageResult) -> Void)? = nil) {
-        let deviceId = app.device.map { Self.deviceId($0) }
-        ConnectIQ.sharedInstance().sendMessage(PhoneClock.stamped(message), to: app, progress: { _, _ in }) { result in
-            self.add("\(what) to \(self.label(app)): \(Self.name(of: result))")
-            // Raw values as in name(of:): 0 success, 3 device not available.
-            if let deviceId, result.rawValue == 0 || anyFailure || result.rawValue == 3 {
-                let delivered = result.rawValue == 0
-                Task { @MainActor in WatchContact.shared.sendResult(deviceId, delivered: delivered) }
+                      key: String? = nil, urgent: Bool = false, done: ((IQSendMessageResult) -> Void)? = nil) {
+        let deviceId = app.device.map { Self.deviceId($0) } ?? 0
+        line.post(deviceId: deviceId,
+                  item: Pending(message: message, app: app, what: what, anyFailure: anyFailure, done: done),
+                  key: key, urgent: urgent)
+    }
+
+    /// The line releases a message (shared `WatchLineSender`, any thread): it goes out now, on the main queue, with
+    /// this phone's clock of this moment. The SDK's answer frees the line first, then runs what the caller wanted.
+    private func deliver(deviceId: Int64, token: Int64, item: Any) {
+        guard let pending = item as? Pending else {
+            line.answered(deviceId: deviceId, token: token)
+            return
+        }
+        DispatchQueue.main.async {
+            let app = pending.app
+            ConnectIQ.sharedInstance().sendMessage(PhoneClock.stamped(pending.message), to: app, progress: { _, _ in }) { result in
+                self.line.answered(deviceId: deviceId, token: token)
+                self.add("\(pending.what) to \(self.label(app)): \(Self.name(of: result))")
+                // Raw values as in name(of:): 0 success, 3 device not available.
+                if let contact = app.device.map({ Self.deviceId($0) }),
+                   result.rawValue == 0 || pending.anyFailure || result.rawValue == 3 {
+                    let delivered = result.rawValue == 0
+                    Task { @MainActor in WatchContact.shared.sendResult(contact, delivered: delivered) }
+                }
+                pending.done?(result)
             }
-            done?(result)
         }
     }
 
