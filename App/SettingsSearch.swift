@@ -74,6 +74,8 @@ func settingsSearchDestination(_ hit: SettingsSearchHitView) -> some View {
     case "WATCH": WatchSettingsScreen(focus: hit.id).environment(\.settingsFocus, hit.id)
     case "APP": SettingsAppPage().environment(\.settingsFocus, hit.id)
     case "LOGS": SettingsLogsPage().environment(\.detailsRevealed, true)
+    // The Testing tools page (2026-11-20): its watch cards, sources and diagnostics logs.
+    case "TESTING": WatchSettingsScreen(focus: hit.id, testingPart: true).environment(\.settingsFocus, hit.id)
     default: SettingsPrivacyPage().environment(\.settingsFocus, hit.id)
     }
 }

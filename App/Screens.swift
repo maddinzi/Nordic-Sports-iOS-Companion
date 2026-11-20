@@ -55,6 +55,7 @@ struct RootView: View {
                 .tag(1)
         }
         .environment(\.showAllDetails, companion.showAllDetails)
+        .environment(\.testingTools, companion.testingTools)
         // A tapped notification shows its activity on the first tab.
         .onChange(of: companion.openActivityId) { _, id in
             if id != nil { tab = 0 }
@@ -1210,7 +1211,7 @@ struct SettingsScreen: View {
                          "feedback_title"].map(L10n.get),
                  destination: AnyView(SettingsPrivacyPage())),
             Page(id: "logs", title: L10n.get("status_data_logs_heading"),
-                 words: ["status_view_diary_log", "status_view_app_log", "ios_transfer_log", "status_view_strava_api_usage", "status_view_recording_boosts"].map(L10n.get),
+                 words: ["status_view_diary_log", "ios_transfer_log"].map(L10n.get),
                  destination: AnyView(SettingsLogsPage())),
             Page(id: "about", title: L10n.get("status_about_button"),
                  words: [], destination: AnyView(AboutScreen())),
@@ -1302,6 +1303,12 @@ struct SettingsScreen: View {
                         NavigationLink { SettingsAppPage() } label: { Text(L10n.get("settings_group_app")).settingsIcon(.app) }
                         NavigationLink { SettingsPrivacyPage() } label: { Text(L10n.get("settings_page_privacy")).settingsIcon(.privacy) }
                         NavigationLink { SettingsLogsPage() } label: { Text(L10n.get("status_data_logs_heading")).settingsIcon(.logs) }
+                        // Testing tools (2026-11-20): a page of its own while the switch is on (Android `SettingsPage.Testing`).
+                        if companion.testingTools {
+                            NavigationLink { WatchSettingsScreen(testingPart: true) } label: {
+                                Text(L10n.get("testing_tools_title")).settingsIcon(.logs)
+                            }
+                        }
                     }
                     Section {
                         NavigationLink(L10n.get("status_about_button")) { AboutScreen() }
@@ -1408,6 +1415,16 @@ struct SettingsAppPage: View {
                                      info: L10n.get("ui_show_all_details_body"))
                     }
                     .settingsAnchor("ShowAllDetails")
+                    // Testing tools (2026-11-20): offered with all details shown, and always while on (the way out).
+                    if companion.showAllDetails || companion.testingTools {
+                        Toggle(isOn: Binding(
+                            get: { companion.testingTools },
+                            set: { companion.setTestingTools($0) }
+                        )) {
+                            SettingLabel(title: L10n.get("testing_tools_switch"), description: L10n.get("settings_desc_testing_tools"))
+                        }
+                        .settingsAnchor("TestingTools")
+                    }
                 } header: {
                     Text(L10n.get("settings_section_display"))
                 }
@@ -1711,18 +1728,13 @@ struct SettingsLogsPage: View {
         Form {
                 Section(L10n.get("status_data_logs_heading")) {
                     Detail(SettingsItem.dataLogs) {
+                    // The athlete's transparency logs; the diagnostics moved to Testing tools (TestingLogsRows, 2026-11-20).
                     NavigationLink(L10n.get("status_view_diary_log")) {
                         LogScreen(title: L10n.get("diary_work_log_title"), kind: .diary)
-                    }
-                    NavigationLink(L10n.get("status_view_app_log")) {
-                        LogScreen(title: L10n.get("app_log_title"), kind: .app)
                     }
                     NavigationLink(L10n.get("ios_transfer_log")) {
                         LogScreen(title: L10n.get("ios_transfer_log"), kind: .transfer)
                     }
-                    NavigationLink(L10n.get("status_view_strava_api_usage")) { StravaApiUsageScreen() }
-                    NavigationLink(L10n.get("status_view_recording_boosts")) { RecordingBoostScreen() }
-                    NavigationLink(L10n.get("ios_developer_log")) { DeveloperLogScreen() }
                     }
                     ShareLink(item: LogFile(companion: companion, kinds: [.activityHistory, .watchTransfers, .stravaApi, .diary, .app]),
                               preview: SharePreview(L10n.get("log_share_all"))) {
@@ -1736,6 +1748,19 @@ struct SettingsLogsPage: View {
         }
         .environment(\.detailsRevealed, revealed || outerRevealed)
         .homeTitle(L10n.get("status_data_logs_heading"))
+    }
+}
+
+/// The Testing tools page's diagnostics (Android `TestingLogsSection`, 2026-11-20): app log, Strava API usage, the
+/// Sensor Record list and the developer log.
+struct TestingLogsRows: View {
+    var body: some View {
+        NavigationLink(L10n.get("status_view_app_log")) {
+            LogScreen(title: L10n.get("app_log_title"), kind: .app)
+        }
+        NavigationLink(L10n.get("status_view_strava_api_usage")) { StravaApiUsageScreen() }
+        NavigationLink(L10n.get("status_view_recording_boosts")) { RecordingBoostScreen() }
+        NavigationLink(L10n.get("ios_developer_log")) { DeveloperLogScreen() }
     }
 }
 
