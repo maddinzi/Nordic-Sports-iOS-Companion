@@ -152,7 +152,9 @@ struct TrendsScreen: View {
             TrendChartDef(id: "strength", title: L10n.get("trends_c_strength"), show: !strengthExercises.isEmpty),
         ]
     }
-    private var visible: [TrendChartDef] { charts.filter { $0.show } }
+    /// A sport's chart needs its data and, with every sport picked, one of its sports among the athlete's
+    /// (shared `TrendCharts`, as Android).
+    private var visible: [TrendChartDef] { charts.filter { $0.show && companion.core.trendChartShown(id: $0.id, family: family) } }
 
     /// Four themes with two or three charts under each other (Android: `themes` in `TrendsScreen`).
     private var themes: [(label: String, charts: [TrendChartDef])] {
@@ -161,10 +163,13 @@ struct TrendsScreen: View {
             (L10n.get("trends_theme_volume"), ["load", "climb"]),
             (L10n.get("trends_theme_intensity"), ["int", "rec"]),
             (L10n.get("dash_tab_technique"), ["mix", "matrix"]),
-            (L10n.get("trends_theme_performance"), ["pol", "slope", "eff", "form", "terrainEff"]),
+            (L10n.get("trends_theme_performance"), ["pol", "slope", "eff", "terrainEff", "form"]),
             (L10n.get("trends_theme_sessions"), ["trainSum", "trainShare", "topEx", "intervals", "strength"]),
         ]
-        return spec.map { (label, ids) in (label: label, charts: ids.compactMap { id in shown.first { $0.id == id } }) }
+        // The sports' charts of a page in the athlete's order (shared `TrendCharts.arranged`).
+        return spec.map { (label, ids) in
+            (label: label, charts: companion.core.trendChartOrder(ids: ids).compactMap { id in shown.first { $0.id == id } })
+        }
             .filter { !$0.charts.isEmpty }
     }
 
