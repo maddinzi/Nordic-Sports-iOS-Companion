@@ -166,9 +166,11 @@ struct TrendsScreen: View {
             (L10n.get("trends_theme_performance"), ["pol", "slope", "eff", "terrainEff", "form"]),
             (L10n.get("trends_theme_sessions"), ["trainSum", "trainShare", "topEx", "intervals", "strength"]),
         ]
-        // The sports' charts of a page in the athlete's order (shared `TrendCharts.arranged`).
+        // The sports' charts of a page in the athlete's order (shared `TrendCharts.arranged`), only those that show:
+        // a hidden chart must not keep a slot (as Android).
         return spec.map { (label, ids) in
-            (label: label, charts: companion.core.trendChartOrder(ids: ids).compactMap { id in shown.first { $0.id == id } })
+            let present = ids.filter { id in shown.contains { $0.id == id } }
+            return (label: label, charts: companion.core.trendChartOrder(ids: present).compactMap { id in shown.first { $0.id == id } })
         }
             .filter { !$0.charts.isEmpty }
     }
